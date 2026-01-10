@@ -45,14 +45,15 @@ export function ExportSection({ template, fields, importedData, fieldMappings }:
       });
 
       // If background job, poll for status (future: implement job status endpoint)
+      const downloadLink = result.download_url ?? result.zip_url;
       if (result.job_id) {
         // For now, assume synchronous completion
         // TODO: Implement job status polling when backend supports it
-        setDownloadUrl(result.download_url || result.zip_url);
+        setDownloadUrl(downloadLink ?? null);
         setGenerationStatus('completed');
         setProgress(100);
-      } else if (result.download_url || result.zip_url) {
-        setDownloadUrl(result.download_url || result.zip_url);
+      } else if (downloadLink) {
+        setDownloadUrl(downloadLink);
         setGenerationStatus('completed');
         setProgress(100);
       } else {

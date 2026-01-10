@@ -1,43 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Award, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { api } from "@/lib/api/client";
-import { setAuthTokens } from "@/lib/auth/storage";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { loginAction, type LoginState } from "./actions";
 
+/**
+ * Submit button with loading state using React 19's useFormStatus
+ */
+function SubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      type="submit"
+      className="w-full h-10 bg-primary hover:bg-primary/90"
+      disabled={pending}
+    >
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Signing in...
+        </>
+      ) : (
+        "Sign in"
+      )}
+    </Button>
+  );
+}
+
+/**
+ * Initial form state
+ */
+const initialState: LoginState = {
+  error: null,
+  success: false,
+};
+
+/**
+ * Login page using React 19 Server Actions
+ */
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [state, formAction] = useActionState(loginAction, initialState);
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const router = useRouter();
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const result = await api.auth.login(email, password);
-
-      // Store tokens
-      setAuthTokens(result.session);
-
-      router.push("/dashboard");
-      router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Failed to sign in");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -47,9 +58,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary mb-4">
             <Award className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold">
-            Welcome back
-          </h1>
+          <h1 className="text-2xl font-bold">Welcome back</h1>
           <p className="text-sm text-muted-foreground mt-2">
             Sign in to your MineCertificate account
           </p>
@@ -57,20 +66,19 @@ export default function LoginPage() {
 
         {/* Login Card */}
         <Card className="p-8 shadow-sm">
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form action={formAction} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">
                 Email
               </Label>
               <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="h-10"
+                id="email"
+                name="email"
+                type="email"
+                placeholder="name@company.com"
+                required
+                autoComplete="email"
+                className="h-10"
               />
             </div>
 
@@ -89,18 +97,18 @@ export default function LoginPage() {
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
                   required
-                  disabled={loading}
+                  autoComplete="current-password"
                   className="h-10 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -111,33 +119,26 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
-              <div className="bg-destructive/10 border border-destructive/50 text-destructive px-4 py-3 rounded-lg text-sm">
-                {error}
+            {state.error && (
+              <div 
+                className="bg-destructive/10 border border-destructive/50 text-destructive px-4 py-3 rounded-lg text-sm"
+                role="alert"
+              >
+                {state.error}
               </div>
             )}
 
-            <Button
-              type="submit"
-              className="w-full h-10 bg-primary hover:bg-primary/90"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign in"
-              )}
-            </Button>
+            <SubmitButton />
           </form>
         </Card>
 
         {/* Sign up link */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Don't have an account?{" "}
-          <Link href="/signup" className="font-medium text-primary hover:text-primary/80">
+          Don&apos;t have an account?{" "}
+          <Link
+            href="/signup"
+            className="font-medium text-primary hover:text-primary/80"
+          >
             Sign up
           </Link>
         </p>

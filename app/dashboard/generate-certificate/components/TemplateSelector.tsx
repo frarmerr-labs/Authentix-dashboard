@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useDropzone } from 'react-dropzone';
 import { FileText, Image as ImageIcon, Upload, Plus, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PDFDocument } from 'pdf-lib';
+import { getPdfLib } from '@/lib/utils/dynamic-imports';
 import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import { useCertificateCategories } from '@/lib/hooks/use-certificate-categories';
@@ -62,7 +62,7 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
   }, [showSubcategory]);
 
   // Generate consistent color for category/subcategory badges
-  const getColorForText = (text: string) => {
+  const getColorForText = (text: string): { bg: string; text: string; border: string } => {
     const colors = [
       { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
       { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
@@ -74,14 +74,14 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
       { bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-300' },
       { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-300' },
       { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
-    ];
+    ] as const;
 
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
       hash = text.charCodeAt(i) + ((hash << 5) - hash);
     }
     const index = Math.abs(hash) % colors.length;
-    return colors[index];
+    return colors[index]!;
   };
 
   const scroll = (direction: 'left' | 'right') => {
@@ -120,9 +120,14 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
       let width = 0, height = 0;
 
       if (fileType === 'application/pdf') {
+        const { PDFDocument } = await getPdfLib();
         const arrayBuffer = await uploadFile.arrayBuffer();
         const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const page = pdfDoc.getPages()[0];
+        const pages = pdfDoc.getPages();
+        const page = pages[0];
+        if (!page) {
+          throw new Error('PDF has no pages');
+        }
         const { width: pageWidth, height: pageHeight } = page.getSize();
         width = pageWidth;
         height = pageHeight;
@@ -427,7 +432,7 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
 
                   <Button
                     onClick={handleUpload}
-                    disabled={isProcessing || !templateName || !categoryName || (showSubcategory && !subcategoryName)}
+                    disabled={isProcessing || !templateName || !categoryName || Boolean(showSubcategory && !subcategoryName)}
                     className="w-full"
                     size="lg"
                   >

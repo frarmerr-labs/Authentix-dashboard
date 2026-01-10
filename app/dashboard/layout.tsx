@@ -18,16 +18,13 @@ import {
   Sun,
   Monitor,
   Bell,
-  Search,
-  User,
   Building2,
   Sparkles,
-  CreditCard
+  CreditCard,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
+import { clearLegacyTokens } from "@/lib/auth/storage";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +34,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+
+interface UserSession {
+  id: string;
+  email: string;
+  full_name: string | null;
+}
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -58,7 +61,7 @@ export default function DashboardLayout({
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserSession | null>(null);
   const [profileName, setProfileName] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("");
   const [companyLogo, setCompanyLogo] = useState<string>("");
@@ -66,18 +69,20 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    const savedTheme = (typeof window !== "undefined"
-      ? (localStorage.getItem("theme") as "light" | "dark" | "system" | null)
-      : null) || "system";
+    const savedTheme =
+      typeof window !== "undefined"
+        ? (localStorage.getItem("theme") as "light" | "dark" | "system" | null)
+        : null;
 
     const prefersDark =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-    setTheme(savedTheme);
+    const currentTheme = savedTheme ?? "system";
+    setTheme(currentTheme);
 
     const shouldDark =
-      savedTheme === "dark" || (savedTheme === "system" && prefersDark);
+      currentTheme === "dark" || (currentTheme === "system" && prefersDark);
 
     setDarkMode(shouldDark);
     if (shouldDark) {
@@ -96,7 +101,9 @@ export default function DashboardLayout({
         }
 
         setUser(session.user);
-        setProfileName(session.user.full_name || session.user.email?.split("@")[0] || "User");
+        setProfileName(
+          session.user.full_name ?? session.user.email?.split("@")[0] ?? "User"
+        );
 
         // Get company info from profile
         try {
@@ -126,14 +133,13 @@ export default function DashboardLayout({
     if (typeof window !== "undefined") {
       localStorage.setItem("theme", value);
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const shouldDark =
-        value === "dark" || (value === "system" && prefersDark);
+      const shouldDark = value === "dark" || (value === "system" && prefersDark);
       setDarkMode(shouldDark);
       if (shouldDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
     }
   };
 
@@ -149,7 +155,8 @@ export default function DashboardLayout({
     } catch {
       // Ignore logout errors
     } finally {
-      clearAuthTokens();
+      // Clear any legacy localStorage tokens
+      clearLegacyTokens();
       router.push("/login");
       router.refresh();
     }
@@ -175,7 +182,7 @@ export default function DashboardLayout({
             <Link href="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
                 <Award className="h-4 w-4 text-primary-foreground" />
-            </div>
+              </div>
               {sidebarExpanded && (
                 <span className="font-bold text-base whitespace-nowrap">
                   MineCert
@@ -202,7 +209,9 @@ export default function DashboardLayout({
                   title={!sidebarExpanded ? item.name : undefined}
                 >
                   <item.icon className="h-[18px] w-[18px] flex-shrink-0" />
-                  {sidebarExpanded && <span className="whitespace-nowrap">{item.name}</span>}
+                  {sidebarExpanded && (
+                    <span className="whitespace-nowrap">{item.name}</span>
+                  )}
                 </Link>
               );
             })}
@@ -245,7 +254,7 @@ export default function DashboardLayout({
               )}
             </button>
             <button
-                onClick={handleLogout}
+              onClick={handleLogout}
               className={cn(
                 "flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-all w-full group",
                 sidebarExpanded ? "px-3" : "justify-center",
@@ -254,7 +263,9 @@ export default function DashboardLayout({
               title={!sidebarExpanded ? "Logout" : undefined}
             >
               <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
-              {sidebarExpanded && <span className="whitespace-nowrap">Logout</span>}
+              {sidebarExpanded && (
+                <span className="whitespace-nowrap">Logout</span>
+              )}
             </button>
           </div>
         </div>
@@ -266,7 +277,10 @@ export default function DashboardLayout({
         <header className="h-16 bg-card border-b sticky top-0 z-30">
           <div className="h-full px-6 flex items-center justify-between">
             {/* Left section spacer / Portal Target */}
-            <div id="header-left-portal" className="flex-1 flex items-center min-w-0" />
+            <div
+              id="header-left-portal"
+              className="flex-1 flex items-center min-w-0"
+            />
 
             {/* Center Portal Target */}
             <div id="header-portal" className="flex justify-center min-w-0 px-4" />
@@ -277,21 +291,18 @@ export default function DashboardLayout({
                 <Bell className="h-5 w-5" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full"></span>
               </Button>
-              
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-3 pl-3 border-l hover:opacity-80 transition-opacity">
                     <div className="text-right hidden sm:block">
-                      <p className="text-sm font-medium">
-                        {profileName || "User"}
-                      </p>
+                      <p className="text-sm font-medium">{profileName || "User"}</p>
                       <p className="text-xs text-muted-foreground">
                         {companyName || "Company"}
                       </p>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold cursor-pointer overflow-hidden">
                       {companyLogo ? (
-                        // Use plain img to avoid Next.js Image config issues; URL is from Supabase storage
                         <img
                           src={companyLogo}
                           alt={companyName || "Company logo"}
@@ -306,12 +317,8 @@ export default function DashboardLayout({
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium">
-                        {profileName || "User"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {user?.email}
-                      </p>
+                      <p className="text-sm font-medium">{profileName || "User"}</p>
+                      <p className="text-xs text-muted-foreground">{user?.email}</p>
                       {companyName && (
                         <p className="text-xs text-muted-foreground">
                           {companyName}
@@ -321,7 +328,10 @@ export default function DashboardLayout({
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/company" className="cursor-pointer flex items-center">
+                    <Link
+                      href="/dashboard/company"
+                      className="cursor-pointer flex items-center"
+                    >
                       <Building2 className="mr-2 h-4 w-4" />
                       <span>Company Settings</span>
                     </Link>
@@ -336,7 +346,9 @@ export default function DashboardLayout({
                       <Sun className="mr-2 h-4 w-4" />
                       <span>Light</span>
                     </div>
-                    {theme === "light" && <span className="text-xs text-primary">●</span>}
+                    {theme === "light" && (
+                      <span className="text-xs text-primary">●</span>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => setThemePreference("dark")}
@@ -346,7 +358,9 @@ export default function DashboardLayout({
                       <Moon className="mr-2 h-4 w-4" />
                       <span>Dark</span>
                     </div>
-                    {theme === "dark" && <span className="text-xs text-primary">●</span>}
+                    {theme === "dark" && (
+                      <span className="text-xs text-primary">●</span>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => setThemePreference("system")}
@@ -356,10 +370,15 @@ export default function DashboardLayout({
                       <Monitor className="mr-2 h-4 w-4" />
                       <span>System</span>
                     </div>
-                    {theme === "system" && <span className="text-xs text-primary">●</span>}
+                    {theme === "system" && (
+                      <span className="text-xs text-primary">●</span>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
@@ -371,9 +390,7 @@ export default function DashboardLayout({
 
         {/* Page content */}
         <main className="p-6">
-          <div className="max-w-[1400px] mx-auto">
-            {children}
-          </div>
+          <div className="max-w-[1400px] mx-auto">{children}</div>
         </main>
       </div>
     </div>

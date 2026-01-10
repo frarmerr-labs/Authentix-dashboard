@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import { api } from '@/lib/api/client';
-import { PDFDocument } from 'pdf-lib';
+import { getPdfLib, getXlsx } from '@/lib/utils/dynamic-imports';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -125,8 +125,14 @@ export default function GenerateCertificatePage() {
             
             if (selectedTemplate.file_type === 'pdf' || selectedTemplate.name?.toLowerCase().endsWith('.pdf')) {
                 const arrayBuffer = await blob.arrayBuffer();
+                // Dynamic import of pdf-lib for bundle optimization
+                const { PDFDocument } = await getPdfLib();
                 const pdfDoc = await PDFDocument.load(arrayBuffer);
-                const page = pdfDoc.getPages()[0];
+                const pages = pdfDoc.getPages();
+                const page = pages[0];
+                if (!page) {
+                    throw new Error('PDF has no pages');
+                }
                 const { width, height } = page.getSize();
                 pdfWidth = width;
                 pdfHeight = height;
@@ -264,13 +270,14 @@ export default function GenerateCertificatePage() {
 
   // Autosave template dimensions
   useEffect(() => {
-    if (!template?.id) return;
+    const templateId = template?.id;
+    if (!templateId) return;
     
     if (!template.pdfWidth || !template.pdfHeight) return;
 
     const timeoutId = setTimeout(async () => {
          try {
-           await api.templates.update(template.id, {
+           await api.templates.update(templateId, {
              width: template.pdfWidth,
              height: template.pdfHeight,
            });
@@ -284,16 +291,18 @@ export default function GenerateCertificatePage() {
 
   // Autosave fields to template
   useEffect(() => {
-    if (!template?.id || fields.length === 0) return;
+    const templateId = template?.id;
+    if (!templateId || fields.length === 0) return;
 
     const timeoutId = setTimeout(async () => {
       try {
-        await api.templates.update(template.id, { fields });
+        await api.templates.update(templateId, { fields });
         console.log('Fields auto-saved');
-      } catch (e: any) {
+      } catch (e: unknown) {
         // Silently handle autosave errors (network issues, etc.)
         // Only log if it's not a network error (which is expected if backend is down)
-        if (e?.code !== 'NETWORK_ERROR') {
+        const isNetworkError = e instanceof Error && 'code' in e && e.code === 'NETWORK_ERROR';
+        if (!isNetworkError) {
           console.error('Failed to save fields', e);
         }
       }
@@ -333,11 +342,21 @@ export default function GenerateCertificatePage() {
       const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error('Failed to download file');
 
-      // Parse the Excel/CSV file
+      // Parse the Excel/CSV file (dynamic import for bundle optimization)
       const arrayBuffer = await response.arrayBuffer();
-      const XLSX = await import('xlsx');
+      const XLSX = await getXlsx();
       const workbook = XLSX.read(arrayBuffer);
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        throw new Error('The workbook contains no sheets.');
+      }
+      
+      const firstSheet = workbook.Sheets[firstSheetName];
+      if (!firstSheet) {
+        throw new Error('Failed to read the first sheet.');
+      }
+      
       const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
       if (jsonData.length === 0) {

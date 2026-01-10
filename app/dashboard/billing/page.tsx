@@ -23,7 +23,7 @@ export default function BillingPage() {
 
   const loadCompany = async () => {
     try {
-      const companyData = await api.companies.get();
+      const companyData = await api.companies.get() as { id: string; name: string };
       setCompany({ id: companyData.id, name: companyData.name });
     } catch (error) {
       console.error('Error loading company:', error);

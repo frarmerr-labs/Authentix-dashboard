@@ -119,7 +119,19 @@ export default function ImportsPage() {
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        setError("File contains no sheets");
+        return;
+      }
+      
+      const worksheet = workbook.Sheets[firstSheetName];
+      if (!worksheet) {
+        setError("Failed to read worksheet");
+        return;
+      }
+      
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
       if (jsonData.length === 0) {

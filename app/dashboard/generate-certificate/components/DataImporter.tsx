@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { getXlsx } from '@/lib/utils/dynamic-imports';
 
 interface DataImporterProps {
   fields: CertificateField[];
@@ -35,9 +35,17 @@ export function DataImporter({
       setIsProcessing(true);
 
       try {
+        const XLSX = await getXlsx();
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer);
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          throw new Error('No sheets found in workbook');
+        }
+        const firstSheet = workbook.Sheets[sheetName];
+        if (!firstSheet) {
+          throw new Error('Sheet not found');
+        }
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
         if (jsonData.length === 0) {
@@ -45,12 +53,16 @@ export function DataImporter({
           return;
         }
 
-        const headers = Object.keys(jsonData[0] as Record<string, any>);
+        const firstRow = jsonData[0];
+        if (!firstRow || typeof firstRow !== 'object') {
+          throw new Error('Invalid data format');
+        }
+        const headers = Object.keys(firstRow as Record<string, unknown>);
 
         const data: ImportedData = {
           fileName: file.name,
           headers,
-          rows: jsonData as Record<string, any>[],
+          rows: jsonData as Record<string, unknown>[],
           rowCount: jsonData.length,
         };
 

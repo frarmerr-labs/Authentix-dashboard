@@ -56,7 +56,14 @@ export default function CompanyPage() {
         cin_number: company.cin_number || "",
       });
       setLogoPreview(company.logo || "");
-      setApplicationId(company.application_id || "");
+
+      // Load application_id from API settings separately
+      try {
+        const apiSettings = await api.companies.getAPISettings();
+        setApplicationId(apiSettings.application_id || "");
+      } catch {
+        // API settings may not be available yet
+      }
     } catch (error) {
       console.error('Error loading company data:', error);
     } finally {

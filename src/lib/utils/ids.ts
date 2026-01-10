@@ -30,17 +30,21 @@ function base32Encode(buffer: Buffer): string {
   let output = '';
 
   for (let i = 0; i < buffer.length; i++) {
-    value = (value << 8) | buffer[i];
+    const byte = buffer[i];
+    if (byte === undefined) continue;
+    value = (value << 8) | byte;
     bits += 8;
 
     while (bits >= 5) {
-      output += alphabet[(value >>> (bits - 5)) & 31];
+      const charIndex = (value >>> (bits - 5)) & 31;
+      output += alphabet[charIndex] ?? '';
       bits -= 5;
     }
   }
 
   if (bits > 0) {
-    output += alphabet[(value << (5 - bits)) & 31];
+    const charIndex = (value << (5 - bits)) & 31;
+    output += alphabet[charIndex] ?? '';
   }
 
   return output;

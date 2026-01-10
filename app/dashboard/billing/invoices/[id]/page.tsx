@@ -25,7 +25,7 @@ export default function InvoiceDetailPage() {
 
   const loadCompany = async () => {
     try {
-      const companyData = await api.companies.get();
+      const companyData = await api.companies.get() as { name: string; email: string | null };
       setCompany({ name: companyData.name, email: companyData.email });
     } catch (error) {
       console.error('Error loading company:', error);

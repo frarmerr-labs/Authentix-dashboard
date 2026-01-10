@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useDropzone } from 'react-dropzone';
 import { CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { getXlsx } from '@/lib/utils/dynamic-imports';
 
 interface DataSelectorProps {
   fields: CertificateField[];
@@ -41,9 +41,17 @@ export function DataSelector({
       setIsProcessing(true);
 
       try {
+        const XLSX = await getXlsx();
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer);
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          throw new Error('No sheets found in workbook');
+        }
+        const firstSheet = workbook.Sheets[sheetName];
+        if (!firstSheet) {
+          throw new Error('Sheet not found');
+        }
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
         if (jsonData.length === 0) {
@@ -51,12 +59,16 @@ export function DataSelector({
           return;
         }
 
-        const headers = Object.keys(jsonData[0] as Record<string, any>);
+        const firstRow = jsonData[0];
+        if (!firstRow || typeof firstRow !== 'object') {
+          throw new Error('Invalid data format');
+        }
+        const headers = Object.keys(firstRow as Record<string, unknown>);
 
         const data: ImportedData = {
           fileName: file.name,
           headers,
-          rows: jsonData as Record<string, any>[],
+          rows: jsonData as Record<string, unknown>[],
           rowCount: jsonData.length,
         };
 
@@ -83,11 +95,14 @@ export function DataSelector({
     disabled: isProcessing,
   });
 
-  const downloadSampleFile = () => {
+  const downloadSampleFile = async () => {
+    // Dynamic import for bundle optimization
+    const XLSX = await getXlsx();
+    
     // Create sample data based on fields
     const sampleData = [];
     for (let i = 1; i <= 5; i++) {
-      const row: any = {};
+      const row: Record<string, unknown> = {};
       fields.forEach((field) => {
         if (field.type === 'name') row['Recipient Name'] = `John Doe ${i}`;
         else if (field.type === 'course') row['Course Name'] = 'Web Development Fundamentals';

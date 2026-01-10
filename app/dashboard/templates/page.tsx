@@ -23,7 +23,7 @@ export default function TemplatesPage() {
   const router = useRouter();
 
   // Generate consistent color for category/subcategory badges
-  const getColorForText = (text: string) => {
+  const getColorForText = (text: string): { bg: string; text: string; border: string } => {
     const colors = [
       { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
       { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
@@ -43,7 +43,7 @@ export default function TemplatesPage() {
       hash = text.charCodeAt(i) + ((hash << 5) - hash);
     }
     const index = Math.abs(hash) % colors.length;
-    return colors[index];
+    return colors[index]!;
   };
 
   useEffect(() => {
@@ -242,32 +242,40 @@ export default function TemplatesPage() {
                     <div>
                       <h3 className="font-semibold truncate mb-1">{template.name}</h3>
                       <div className="flex flex-wrap gap-1 mt-1.5">
-                        {template.certificate_category && (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-xs border",
-                              getColorForText(template.certificate_category).bg,
-                              getColorForText(template.certificate_category).text,
-                              getColorForText(template.certificate_category).border
-                            )}
-                          >
-                            {template.certificate_category}
-                          </Badge>
-                        )}
-                        {template.certificate_subcategory && (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-xs border",
-                              getColorForText(template.certificate_subcategory).bg,
-                              getColorForText(template.certificate_subcategory).text,
-                              getColorForText(template.certificate_subcategory).border
-                            )}
-                          >
-                            {template.certificate_subcategory}
-                          </Badge>
-                        )}
+                        {template.certificate_category && (() => {
+                          const category = template.certificate_category;
+                          const categoryColors = getColorForText(category);
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs border",
+                                categoryColors.bg,
+                                categoryColors.text,
+                                categoryColors.border
+                              )}
+                            >
+                              {category}
+                            </Badge>
+                          );
+                        })()}
+                        {template.certificate_subcategory && (() => {
+                          const subcategory = template.certificate_subcategory;
+                          const subcategoryColors = getColorForText(subcategory);
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs border",
+                                subcategoryColors.bg,
+                                subcategoryColors.text,
+                                subcategoryColors.border
+                              )}
+                            >
+                              {subcategory}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1.5">
                         {template.certificate_count || 0} certificates issued
