@@ -58,6 +58,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const [mounted, setMounted] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
@@ -67,6 +68,11 @@ export default function DashboardLayout({
   const [companyLogo, setCompanyLogo] = useState<string>("");
   const pathname = usePathname();
   const router = useRouter();
+
+  // Prevent hydration mismatch with Radix UI components
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const savedTheme =
@@ -292,28 +298,29 @@ export default function DashboardLayout({
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full"></span>
               </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-3 pl-3 border-l hover:opacity-80 transition-opacity">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-sm font-medium">{profileName || "User"}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {companyName || "Company"}
-                      </p>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold cursor-pointer overflow-hidden">
-                      {companyLogo ? (
-                        <img
-                          src={companyLogo}
-                          alt={companyName || "Company logo"}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        (profileName || companyName || "U").charAt(0).toUpperCase()
-                      )}
-                    </div>
-                  </button>
-                </DropdownMenuTrigger>
+              {mounted ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-3 pl-3 border-l hover:opacity-80 transition-opacity">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-sm font-medium">{profileName || "User"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {companyName || "Company"}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold cursor-pointer overflow-hidden">
+                        {companyLogo ? (
+                          <img
+                            src={companyLogo}
+                            alt={companyName || "Company logo"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          (profileName || companyName || "U").charAt(0).toUpperCase()
+                        )}
+                      </div>
+                    </button>
+                  </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
@@ -382,8 +389,18 @@ export default function DashboardLayout({
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                /* Placeholder to prevent layout shift during hydration */
+                <div className="flex items-center gap-3 pl-3 border-l">
+                  <div className="text-right hidden sm:block">
+                    <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-16 bg-muted animate-pulse rounded mt-1" />
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-muted animate-pulse" />
+                </div>
+              )}
             </div>
           </div>
         </header>

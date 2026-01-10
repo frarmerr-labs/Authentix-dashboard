@@ -5,11 +5,14 @@
  * Uses cookie-based authentication (HttpOnly cookies set by server).
  *
  * Auth endpoints use Next.js Route Handlers (/api/auth/*).
- * Other endpoints proxy to backend with cookies.
+ * Other endpoints go through /api/proxy/* to avoid CORS issues.
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+/**
+ * API Base URL - uses Next.js proxy route to avoid CORS
+ * All requests go through /api/proxy which forwards to the backend
+ */
+const API_BASE_URL = "/api/proxy";
 
 export interface ApiError {
   code: string;
