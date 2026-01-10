@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Limit proxy request body size for security (DoS prevention)
+  // Adjust based on max file upload size requirements
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },
+
   images: {
     remotePatterns: [
       {

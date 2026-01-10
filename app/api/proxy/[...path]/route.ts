@@ -1,61 +1,252 @@
 /**
- * API Proxy Route Handler
- * 
- * Proxies all API requests through Next.js to avoid CORS issues
- * and keep backend URL hidden from the client.
- * 
- * Usage: /api/proxy/companies/me -> backend/api/v1/companies/me
+ * HARDENED API PROXY ROUTE HANDLER
+ *
+ * Securely proxies API requests to the backend.
+ * Implements OWASP SSRF prevention measures.
+ *
+ * Security measures:
+ * - Strict path allowlist
+ * - Method restrictions
+ * - Path traversal prevention
+ * - Hop-by-hop header stripping
+ * - Request timeout/abort handling
+ * - Sanitized error responses
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { AUTH_COOKIES, sanitizeErrorMessage } from "@/lib/api/server";
+import { AUTH_COOKIES } from "@/lib/api/server";
 
-const BACKEND_URL =
-  process.env.BACKEND_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3000/api/v1";
+// ============================================================================
+// Configuration (Server-only)
+// ============================================================================
+
+const BACKEND_API_URL = process.env.BACKEND_API_URL;
+
+// Request timeout in milliseconds
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// ============================================================================
+// Security: Allowed Methods
+// ============================================================================
+
+const ALLOWED_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+]);
+
+// ============================================================================
+// Security: Allowed Path Prefixes (relative to backend API root)
+// ============================================================================
+
+const ALLOWED_PATH_PREFIXES = [
+  "/auth/",
+  "/templates",
+  "/companies/",
+  "/users/",
+  "/certificates/",
+  "/import-jobs",
+  "/billing/",
+  "/verification/",
+  "/dashboard/",
+  "/webhooks/",
+] as const;
+
+// ============================================================================
+// Security: Hop-by-hop Headers to Strip
+// ============================================================================
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+// ============================================================================
+// Security: Path Validation
+// ============================================================================
 
 /**
- * Forward request to backend with authentication
+ * Validate path against traversal attacks and suspicious patterns
  */
+function isPathSafe(path: string): boolean {
+  // Block path traversal patterns
+  if (path.includes("..")) return false;
+  if (path.includes("%2e%2e")) return false;
+  if (path.includes("%2E%2E")) return false;
+
+  // Block double slashes (potential bypass)
+  if (path.includes("//")) return false;
+
+  // Block null bytes
+  if (path.includes("%00")) return false;
+  if (path.includes("\0")) return false;
+
+  // Block backslashes (Windows-style paths)
+  if (path.includes("\\")) return false;
+  if (path.includes("%5c")) return false;
+  if (path.includes("%5C")) return false;
+
+  return true;
+}
+
+/**
+ * Check if path is in allowlist
+ */
+function isPathAllowed(path: string): boolean {
+  // Normalize path (remove leading slash for comparison)
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  return ALLOWED_PATH_PREFIXES.some(
+    (prefix) =>
+      normalizedPath.startsWith(prefix) ||
+      normalizedPath === prefix.replace(/\/$/, "") // Handle exact match without trailing slash
+  );
+}
+
+// ============================================================================
+// Security: Header Filtering
+// ============================================================================
+
+/**
+ * Create safe headers for backend request
+ */
+function createSafeHeaders(
+  originalHeaders: Headers,
+  accessToken: string | null
+): Headers {
+  const safeHeaders = new Headers();
+
+  // Copy only safe headers
+  originalHeaders.forEach((value, key) => {
+    const lowerKey = key.toLowerCase();
+
+    // Skip hop-by-hop headers
+    if (HOP_BY_HOP_HEADERS.has(lowerKey)) return;
+
+    // Skip host header (will be set by fetch)
+    if (lowerKey === "host") return;
+
+    // Skip cookie header (we handle auth separately)
+    if (lowerKey === "cookie") return;
+
+    safeHeaders.set(key, value);
+  });
+
+  // Ensure content-type is set
+  if (!safeHeaders.has("Content-Type")) {
+    safeHeaders.set("Content-Type", "application/json");
+  }
+
+  // Add auth header if token exists
+  if (accessToken) {
+    safeHeaders.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  return safeHeaders;
+}
+
+// ============================================================================
+// Error Response Helpers
+// ============================================================================
+
+function errorResponse(
+  code: string,
+  message: string,
+  status: number
+): NextResponse {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code, message },
+    },
+    { status }
+  );
+}
+
+// ============================================================================
+// Main Proxy Handler
+// ============================================================================
+
 async function proxyRequest(
   request: NextRequest,
   method: string
 ): Promise<NextResponse> {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get(AUTH_COOKIES.ACCESS_TOKEN)?.value;
-  
-  // Get the path from the URL
-  const url = new URL(request.url);
-  const pathSegments = url.pathname.replace("/api/proxy/", "");
-  const backendUrl = `${BACKEND_URL}/${pathSegments}${url.search}`;
-
-  // Build headers
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
+  // Validate backend URL is configured
+  if (!BACKEND_API_URL) {
+    console.error("[Proxy] Backend URL not configured");
+    return errorResponse(
+      "SERVICE_UNAVAILABLE",
+      "Service temporarily unavailable",
+      503
+    );
   }
+
+  // Validate method
+  if (!ALLOWED_METHODS.has(method)) {
+    return errorResponse("METHOD_NOT_ALLOWED", "Method not allowed", 405);
+  }
+
+  // Extract and validate path
+  const url = new URL(request.url);
+  const pathSegments = url.pathname.replace("/api/proxy", "");
+
+  // Security: Check for path traversal
+  if (!isPathSafe(pathSegments)) {
+    console.warn(`[Proxy] Blocked suspicious path: ${pathSegments}`);
+    return errorResponse("BAD_REQUEST", "Invalid request path", 400);
+  }
+
+  // Security: Check path allowlist
+  if (!isPathAllowed(pathSegments)) {
+    console.warn(`[Proxy] Blocked non-allowlisted path: ${pathSegments}`);
+    return errorResponse("FORBIDDEN", "Access denied", 403);
+  }
+
+  // Build backend URL
+  const backendUrl = `${BACKEND_API_URL}${pathSegments}${url.search}`;
+
+  // Get auth token from cookies
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get(AUTH_COOKIES.ACCESS_TOKEN)?.value ?? null;
+
+  // Create safe headers
+  const safeHeaders = createSafeHeaders(request.headers, accessToken);
 
   // Get request body for non-GET requests
-  let body: string | undefined;
-  if (method !== "GET" && method !== "HEAD") {
+  let body: ArrayBuffer | null = null;
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
     try {
-      body = await request.text();
+      body = await request.arrayBuffer();
     } catch {
-      // No body
+      // No body or error reading body
     }
   }
+
+  // Create abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(backendUrl, {
       method,
-      headers,
-      body: body || undefined,
+      headers: safeHeaders,
+      body: body,
+      signal: controller.signal,
+      // Don't follow redirects - let backend handle them
+      redirect: "manual",
     });
+
+    clearTimeout(timeoutId);
 
     // Get response data
     const contentType = response.headers.get("content-type");
@@ -64,30 +255,44 @@ async function proxyRequest(
     if (contentType?.includes("application/json")) {
       data = await response.json();
     } else {
-      data = await response.text();
+      // For non-JSON responses (e.g., file downloads), stream through
+      const responseBody = await response.arrayBuffer();
+      return new NextResponse(responseBody, {
+        status: response.status,
+        headers: {
+          "Content-Type": contentType || "application/octet-stream",
+        },
+      });
     }
 
-    // Return response with same status
+    // Return JSON response with same status
     return NextResponse.json(data, {
       status: response.status,
-      headers: {
-        "Content-Type": contentType || "application/json",
-      },
     });
   } catch (error) {
-    console.error("[Proxy] Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: {
-          code: "PROXY_ERROR",
-          message: sanitizeErrorMessage(error),
-        },
-      },
-      { status: 502 }
+    clearTimeout(timeoutId);
+
+    // Handle abort/timeout
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error("[Proxy] Request timeout");
+      return errorResponse("TIMEOUT", "Request timed out", 504);
+    }
+
+    // Log error server-side only (don't expose to client)
+    console.error("[Proxy] Error:", error instanceof Error ? error.message : "Unknown error");
+
+    // Return sanitized error
+    return errorResponse(
+      "PROXY_ERROR",
+      "Unable to process request",
+      502
     );
   }
 }
+
+// ============================================================================
+// HTTP Method Handlers
+// ============================================================================
 
 export async function GET(request: NextRequest) {
   return proxyRequest(request, "GET");
@@ -107,4 +312,8 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   return proxyRequest(request, "DELETE");
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return proxyRequest(request, "OPTIONS");
 }

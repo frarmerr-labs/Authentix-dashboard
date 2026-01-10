@@ -7,10 +7,25 @@
 
 import { cookies } from "next/headers";
 
-const API_BASE_URL =
-  process.env.BACKEND_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3000/api/v1";
+/**
+ * Backend API URL - Server-only, never exposed to client
+ * BACKEND_API_URL must be set in environment variables for production
+ */
+function getBackendUrl(): string {
+  const url = process.env.BACKEND_API_URL;
+  if (url) return url;
+
+  // Fallback for development only
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3000/api/v1";
+  }
+
+  // In production, we'll check at runtime when actually making requests
+  // This allows the build to succeed even without the env var set
+  return "";
+}
+
+const BACKEND_URL = getBackendUrl();
 
 /** Cookie names for auth tokens */
 export const AUTH_COOKIES = {
@@ -162,7 +177,15 @@ export async function serverApiRequest<T>(
     (headers as Record<string, string>).Authorization = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE_URL}${endpoint}`;
+  if (!BACKEND_URL) {
+    throw new ServerApiError(
+      "CONFIG_ERROR",
+      "Backend API URL is not configured",
+      503
+    );
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
 
   let response: Response;
   try {
@@ -230,7 +253,15 @@ export async function backendAuthRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  if (!BACKEND_URL) {
+    throw new ServerApiError(
+      "CONFIG_ERROR",
+      "Backend API URL is not configured",
+      503
+    );
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
 
   const response = await fetch(url, {
     ...options,
@@ -252,6 +283,73 @@ export async function backendAuthRequest<T>(
   }
 
   return data.data as T;
+}
+
+// ============================================================================
+// Server-Side Data Fetching (for Server Components)
+// ============================================================================
+
+/** User session data */
+export interface ServerSession {
+  user: {
+    id: string;
+    email: string;
+    full_name: string | null;
+  } | null;
+  valid: boolean;
+}
+
+/** User profile data */
+export interface ServerUserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  company_id: string;
+  company: {
+    name: string;
+    logo: string | null;
+  } | null;
+}
+
+/**
+ * Get session data from backend (server-side)
+ * Returns null if not authenticated
+ */
+export async function getServerSession(): Promise<ServerSession | null> {
+  try {
+    const response = await serverApiRequest<ServerSession>("/auth/session");
+    return response.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get user profile from backend (server-side)
+ * Returns null if not authenticated
+ */
+export async function getServerUserProfile(): Promise<ServerUserProfile | null> {
+  try {
+    const response = await serverApiRequest<ServerUserProfile>("/users/me");
+    return response.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get session and profile in parallel (server-side)
+ * More efficient than sequential calls
+ */
+export async function getServerAuthData(): Promise<{
+  session: ServerSession | null;
+  profile: ServerUserProfile | null;
+}> {
+  const [session, profile] = await Promise.all([
+    getServerSession(),
+    getServerUserProfile(),
+  ]);
+  return { session, profile };
 }
 
 /**

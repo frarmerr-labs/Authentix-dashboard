@@ -10,6 +10,7 @@ import { TemplateUploadDialog } from "@/components/templates/TemplateUploadDialo
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useOrg } from "@/lib/org";
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
@@ -21,6 +22,7 @@ export default function TemplatesPage() {
   const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+  const { orgPath } = useOrg();
 
   // Generate consistent color for category/subcategory badges
   const getColorForText = (text: string): { bg: string; text: string; border: string } => {
@@ -52,27 +54,22 @@ export default function TemplatesPage() {
 
   const loadTemplates = async () => {
     try {
-      const response = await api.templates.list({ sort_by: 'created_at', sort_order: 'desc' });
-      const data = response.items || [];
-
-      // Get preview URLs for templates
-      const templatesWithSignedUrls = await Promise.all(
-        data.map(async (template: any) => {
-          if (template.id) {
-            try {
-              const previewUrl = await api.templates.getPreviewUrl(template.id);
-              return { ...template, preview_url: previewUrl };
-            } catch (error) {
-              console.error('Error generating preview URL for template:', template.id, error);
-            }
-          }
-          return template;
-        })
+      // Use BFF route to fetch templates with previews in single request
+      // This eliminates N+1 pattern by fetching everything server-side
+      const response = await fetch(
+        "/api/templates/with-previews?sort_by=created_at&sort_order=desc",
+        { credentials: "include" }
       );
 
-      setTemplates(templatesWithSignedUrls);
-    } catch (error: any) {
-      console.error('Error loading templates:', error);
+      if (!response.ok) {
+        throw new Error("Failed to fetch templates");
+      }
+
+      const result = await response.json();
+      const data = result.data?.items || [];
+      setTemplates(data);
+    } catch (error: unknown) {
+      console.error("Error loading templates:", error);
       setTemplates([]);
     } finally {
       setLoading(false);
@@ -81,7 +78,7 @@ export default function TemplatesPage() {
 
   const handleGenerateCertificate = (template: any) => {
     // Navigate to generate certificate page which will auto-select this template
-    router.push(`/dashboard/generate-certificate?template=${template.id}`);
+    router.push(orgPath(`/generate-certificate?template=${template.id}`));
   };
 
   const handleDeleteClick = (template: any) => {

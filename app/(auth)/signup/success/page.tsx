@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mail, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api/client";
-import { getAccessToken } from "@/lib/auth/storage";
 
 function SignupSuccessContent() {
   const searchParams = useSearchParams();
@@ -16,57 +15,60 @@ function SignupSuccessContent() {
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
 
+  const checkVerification = useCallback(async (): Promise<boolean> => {
+    try {
+      // Call session API directly - auth is handled via HttpOnly cookies
+      const session = await api.auth.getSession();
+
+      if (session.valid && session.user) {
+        setIsVerified(true);
+        setIsChecking(false);
+
+        // Redirect to dashboard after a brief delay
+        setTimeout(() => {
+          router.push("/dashboard");
+          router.refresh();
+        }, 1500);
+        return true;
+      }
+    } catch {
+      // Silently handle errors - no session is expected until verification
+    }
+    return false;
+  }, [router]);
+
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
 
-    const checkVerification = async () => {
-      try {
-        const token = getAccessToken();
-        if (!token) {
-          return; // No token yet, user hasn't verified
-        }
+    const startPolling = async () => {
+      // Check immediately
+      const verified = await checkVerification();
+      if (verified) return;
 
-        const session = await api.auth.getSession();
-        
-        if (session.valid && session.user) {
-          setIsVerified(true);
-          setIsChecking(false);
-          
-          // Clear intervals
-          if (pollInterval) clearInterval(pollInterval);
-          if (timeout) clearTimeout(timeout);
-          
-          // Redirect to dashboard after a brief delay
-          setTimeout(() => {
-            router.push("/dashboard");
-            router.refresh();
-          }, 1500);
-          return;
+      // Poll every 3 seconds for verification
+      pollInterval = setInterval(async () => {
+        const verified = await checkVerification();
+        if (verified) {
+          clearInterval(pollInterval);
+          clearTimeout(timeout);
         }
-      } catch (err) {
-        // Silently handle errors - no session is expected
-        console.error("Verification check error:", err);
-      }
+      }, 3000);
+
+      // Stop polling after 5 minutes (300 seconds)
+      timeout = setTimeout(() => {
+        if (pollInterval) clearInterval(pollInterval);
+        setIsChecking(false);
+      }, 300000);
     };
 
-    // Start checking immediately
-    checkVerification();
-
-    // Poll every 3 seconds for verification
-    pollInterval = setInterval(checkVerification, 3000);
-
-    // Stop polling after 5 minutes (300 seconds)
-    timeout = setTimeout(() => {
-      if (pollInterval) clearInterval(pollInterval);
-      setIsChecking(false);
-    }, 300000);
+    startPolling();
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (timeout) clearTimeout(timeout);
     };
-  }, [router]);
+  }, [checkVerification]);
 
   // Show verified state
   if (isVerified) {
@@ -76,9 +78,7 @@ function SignupSuccessContent() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6">
             <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
           </div>
-          <h1 className="text-3xl font-bold mb-3">
-            Email Verified!
-          </h1>
+          <h1 className="text-3xl font-bold mb-3">Email Verified!</h1>
           <p className="text-muted-foreground mb-6">
             Your account has been verified. Redirecting to dashboard...
           </p>
@@ -89,6 +89,14 @@ function SignupSuccessContent() {
       </div>
     );
   }
+
+  const handleManualCheck = async () => {
+    setIsChecking(true);
+    const verified = await checkVerification();
+    if (!verified) {
+      setIsChecking(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
@@ -117,7 +125,9 @@ function SignupSuccessContent() {
                   {email ? (
                     <>
                       We've sent a verification link to{" "}
-                      <span className="font-medium text-foreground">{email}</span>
+                      <span className="font-medium text-foreground">
+                        {email}
+                      </span>
                     </>
                   ) : (
                     "We've sent a verification link to your email address"
@@ -155,7 +165,8 @@ function SignupSuccessContent() {
                 <div>
                   <p className="font-medium">Click the verification link</p>
                   <p className="text-muted-foreground">
-                    This will confirm your email address and activate your account
+                    This will confirm your email address and activate your
+                    account
                   </p>
                 </div>
               </div>
@@ -167,7 +178,8 @@ function SignupSuccessContent() {
                 <div>
                   <p className="font-medium">Automatic redirect</p>
                   <p className="text-muted-foreground">
-                    Once verified, you'll be automatically taken to your dashboard
+                    Once verified, you'll be automatically taken to your
+                    dashboard
                   </p>
                 </div>
               </div>
@@ -184,26 +196,7 @@ function SignupSuccessContent() {
               {!isChecking && (
                 <div className="mb-4">
                   <Button
-                    onClick={async () => {
-                      setIsChecking(true);
-                      try {
-                        const token = getAccessToken();
-                        if (token) {
-                          const session = await api.auth.getSession();
-                          if (session.valid && session.user) {
-                            setIsVerified(true);
-                            setTimeout(() => {
-                              router.push("/dashboard");
-                              router.refresh();
-                            }, 1500);
-                            return;
-                          }
-                        }
-                        setIsChecking(false);
-                      } catch (err) {
-                        setIsChecking(false);
-                      }
-                    }}
+                    onClick={handleManualCheck}
                     className="w-full bg-primary hover:bg-primary/90"
                   >
                     Check Verification Status
@@ -212,14 +205,8 @@ function SignupSuccessContent() {
               )}
 
               <div className="flex gap-3">
-                <Button
-                  asChild
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Link href="/signup">
-                    Back to Sign Up
-                  </Link>
+                <Button asChild variant="outline" className="flex-1">
+                  <Link href="/signup">Back to Sign Up</Link>
                 </Button>
                 <Button
                   asChild
@@ -241,16 +228,18 @@ function SignupSuccessContent() {
 
 export default function SignupSuccessPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6 animate-pulse">
-            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6 animate-pulse">
+              <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+            </div>
+            <p className="text-muted-foreground">Loading...</p>
           </div>
-          <p className="text-muted-foreground">Loading...</p>
         </div>
-      </div>
-    }>
+      }
+    >
       <SignupSuccessContent />
     </Suspense>
   );

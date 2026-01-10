@@ -14,7 +14,7 @@
  */
 const API_BASE_URL = "/api/proxy";
 
-export interface ApiError {
+export interface ApiErrorData {
   code: string;
   message: string;
   details?: Record<string, unknown>;
@@ -23,7 +23,7 @@ export interface ApiError {
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
-  error?: ApiError | string;
+  error?: ApiErrorData | string;
   meta?: {
     request_id: string;
     timestamp: string;
