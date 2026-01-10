@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Mail, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
+import { getAccessToken } from "@/lib/auth/storage";
 
 function SignupSuccessContent() {
   const searchParams = useSearchParams();
@@ -14,7 +15,6 @@ function SignupSuccessContent() {
   const email = searchParams.get("email");
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
-  const supabase = createClient();
 
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
@@ -22,17 +22,14 @@ function SignupSuccessContent() {
 
     const checkVerification = async () => {
       try {
-        // Check for session first (getUser requires session, getSession doesn't)
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        // If no session, that's expected - user hasn't verified yet
-        if (sessionError || !session) {
-          return;
+        const token = getAccessToken();
+        if (!token) {
+          return; // No token yet, user hasn't verified
         }
 
-        // If we have a session, check if user is verified
-        const user = session.user;
-        if (user && (user.email_confirmed_at || user.confirmed_at)) {
+        const session = await api.auth.getSession();
+        
+        if (session.valid && session.user) {
           setIsVerified(true);
           setIsChecking(false);
           
@@ -53,26 +50,6 @@ function SignupSuccessContent() {
       }
     };
 
-    // Listen for auth state changes (catches verification from other tabs/devices)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user && (session.user.email_confirmed_at || session.user.confirmed_at)) {
-          setIsVerified(true);
-          setIsChecking(false);
-          
-          // Clear intervals
-          if (pollInterval) clearInterval(pollInterval);
-          if (timeout) clearTimeout(timeout);
-          
-          // Redirect to dashboard
-          setTimeout(() => {
-            router.push("/dashboard");
-            router.refresh();
-          }, 1500);
-        }
-      }
-    });
-
     // Start checking immediately
     checkVerification();
 
@@ -88,9 +65,8 @@ function SignupSuccessContent() {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (timeout) clearTimeout(timeout);
-      subscription.unsubscribe();
     };
-  }, [router, supabase]);
+  }, [router]);
 
   // Show verified state
   if (isVerified) {
@@ -211,16 +187,19 @@ function SignupSuccessContent() {
                     onClick={async () => {
                       setIsChecking(true);
                       try {
-                        const { data: { session } } = await supabase.auth.getSession();
-                        if (session?.user && (session.user.email_confirmed_at || session.user.confirmed_at)) {
-                          setIsVerified(true);
-                          setTimeout(() => {
-                            router.push("/dashboard");
-                            router.refresh();
-                          }, 1500);
-                        } else {
-                          setIsChecking(false);
+                        const token = getAccessToken();
+                        if (token) {
+                          const session = await api.auth.getSession();
+                          if (session.valid && session.user) {
+                            setIsVerified(true);
+                            setTimeout(() => {
+                              router.push("/dashboard");
+                              router.refresh();
+                            }, 1500);
+                            return;
+                          }
                         }
+                        setIsChecking(false);
                       } catch (err) {
                         setIsChecking(false);
                       }

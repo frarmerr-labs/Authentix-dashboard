@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Key, Copy, RefreshCw, AlertTriangle, CheckCircle2, Eye, EyeOff, Shield } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { bootstrapCompanyIdentity, rotateAPIKey } from "@/lib/actions/bootstrap-identity";
 
 export default function APISettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -19,12 +18,10 @@ export default function APISettingsPage() {
   const [apiKeyCreatedAt, setApiKeyCreatedAt] = useState<string | null>(null);
   const [apiKeyLastRotatedAt, setApiKeyLastRotatedAt] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState("");
-  const [companyId, setCompanyId] = useState("");
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-  const supabase = createClient();
 
   useEffect(() => {
     loadAPIData();
@@ -32,31 +29,13 @@ export default function APISettingsPage() {
 
   const loadAPIData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const settings = await api.companies.getAPISettings();
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) return;
-      setCompanyId(userData.company_id);
-
-      const { data: company } = await supabase
-        .from('companies')
-        .select('application_id, api_enabled, api_key_hash, api_key_created_at, api_key_last_rotated_at')
-        .eq('id', userData.company_id)
-        .single();
-
-      if (company) {
-        setApplicationId(company.application_id || "");
-        setApiEnabled(company.api_enabled || false);
-        setApiKeyExists(!!company.api_key_hash);
-        setApiKeyCreatedAt(company.api_key_created_at);
-        setApiKeyLastRotatedAt(company.api_key_last_rotated_at);
-      }
+      setApplicationId(settings.application_id || "");
+      setApiEnabled(settings.api_enabled || false);
+      setApiKeyExists(settings.api_key_exists || false);
+      setApiKeyCreatedAt(settings.api_key_created_at);
+      setApiKeyLastRotatedAt(settings.api_key_last_rotated_at);
     } catch (error) {
       console.error('Error loading API data:', error);
       setError("Failed to load API settings");
@@ -71,22 +50,17 @@ export default function APISettingsPage() {
     setNewApiKey(null);
 
     try {
-      // Use the new bootstrap action for initial generation
-      // or rotation action if key already exists
+      // Use backend API for bootstrap or rotation
       const result = apiKeyExists
-        ? await rotateAPIKey()
-        : await bootstrapCompanyIdentity();
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to generate credentials");
-      }
+        ? await api.companies.rotateAPIKey()
+        : await api.companies.bootstrapIdentity();
 
       // Update application_id if bootstrap generated a new one
-      if (result.applicationId) {
-        setApplicationId(result.applicationId);
+      if (result.application_id) {
+        setApplicationId(result.application_id);
       }
 
-      setNewApiKey(result.apiKey || null);
+      setNewApiKey(result.api_key || null);
       setApiKeyExists(true);
       setApiEnabled(true);
       setApiKeyCreatedAt(new Date().toISOString());
@@ -104,13 +78,7 @@ export default function APISettingsPage() {
 
   const handleToggleAPI = async () => {
     try {
-      const { error: updateError } = await supabase
-        .from('companies')
-        .update({ api_enabled: !apiEnabled })
-        .eq('id', companyId);
-
-      if (updateError) throw updateError;
-
+      await api.companies.updateAPIEnabled(!apiEnabled);
       setApiEnabled(!apiEnabled);
     } catch (err: any) {
       setError(err.message || "Failed to update API status");

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CertificateTemplate, CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
+import { api } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -25,88 +26,45 @@ export function ExportSection({ template, fields, importedData, fieldMappings }:
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   const handleGenerate = async () => {
-    if (!template || !importedData) return;
+    if (!template || !importedData || !template.id) return;
 
     setIsGenerating(true);
     setGenerationStatus('generating');
     setProgress(0);
 
     try {
-      // Prepare the payload
-      const payload = {
-        template: {
-          fileUrl: template.fileUrl,
-          fileType: template.fileType,
-          pdfWidth: template.pdfWidth,
-          pdfHeight: template.pdfHeight,
-          fields: fields,
-        },
+      // Prepare the payload for backend API
+      const result = await api.certificates.generate({
+        template_id: template.id,
         data: importedData.rows,
-        fieldMappings,
+        field_mappings: fieldMappings,
         options: {
           includeQR,
           fileName,
         },
-      };
-
-      // Call the API to generate certificates
-      const response = await fetch('/api/certificates/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to generate certificates');
-      }
-
-      const result = await response.json();
-
-      // If background job, poll for status
-      if (result.jobId) {
-        await pollJobStatus(result.jobId);
-      } else if (result.downloadUrl) {
-        setDownloadUrl(result.downloadUrl);
+      // If background job, poll for status (future: implement job status endpoint)
+      if (result.job_id) {
+        // For now, assume synchronous completion
+        // TODO: Implement job status polling when backend supports it
+        setDownloadUrl(result.download_url || result.zip_url);
         setGenerationStatus('completed');
         setProgress(100);
+      } else if (result.download_url || result.zip_url) {
+        setDownloadUrl(result.download_url || result.zip_url);
+        setGenerationStatus('completed');
+        setProgress(100);
+      } else {
+        throw new Error('No download URL returned');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Generation error:', error);
       setGenerationStatus('error');
-      alert('Failed to generate certificates. Please try again.');
+      alert(`Failed to generate certificates: ${error.message || 'Please try again.'}`);
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const pollJobStatus = async (jobId: string) => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/certificates/generate/${jobId}`);
-        const job = await response.json();
-
-        setProgress((job.processedCertificates / job.totalCertificates) * 100);
-
-        if (job.status === 'completed') {
-          clearInterval(pollInterval);
-          setDownloadUrl(job.downloadUrl);
-          setGenerationStatus('completed');
-          setProgress(100);
-          setIsGenerating(false);
-        } else if (job.status === 'failed') {
-          clearInterval(pollInterval);
-          setGenerationStatus('error');
-          setIsGenerating(false);
-          alert('Generation failed: ' + job.errorMessage);
-        }
-      } catch (error) {
-        clearInterval(pollInterval);
-        setGenerationStatus('error');
-        setIsGenerating(false);
-      }
-    }, 2000); // Poll every 2 seconds
   };
 
   const canGenerate = template && importedData && fieldMappings.length > 0;

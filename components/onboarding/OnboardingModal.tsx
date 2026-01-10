@@ -6,14 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Building2, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 
 export function OnboardingModal() {
   const [open, setOpen] = useState(false);
   const [industry, setIndustry] = useState("");
   const [saving, setSaving] = useState(false);
-  const [companyId, setCompanyId] = useState("");
-  const supabase = createClient();
 
   useEffect(() => {
     checkOnboardingStatus();
@@ -21,28 +19,10 @@ export function OnboardingModal() {
 
   const checkOnboardingStatus = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) return;
-
-      setCompanyId(userData.company_id);
-
-      // Check if industry is already set
-      const { data: company } = await supabase
-        .from('companies')
-        .select('industry')
-        .eq('id', userData.company_id)
-        .single();
+      const company = await api.companies.get();
 
       // Show onboarding if industry is not set
-      if (!company?.industry) {
+      if (!company.industry) {
         // Check if user has dismissed onboarding before
         const dismissed = localStorage.getItem('onboarding_dismissed');
         if (!dismissed) {
@@ -59,14 +39,7 @@ export function OnboardingModal() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('companies')
-        .update({
-          industry: industry,
-        })
-        .eq('id', companyId);
-
-      if (error) throw error;
+      await api.companies.update({ industry });
 
       setOpen(false);
     } catch (error: any) {

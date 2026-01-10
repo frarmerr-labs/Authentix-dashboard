@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Upload, FileSpreadsheet, Download, Info, Mail, MessageSquare, CheckCircle2, XCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import { useCertificateCategories } from "@/lib/hooks/use-certificate-categories";
@@ -26,7 +26,6 @@ export default function ImportsPage() {
   const [templateId, setTemplateId] = useState("");
   const [templates, setTemplates] = useState<any[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const supabase = createClient();
 
   // Use the shared hook for DB-driven category logic
   const {
@@ -61,26 +60,8 @@ export default function ImportsPage() {
 
   const loadTemplates = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) return;
-
-      const { data } = await supabase
-        .from('certificate_templates')
-        .select('id, name')
-        .eq('company_id', userData.company_id)
-        .eq('status', 'active')
-        .is('deleted_at', null)
-        .order('name');
-
-      setTemplates(data || []);
+      const response = await api.templates.list({ status: 'active', sort_by: 'name', sort_order: 'asc' });
+      setTemplates(response.items.map((t: any) => ({ id: t.id, name: t.name })) || []);
     } catch (err) {
       console.error('Error loading templates:', err);
     }
@@ -201,43 +182,13 @@ export default function ImportsPage() {
     setError("");
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) throw new Error("Company not found");
-
-      const folderId = userData.company_id;
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `imports/${folderId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('minecertificate')
-        .upload(filePath, file);
-
-      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-
-      const { error: insertError } = await supabase
-        .from('import_jobs')
-        .insert({
-          company_id: userData.company_id,
-          file_name: file.name,
-          storage_path: filePath,
-          total_rows: importedData.length,
-          status: 'pending',
-          certificate_category: categoryName,
-          certificate_subcategory: subcategoryName || null,
-          certificate_template_id: templateId || null,
-          data_persisted: false,
-        });
-
-      if (insertError) throw new Error(`Database insert failed: ${insertError.message}`);
+      await api.imports.create(file, {
+        file_name: file.name,
+        certificate_category: categoryName,
+        certificate_subcategory: subcategoryName || undefined,
+        certificate_template_id: templateId || undefined,
+        reusable: false,
+      });
 
       setFile(null);
       setImportedData([]);

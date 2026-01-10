@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, FileText, Eye, Trash2, FileImage, FileType, Sparkles } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { TemplateUploadDialog } from "@/components/templates/TemplateUploadDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -20,7 +20,6 @@ export default function TemplatesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const supabase = createClient();
   const router = useRouter();
 
   // Generate consistent color for category/subcategory badges
@@ -53,68 +52,18 @@ export default function TemplatesPage() {
 
   const loadTemplates = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('[Templates] No user found');
-        return;
-      }
+      const response = await api.templates.list({ sort_by: 'created_at', sort_order: 'desc' });
+      const data = response.items || [];
 
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (userError) {
-        console.error('[Templates] Error fetching user:', userError);
-      }
-
-      if (!userData?.company_id) {
-        console.log('[Templates] No company_id found');
-        return;
-      }
-
-      console.log('[Templates] Loading templates for company:', userData.company_id);
-
-      // Fetch templates (certificate_category and certificate_subcategory are text fields)
-      const { data: templatesData, error: templatesError } = await supabase
-        .from('certificate_templates')
-        .select('*')
-        .eq('company_id', userData.company_id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
-
-      if (templatesError) {
-        console.error('[Templates] Error fetching templates:', {
-          error: templatesError,
-          message: templatesError.message,
-          code: templatesError.code,
-          details: templatesError.details,
-          hint: templatesError.hint,
-        });
-        setTemplates([]);
-        setLoading(false);
-        return;
-      }
-
-      console.log('[Templates] Fetched templates:', templatesData?.length || 0, templatesData);
-
-      const data = templatesData || [];
-
-      // Generate signed URLs for templates with storage paths
+      // Get preview URLs for templates
       const templatesWithSignedUrls = await Promise.all(
-        data.map(async (template) => {
-          if (template.storage_path) {
+        data.map(async (template: any) => {
+          if (template.id) {
             try {
-              const { data: signedUrlData } = await supabase.storage
-                .from('minecertificate')
-                .createSignedUrl(template.storage_path, 3600); // 1 hour expiry
-
-              if (signedUrlData?.signedUrl) {
-                return { ...template, preview_url: signedUrlData.signedUrl };
-              }
+              const previewUrl = await api.templates.getPreviewUrl(template.id);
+              return { ...template, preview_url: previewUrl };
             } catch (error) {
-              console.error('Error generating signed URL for template:', template.id, error);
+              console.error('Error generating preview URL for template:', template.id, error);
             }
           }
           return template;
@@ -122,8 +71,9 @@ export default function TemplatesPage() {
       );
 
       setTemplates(templatesWithSignedUrls);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading templates:', error);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -144,16 +94,7 @@ export default function TemplatesPage() {
 
     setDeleting(true);
     try {
-      // Soft delete by setting deleted_at timestamp and changing status to archived
-      const { error } = await supabase
-        .from('certificate_templates')
-        .update({
-          deleted_at: new Date().toISOString(),
-          status: 'archived'
-        })
-        .eq('id', templateToDelete.id);
-
-      if (error) throw error;
+      await api.templates.delete(templateToDelete.id);
 
       console.log('[Templates] Template deleted:', templateToDelete.name);
 
@@ -246,11 +187,11 @@ export default function TemplatesPage() {
                 {/* Preview / Icon - No gaps from top, left, right */}
                 <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                   {template.preview_url ? (
-                    template.file_type === 'image' ? (
+                    (template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg') ? (
                       <img
                         src={template.preview_url}
                         alt={template.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                       />
                     ) : (
                       // PDF preview using iframe so the browser renders first page
@@ -393,7 +334,7 @@ export default function TemplatesPage() {
               </DialogHeader>
               <div className="mt-4">
                 <div className="w-full aspect-[4/3] bg-muted overflow-hidden rounded-md">
-                  {previewTemplate.file_type === 'image' && previewTemplate.preview_url ? (
+                  {(previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || previewTemplate.file_type === 'jpeg') && previewTemplate.preview_url ? (
                     <img
                       src={previewTemplate.preview_url}
                       alt={previewTemplate.name}

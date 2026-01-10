@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Award, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
+import { setAuthTokens } from "@/lib/auth/storage";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -17,7 +18,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,17 +25,13 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const result = await api.auth.login(email, password);
 
-      if (error) throw error;
+      // Store tokens
+      setAuthTokens(result.session);
 
-      if (data.session) {
-        router.push("/dashboard");
-        router.refresh();
-      }
+      router.push("/dashboard");
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to sign in");
     } finally {

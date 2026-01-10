@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Award, FileText, Shield, Ban, TrendingUp, TrendingDown, ArrowUpRight, Clock, Activity } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,6 @@ export default function DashboardPage() {
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [recentVerifications, setRecentVerifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     loadDashboardData();
@@ -26,70 +25,11 @@ export default function DashboardPage() {
 
   const loadDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) return;
-
-      const [certificates, jobs, verifications] = await Promise.all([
-        supabase
-          .from('certificates')
-          .select('id, revoked', { count: 'exact', head: true })
-          .eq('company_id', userData.company_id),
-        supabase
-          .from('import_jobs')
-          .select('id', { count: 'exact', head: true })
-          .eq('company_id', userData.company_id)
-          .in('status', ['queued', 'processing']),
-        supabase
-          .from('verification_logs')
-          .select('id', { count: 'exact', head: true })
-          .eq('company_id', userData.company_id)
-          .gte('verified_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
-      ]);
-
-      const { count: revokedCount } = await supabase
-        .from('certificates')
-        .select('id', { count: 'exact', head: true })
-        .eq('company_id', userData.company_id)
-        .eq('revoked', true);
-
-      setStats({
-        totalCertificates: certificates.count || 0,
-        pendingJobs: jobs.count || 0,
-        verificationsToday: verifications.count || 0,
-        revokedCertificates: revokedCount || 0,
-      });
-
-      const { data: importsData } = await supabase
-        .from('import_jobs')
-        .select('*')
-        .eq('company_id', userData.company_id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setRecentImports(importsData || []);
-
-      const { data: verificationsData } = await supabase
-        .from('verification_logs')
-        .select(`
-          *,
-          certificates (
-            recipient_name,
-            course_name
-          )
-        `)
-        .eq('company_id', userData.company_id)
-        .order('verified_at', { ascending: false })
-        .limit(5);
-
-      setRecentVerifications(verificationsData || []);
+      const data = await api.dashboard.getStats();
+      
+      setStats(data.stats);
+      setRecentImports(data.recentImports);
+      setRecentVerifications(data.recentVerifications);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
