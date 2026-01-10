@@ -1,13 +1,13 @@
 # MineCertificate Database Design (Live + Repo-derived Controls)
 
-**Generated at:** 2026-01-09T06:40:17.821Z
-**Live schema source:** PostgREST OpenAPI (fetched 2026-01-09T06:40:17.821Z)
-**Live row counts:** fetched 2026-01-09T06:40:17.821Z
-**Live storage inspection:** fetched 2026-01-09T06:40:17.821Z
+**Generated at:** 2026-01-10T07:51:15.255Z
+**Live schema source:** PostgREST OpenAPI (fetched 2026-01-10T07:51:15.255Z)
+**Live row counts:** fetched 2026-01-10T07:51:15.255Z
+**Live storage inspection:** fetched 2026-01-10T07:51:15.255Z
 
 ## Sources & limits
 - Tables/columns/PK/FK are fetched live from Supabase PostgREST OpenAPI schema cache (service role).
-- Row counts and storage metadata are fetched live using `@supabase/supabase-js` (service role).
+- Row counts and storage metadata are fetched live using Supabase REST APIs (service role).
 - RLS policies, indexes, and internal function inventory are extracted from repo SQL files (may drift from production if DB was changed manually).
 
 ## Production verification SQL (run in Supabase SQL editor)
@@ -273,7 +273,7 @@ ORDER BY name;
 
 - **Domain:** Templates
 - **Purpose:** Uploadable certificate template assets + field layout JSON used by issuance/generation.
-- **Row count (live):** 7
+- **Row count (live):** 9
 - **Primary key:** `id`
 - **Foreign keys (outgoing):** `company_id` → `companies.id`, `created_by` → `users.id`, `certificate_category_id` → `certificate_categories.id`, `certificate_subcategory_id` → `certificate_categories.id`
 - **Referenced by (incoming):** `certificates.certificate_template_id`
@@ -1101,7 +1101,7 @@ _Source files: `supabase/04_HARDEN_SCHEMA.sql`, `supabase/05_ENVIRONMENT_TRACKIN
 
 # Supabase Storage
 
-**Inspected at:** 2026-01-09T06:40:17.821Z
+**Inspected at:** 2026-01-10T07:51:15.255Z
 
 ## Bucket: `minecertificate`
 
