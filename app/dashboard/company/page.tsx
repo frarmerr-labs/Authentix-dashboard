@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Upload, Loader2, CheckCircle2, Globe, MapPin, Phone, Mail } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 
 export default function CompanyPage() {
@@ -31,9 +31,7 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
-  const [companyId, setCompanyId] = useState("");
   const [applicationId, setApplicationId] = useState("");
-  const supabase = createClient();
 
   useEffect(() => {
     loadCompanyData();
@@ -41,42 +39,24 @@ export default function CompanyPage() {
 
   const loadCompanyData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const company = await api.companies.get();
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.company_id) return;
-      setCompanyId(userData.company_id);
-
-      const { data: company } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', userData.company_id)
-        .single();
-
-      if (company) {
-        setCompanyData({
-          name: company.name || "",
-          email: company.email || "",
-          phone: company.phone || "",
-          website: company.website || "",
-          industry: company.industry || "",
-          address: company.address || "",
-          city: company.city || "",
-          state: company.state || "",
-          country: company.country || "",
-          postal_code: company.postal_code || "",
-          gst_number: company.gst_number || "",
-          cin_number: company.cin_number || "",
-        });
-        setLogoPreview(company.logo || "");
-        setApplicationId(company.application_id || "");
-      }
+      setCompanyData({
+        name: company.name || "",
+        email: company.email || "",
+        phone: company.phone || "",
+        website: company.website || "",
+        industry: company.industry || "",
+        address: company.address || "",
+        city: company.city || "",
+        state: company.state || "",
+        country: company.country || "",
+        postal_code: company.postal_code || "",
+        gst_number: company.gst_number || "",
+        cin_number: company.cin_number || "",
+      });
+      setLogoPreview(company.logo || "");
+      setApplicationId(company.application_id || "");
     } catch (error) {
       console.error('Error loading company data:', error);
     } finally {
@@ -107,39 +87,15 @@ export default function CompanyPage() {
     setSuccess(false);
 
     try {
-      let logoUrl = logoPreview;
-
-      if (logo) {
-        const folderId = applicationId || companyId;
-        const fileExt = logo.name.split('.').pop();
-        const fileName = `logo_${Date.now()}.${fileExt}`;
-        const filePath = `company-logos/${folderId}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('minecertificate')
-          .upload(filePath, logo);
-
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from('minecertificate')
-          .getPublicUrl(filePath);
-
-        logoUrl = urlData.publicUrl;
+      const updatedCompany = await api.companies.update(companyData, logo || undefined);
+      
+      if (updatedCompany.logo) {
+        setLogoPreview(updatedCompany.logo);
       }
-
-      const { error: updateError } = await supabase
-        .from('companies')
-        .update({
-          ...companyData,
-          logo: logoUrl,
-        })
-        .eq('id', companyId);
-
-      if (updateError) throw updateError;
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
+      setLogo(null); // Clear logo file after successful upload
     } catch (err: any) {
       setError(err.message || "Failed to save company profile");
     } finally {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
-import { createClient } from '@/lib/supabase/client';
+import { api } from '@/lib/api/client';
 import { PDFDocument } from 'pdf-lib';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -48,104 +48,41 @@ export default function GenerateCertificatePage() {
   const [activeTab, setActiveTab] = useState('fields');
   const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
 
-  const supabase = createClient();
-
   // Load saved templates and imports
   useEffect(() => {
     loadSavedData();
   }, []);
 
   const loadSavedData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.log('[Generate] No user found');
-      return;
-    }
+    try {
+      // Load templates
+      const templatesResponse = await api.templates.list({ status: 'active', sort_by: 'created_at', sort_order: 'desc' });
+      const templatesData = templatesResponse.items || [];
 
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('company_id')
-      .eq('id', user.id)
-      .single();
-
-    if (userError) {
-      console.error('[Generate] Error fetching user:', userError);
-    }
-
-    if (!userData?.company_id) {
-      console.log('[Generate] No company_id found for user');
-      return;
-    }
-
-    console.log('[Generate] Loading templates for company:', userData.company_id);
-
-    // Load templates (certificate_category and certificate_subcategory are text fields)
-    const { data: templatesData, error: templatesError } = await supabase
-      .from('certificate_templates')
-      .select('*')
-      .eq('company_id', userData.company_id)
-      .eq('status', 'active')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
-
-    if (templatesError) {
-      console.error('[Generate] Error fetching templates:', {
-        error: templatesError,
-        message: templatesError.message,
-        code: templatesError.code,
-        details: templatesError.details,
-        hint: templatesError.hint,
-      });
-    }
-
-    console.log('[Generate] Fetched templates:', templatesData?.length || 0, templatesData);
-
-    // Generate signed URLs for templates with storage paths
-    const templatesWithSignedUrls = await Promise.all(
-      (templatesData || []).map(async (template) => {
-        if (template.storage_path) {
-          try {
-            const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-              .from('minecertificate')
-              .createSignedUrl(template.storage_path, 3600);
-
-            if (signedUrlError) {
-              console.error('[Generate] Error generating signed URL for template:', template.id, signedUrlError);
+      // Get preview URLs for templates
+      const templatesWithSignedUrls = await Promise.all(
+        templatesData.map(async (template: any) => {
+          if (template.id) {
+            try {
+              const previewUrl = await api.templates.getPreviewUrl(template.id);
+              return { ...template, preview_url: previewUrl };
+            } catch (error) {
+              console.error('[Generate] Error generating preview URL for template:', template.id, error);
             }
-
-            if (signedUrlData?.signedUrl) {
-              console.log('[Generate] Generated signed URL for template:', template.id);
-              return { ...template, preview_url: signedUrlData.signedUrl };
-            }
-          } catch (error) {
-            console.error('[Generate] Exception generating signed URL for template:', template.id, error);
           }
-        }
-        return template;
-      })
-    );
+          return template;
+        })
+      );
 
-    console.log('[Generate] Templates with signed URLs:', templatesWithSignedUrls.length);
-    setSavedTemplates(templatesWithSignedUrls);
-    
-    // Auto-select first template if available and in template step
-    if (templatesData && templatesData.length > 0 && currentStep === 'template' && !template) {
-       // Optional: We can auto-select, but the user requirement says "First existing certificate should be displayed"
-       // in the selector list, which is standard behavior. 
-       // If they meant "Pre-select on load", we could do it here. 
-       // For now, I will let the selector render them.
+      console.log('[Generate] Templates with signed URLs:', templatesWithSignedUrls.length);
+      setSavedTemplates(templatesWithSignedUrls);
+
+      // Load imports
+      const importsResponse = await api.imports.list({ status: 'completed', sort_by: 'created_at', sort_order: 'desc', limit: 10 });
+      setSavedImports(importsResponse.items || []);
+    } catch (error) {
+      console.error('[Generate] Error loading saved data:', error);
     }
-
-    // Load imports
-    const { data: importsData } = await supabase
-      .from('import_jobs')
-      .select('*')
-      .eq('company_id', userData.company_id)
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    setSavedImports(importsData || []);
   };
 
   // Auto-select template from URL parameter
@@ -166,18 +103,13 @@ export default function GenerateCertificatePage() {
   const handleTemplateSelect = async (selectedTemplate: any) => {
     let fileUrl = selectedTemplate.preview_url;
 
-    // Generate signed URL if storage_path exists to ensure access (even for private buckets)
-    if (selectedTemplate.storage_path) {
+    // Get preview URL from API
+    if (selectedTemplate.id) {
       try {
-        const { data, error } = await supabase.storage
-          .from('minecertificate')
-          .createSignedUrl(selectedTemplate.storage_path, 3600);
-        
-        if (data?.signedUrl) {
-          fileUrl = data.signedUrl;
-        }
+        const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
+        fileUrl = previewUrl;
       } catch (error) {
-        console.error('Error fetching signed URL:', error);
+        console.error('Error fetching preview URL:', error);
       }
     }
 
@@ -213,12 +145,16 @@ export default function GenerateCertificatePage() {
                  URL.revokeObjectURL(objectUrl);
             }
 
-            // Update Supabase
+            // Update template dimensions via API
             if (pdfWidth && pdfHeight) {
-                await supabase.from('certificate_templates').update({
+                try {
+                  await api.templates.update(selectedTemplate.id, {
                     width: pdfWidth,
                     height: pdfHeight
-                }).eq('id', selectedTemplate.id);
+                  });
+                } catch (error) {
+                  console.error('Error updating template dimensions:', error);
+                }
             }
 
         } catch (e) {
@@ -262,49 +198,12 @@ export default function GenerateCertificatePage() {
 
     if (saveTemplate) {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: userData } = await supabase
-          .from('users')
-          .select('company_id')
-          .eq('id', user.id)
-          .single();
-
-        if (!userData?.company_id) return;
-
-        // Upload file to storage (using minecertificate bucket with templates/ folder)
-        const fileName = `${Date.now()}-${file.name}`;
-        const storagePath = `templates/${userData.company_id}/${fileName}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('minecertificate')
-          .upload(storagePath, file);
-
-        if (uploadError) throw uploadError;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('minecertificate')
-          .getPublicUrl(storagePath);
-
-        // Save template metadata
-        const { data: templateData, error: templateError } = await supabase
-          .from('certificate_templates')
-          .insert({
-            company_id: userData.company_id,
-            name: finalTemplateName,
-            certificate_category: categoryName || null,
-            certificate_subcategory: subcategoryName || null,
-            file_type: fileType,
-            storage_path: uploadData.path,
-            preview_url: publicUrl,
-            fields: [],
-            status: 'active',
-          })
-          .select()
-          .single();
-
-        if (templateError) throw templateError;
+        // Use backend API to create template
+        const templateData = await api.templates.create(file, {
+          name: finalTemplateName,
+          certificate_category: categoryName || undefined,
+          certificate_subcategory: subcategoryName || undefined,
+        });
 
         // Update saved templates list
         setSavedTemplates((prev) => [templateData, ...prev]);
@@ -371,17 +270,17 @@ export default function GenerateCertificatePage() {
 
     const timeoutId = setTimeout(async () => {
          try {
-           await supabase
-             .from('certificate_templates')
-             .update({ width: template.pdfWidth, height: template.pdfHeight })
-             .eq('id', template.id);
+           await api.templates.update(template.id, {
+             width: template.pdfWidth,
+             height: template.pdfHeight,
+           });
          } catch (e) {
              console.error('Failed to save dimensions', e);
          }
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [template?.pdfWidth, template?.pdfHeight, template?.id, supabase]);
+  }, [template?.pdfWidth, template?.pdfHeight, template?.id]);
 
   // Autosave fields to template
   useEffect(() => {
@@ -389,18 +288,19 @@ export default function GenerateCertificatePage() {
 
     const timeoutId = setTimeout(async () => {
       try {
-        await supabase
-          .from('certificate_templates')
-          .update({ fields: fields })
-          .eq('id', template.id);
+        await api.templates.update(template.id, { fields });
         console.log('Fields auto-saved');
-      } catch (e) {
-        console.error('Failed to save fields', e);
+      } catch (e: any) {
+        // Silently handle autosave errors (network issues, etc.)
+        // Only log if it's not a network error (which is expected if backend is down)
+        if (e?.code !== 'NETWORK_ERROR') {
+          console.error('Failed to save fields', e);
+        }
       }
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [fields, template?.id, supabase]);
+  }, [fields, template?.id]);
   
   const handleToggleVisibility = (fieldId: string) => {
     setHiddenFields(prev => {
@@ -423,23 +323,18 @@ export default function GenerateCertificatePage() {
 
   const handleLoadImport = async (importId: string) => {
     try {
-      const { data: importJob, error } = await supabase
-        .from('import_jobs')
-        .select('*')
-        .eq('id', importId)
-        .single();
+      // Get import job from backend
+      const importJob = await api.imports.get(importId);
 
-      if (error) throw error;
+      // Get download URL from backend
+      const downloadUrl = await api.imports.getDownloadUrl(importId);
 
-      // Load the file from storage
-      const { data: fileData, error: fileError } = await supabase.storage
-        .from('imports')
-        .download(importJob.file_storage_path);
-
-      if (fileError) throw fileError;
+      // Fetch the file
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Failed to download file');
 
       // Parse the Excel/CSV file
-      const arrayBuffer = await fileData.arrayBuffer();
+      const arrayBuffer = await response.arrayBuffer();
       const XLSX = await import('xlsx');
       const workbook = XLSX.read(arrayBuffer);
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];

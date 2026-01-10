@@ -4,70 +4,47 @@
  * Detailed view of single invoice with line items and payment options.
  */
 
-import { Metadata } from 'next';
-import { createClient } from '@/lib/supabase/server';
-import { redirect, notFound } from 'next/navigation';
+"use client";
+
+import { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { api } from '@/lib/api/client';
 import { InvoiceDetail } from '../../components/invoice-detail';
 
-export const metadata: Metadata = {
-  title: 'Invoice Detail | Billing',
-  description: 'View invoice details',
-};
+export default function InvoiceDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const invoiceId = params.id as string;
+  const [company, setCompany] = useState<{ name: string; email: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-interface InvoiceDetailPageProps {
-  params: Promise<{
-    id: string;
-  }>;
-}
+  useEffect(() => {
+    loadCompany();
+  }, []);
 
-export default async function InvoiceDetailPage({
-  params,
-}: InvoiceDetailPageProps) {
-  const { id } = await params;
-  const supabase = await createClient();
+  const loadCompany = async () => {
+    try {
+      const companyData = await api.companies.get();
+      setCompany({ name: companyData.name, email: companyData.email });
+    } catch (error) {
+      console.error('Error loading company:', error);
+      router.push('/login');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Get authenticated user
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect('/login');
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
-
-  // Get user's company
-  const { data: profile } = await supabase
-    .from('users')
-    .select('company_id')
-    .eq('id', session.user.id)
-    .single();
-
-  if (!profile?.company_id) {
-    redirect('/onboarding');
-  }
-
-  // Get company details
-  const { data: company } = await supabase
-    .from('companies')
-    .select('id, name, email')
-    .eq('id', profile.company_id)
-    .single();
 
   if (!company) {
-    redirect('/onboarding');
-  }
-
-  // Verify invoice belongs to this company
-  const { data: invoice, error } = await supabase
-    .from('invoices')
-    .select('id, company_id')
-    .eq('id', id)
-    .eq('company_id', company.id)
-    .single();
-
-  if (error || !invoice) {
-    notFound();
+    return null;
   }
 
   return (
@@ -97,9 +74,9 @@ export default async function InvoiceDetailPage({
 
       {/* Invoice Detail */}
       <InvoiceDetail
-        invoiceId={id}
+        invoiceId={invoiceId}
         companyName={company.name}
-        companyEmail={company.email}
+        companyEmail={company.email || ''}
       />
 
       {/* Print Button */}

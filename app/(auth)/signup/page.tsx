@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Award, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
+import { setAuthTokens } from "@/lib/auth/storage";
 import { useRouter } from "next/navigation";
 
 export default function SignupPage() {
@@ -21,48 +22,25 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const supabase = createClient();
-
-  const validateEmail = (email: string): boolean => {
-    const personalDomains = [
-      'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
-      'aol.com', 'icloud.com', 'mail.com', 'protonmail.com',
-      'zoho.com', 'yandex.com', 'gmx.com', 'live.com', 'msn.com'
-    ];
-
-    const domain = email.split('@')[1]?.toLowerCase();
-    return !personalDomains.includes(domain);
-  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    if (!validateEmail(formData.email)) {
-      setError("Please use a company email. Personal email domains (gmail, yahoo, etc.) are not allowed.");
-      setLoading(false);
-      return;
-    }
-
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            company_name: formData.companyName,
-          },
-        },
-      });
+      const result = await api.auth.signup(
+        formData.email,
+        formData.password,
+        formData.fullName,
+        formData.companyName
+      );
 
-      if (signUpError) throw signUpError;
+      // Store tokens
+      setAuthTokens(result.session);
 
-      if (data.user) {
-        // Redirect to success page with email
-        router.push(`/signup/success?email=${encodeURIComponent(formData.email)}`);
-      }
+      // Redirect to success page with email
+      router.push(`/signup/success?email=${encodeURIComponent(formData.email)}`);
     } catch (err: any) {
       console.error('Signup error:', err);
       setError(err.message || "Failed to create account");

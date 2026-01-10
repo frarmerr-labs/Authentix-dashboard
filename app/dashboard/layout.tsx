@@ -24,7 +24,7 @@ import {
   Sparkles,
   CreditCard
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,6 @@ export default function DashboardLayout({
   const [companyLogo, setCompanyLogo] = useState<string>("");
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     const savedTheme = (typeof window !== "undefined"
@@ -88,56 +87,39 @@ export default function DashboardLayout({
     }
 
     const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const currentUser = data.user;
-
-      if (!currentUser) {
-        router.push("/login");
-        return;
-      }
-
-      setUser(currentUser);
-
-      // Try to get full name and company name from database
       try {
-        const { data: userRow } = await supabase
-          .from("users")
-          .select("full_name, company_id")
-          .eq("id", currentUser.id)
-          .single();
+        const session = await api.auth.getSession();
 
-        const derivedName =
-          userRow?.full_name ||
-          currentUser.user_metadata?.full_name ||
-          currentUser.email?.split("@")[0] ||
-          "User";
-        setProfileName(derivedName);
+        if (!session.valid || !session.user) {
+          router.push("/login");
+          return;
+        }
 
-        if (userRow?.company_id) {
-          const { data: company } = await supabase
-            .from("companies")
-            .select("name, logo")
-            .eq("id", userRow.company_id)
-            .single();
+        setUser(session.user);
+        setProfileName(session.user.full_name || session.user.email?.split("@")[0] || "User");
 
-          if (company?.name) {
-            setCompanyName(company.name);
+        // Get company info from profile
+        try {
+          const profile = await api.users.getProfile();
+
+          if (profile.company) {
+            if (profile.company.name) {
+              setCompanyName(profile.company.name);
+            }
+            if (profile.company.logo) {
+              setCompanyLogo(profile.company.logo);
+            }
           }
-          if (company?.logo) {
-            setCompanyLogo(company.logo);
-          }
+        } catch {
+          // Company info not available
         }
       } catch {
-        const fallbackName =
-          currentUser.user_metadata?.full_name ||
-          currentUser.email?.split("@")[0] ||
-          "User";
-        setProfileName(fallbackName);
+        router.push("/login");
       }
     };
 
     loadUser();
-  }, [router, supabase]);
+  }, [router]);
 
   const setThemePreference = (value: "light" | "dark" | "system") => {
     setTheme(value);
@@ -162,9 +144,15 @@ export default function DashboardLayout({
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      await api.auth.logout();
+    } catch {
+      // Ignore logout errors
+    } finally {
+      clearAuthTokens();
+      router.push("/login");
+      router.refresh();
+    }
   };
 
   return (

@@ -2,52 +2,47 @@
  * BILLING DASHBOARD PAGE
  *
  * Main billing page showing current month usage and invoice history.
- * Updates in real-time via Supabase subscriptions.
  */
 
-import { Metadata } from 'next';
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+"use client";
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api/client';
 import { BillingOverview } from './components/billing-overview';
 import { InvoiceList } from './components/invoice-list';
 
-export const metadata: Metadata = {
-  title: 'Billing | Dashboard',
-  description: 'View your billing information and invoices',
-};
+export default function BillingPage() {
+  const [company, setCompany] = useState<{ id: string; name: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-export default async function BillingPage() {
-  const supabase = await createClient();
+  useEffect(() => {
+    loadCompany();
+  }, []);
 
-  // Get authenticated user
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const loadCompany = async () => {
+    try {
+      const companyData = await api.companies.get();
+      setCompany({ id: companyData.id, name: companyData.name });
+    } catch (error) {
+      console.error('Error loading company:', error);
+      router.push('/login');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (!session) {
-    redirect('/login');
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
-
-  // Get user's company
-  const { data: profile } = await supabase
-    .from('users')
-    .select('company_id')
-    .eq('id', session.user.id)
-    .single();
-
-  if (!profile?.company_id) {
-    redirect('/onboarding');
-  }
-
-  // Get company details
-  const { data: company } = await supabase
-    .from('companies')
-    .select('id, name')
-    .eq('id', profile.company_id)
-    .single();
 
   if (!company) {
-    redirect('/onboarding');
+    return null;
   }
 
   return (
