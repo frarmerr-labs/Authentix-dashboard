@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-01-08T05:56:10.262Z",
+  "tables": {},
+  "storage": {
+    "minecertificate": {
+      "id": "minecertificate",
+      "public": true,
+      "file_size_limit": 52428800,
+      "allowed_mime_types": [
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/svg+xml",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/html",
+        "text/css",
+        "application/javascript",
+        "font/ttf",
+        "font/woff",
+        "font/woff2",
+        "application/zip"
+      ],
+      "sample_files_count": 10,
+      "sample_files": [
+        "audit-files",
+        "branding",
+        "bulk-downloads",
+        "certificates",
+        "certificates-previews"
+      ]
+    }
+  },
+  "data_volume": {},
+  "errors": [
+    {
+      "section": "tables",
+      "error": "supabase.rpc(...).catch is not a function"
+    }
+  ]
+}

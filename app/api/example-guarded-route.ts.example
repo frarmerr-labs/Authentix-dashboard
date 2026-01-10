@@ -1,0 +1,269 @@
+/**
+ * EXAMPLE: Guarded API Route
+ *
+ * This file demonstrates how to use environment guards in API routes.
+ * Rename to route.ts and place in appropriate directory.
+ */
+
+import { NextRequest } from 'next/server';
+import {
+  assertProductionOnly,
+  assertEnvironmentAllowed,
+  getSafetyFlags,
+  logEnvironmentAction,
+  warnUnsafeOperation,
+  EnvironmentGuardError,
+} from '@/lib/utils/guards';
+import { getRuntimeEnvironment, isProduction } from '@/lib/utils/environment';
+
+/**
+ * EXAMPLE 1: Production-Only Endpoint
+ *
+ * This endpoint processes payments and should NEVER run in dev/test.
+ */
+export async function POST_PaymentExample(request: NextRequest) {
+  try {
+    // Step 1: Environment guard (throws in dev/test/beta)
+    assertProductionOnly('payment:process');
+
+    // Step 2: Safety flag check
+    const flags = getSafetyFlags();
+    if (!flags.ALLOW_REAL_PAYMENTS) {
+      return Response.json(
+        {
+          error: 'Payment processing disabled',
+          message: 'ALLOW_REAL_PAYMENTS flag must be enabled',
+        },
+        { status: 503 }
+      );
+    }
+
+    // Step 3: Log the action
+    logEnvironmentAction('payment:process', {
+      endpoint: '/api/payments/process',
+    });
+
+    // Step 4: Process real payment
+    const { amount, currency } = await request.json();
+
+    // Your payment logic here...
+    const payment = {
+      id: 'pay_test123',
+      amount,
+      currency,
+      status: 'success',
+    };
+
+    return Response.json({
+      success: true,
+      payment,
+    });
+  } catch (error) {
+    if (error instanceof EnvironmentGuardError) {
+      // Guard blocked the request
+      return Response.json(
+        {
+          error: 'Environment guard violation',
+          message: error.message,
+        },
+        { status: 403 }
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * EXAMPLE 2: Beta+ Feature
+ *
+ * This endpoint sends emails and can run in beta and prod.
+ */
+export async function POST_EmailExample(request: NextRequest) {
+  try {
+    // Allow in beta and prod only
+    assertEnvironmentAllowed('email:transactional', ['beta', 'prod']);
+
+    const flags = getSafetyFlags();
+    const { recipientEmail, subject, body } = await request.json();
+
+    if (flags.ALLOW_TRANSACTIONAL_EMAIL) {
+      // Send real email
+      logEnvironmentAction('email:send', { recipientEmail });
+
+      // Your email sending logic here...
+      await sendRealEmail(recipientEmail, subject, body);
+
+      return Response.json({
+        success: true,
+        sent: true,
+        recipient: recipientEmail,
+      });
+    } else {
+      // Stub the email in beta with flag disabled
+      console.log('[Stubbed Email] To:', recipientEmail);
+      console.log('[Stubbed Email] Subject:', subject);
+
+      return Response.json({
+        success: true,
+        sent: false,
+        stubbed: true,
+        message: 'Email stubbed (ALLOW_TRANSACTIONAL_EMAIL not enabled)',
+      });
+    }
+  } catch (error) {
+    if (error instanceof EnvironmentGuardError) {
+      return Response.json(
+        { error: error.message },
+        { status: 403 }
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * EXAMPLE 3: Graceful Degradation
+ *
+ * This endpoint works in all environments but with different behavior.
+ */
+export async function POST_NotificationExample(request: NextRequest) {
+  const env = getRuntimeEnvironment();
+  const flags = getSafetyFlags();
+  const { userId, message } = await request.json();
+
+  logEnvironmentAction('notification:send', { userId, env });
+
+  // Try WhatsApp in prod, fallback to email
+  if (env === 'prod' && flags.ALLOW_WHATSAPP_SEND) {
+    await sendWhatsAppNotification(userId, message);
+    return Response.json({ sent: true, method: 'whatsapp' });
+  }
+
+  // Try email in beta+
+  if ((env === 'beta' || env === 'prod') && flags.ALLOW_TRANSACTIONAL_EMAIL) {
+    await sendEmailNotification(userId, message);
+    return Response.json({ sent: true, method: 'email' });
+  }
+
+  // Stub in dev/test
+  console.log('[Stubbed Notification]', { userId, message });
+  return Response.json({ sent: false, stubbed: true, method: 'none' });
+}
+
+/**
+ * EXAMPLE 4: Dangerous Operation with Warning
+ *
+ * This endpoint deletes data and should log warnings.
+ */
+export async function DELETE_BulkExample(request: NextRequest) {
+  try {
+    // Only allow in prod
+    assertProductionOnly('certificate:revoke_bulk');
+
+    const { certificateIds } = await request.json();
+
+    // Log warning for audit trail
+    warnUnsafeOperation(
+      'certificate:revoke_bulk',
+      `Revoking ${certificateIds.length} certificates`,
+      {
+        certificateIds,
+        requestedBy: 'admin-user-id', // Get from auth
+        timestamp: new Date().toISOString(),
+      }
+    );
+
+    // Perform bulk revocation
+    // Your logic here...
+
+    return Response.json({
+      success: true,
+      revoked: certificateIds.length,
+    });
+  } catch (error) {
+    if (error instanceof EnvironmentGuardError) {
+      return Response.json(
+        { error: error.message },
+        { status: 403 }
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * EXAMPLE 5: Webhook Handler
+ *
+ * This endpoint receives webhooks and should only run in prod.
+ */
+export async function POST_WebhookExample(request: NextRequest) {
+  try {
+    // Block webhooks in non-prod
+    assertProductionOnly('webhook:razorpay');
+
+    const flags = getSafetyFlags();
+    if (!flags.ALLOW_EXTERNAL_WEBHOOKS) {
+      warnUnsafeOperation(
+        'webhook:razorpay',
+        'Webhook received but ALLOW_EXTERNAL_WEBHOOKS is disabled'
+      );
+
+      return Response.json(
+        { received: false, reason: 'webhooks_disabled' },
+        { status: 503 }
+      );
+    }
+
+    const payload = await request.json();
+
+    // Verify webhook signature
+    const signature = request.headers.get('x-razorpay-signature');
+    if (!verifyWebhookSignature(payload, signature)) {
+      return Response.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    // Process webhook
+    logEnvironmentAction('webhook:razorpay:process', {
+      event: payload.event,
+      webhookId: payload.id,
+    });
+
+    await processRazorpayWebhook(payload);
+
+    return Response.json({ received: true });
+  } catch (error) {
+    if (error instanceof EnvironmentGuardError) {
+      return Response.json(
+        { error: error.message },
+        { status: 403 }
+      );
+    }
+
+    throw error;
+  }
+}
+
+// Stub functions (replace with real implementations)
+async function sendRealEmail(to: string, subject: string, body: string) {
+  console.log('Sending email...', { to, subject });
+}
+
+async function sendWhatsAppNotification(userId: string, message: string) {
+  console.log('Sending WhatsApp...', { userId, message });
+}
+
+async function sendEmailNotification(userId: string, message: string) {
+  console.log('Sending email notification...', { userId, message });
+}
+
+function verifyWebhookSignature(payload: any, signature: string | null): boolean {
+  // Implement Razorpay signature verification
+  return true;
+}
+
+async function processRazorpayWebhook(payload: any) {
+  console.log('Processing webhook...', payload);
+}

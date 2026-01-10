@@ -1,0 +1,444 @@
+{
+  "timestamp": "2026-01-06T17:49:53.234Z",
+  "database_url": "https://brkyyeropjslfzwnhxcw.supabase.co",
+  "tables": {
+    "companies": {
+      "exists": true,
+      "row_count": 1,
+      "columns": {
+        "id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "e7261be4-fdc0-4299-8be6-0b5e8b842b43"
+        },
+        "app_id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "cb73a00138"
+        },
+        "name": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "Xencus"
+        },
+        "logo": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "https://brkyyeropjslfzwnhxcw.supabase.co/storage/v"
+        },
+        "email": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "info@xencus.com"
+        },
+        "phone": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "9939797551"
+        },
+        "website": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "https://xencus.com/"
+        },
+        "address": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "city": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "state": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "country": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "postal_code": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "billing_address": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "billing_city": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "billing_state": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "billing_country": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "billing_postal_code": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "gst_number": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "cin_number": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": ""
+        },
+        "tax_id": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "gst_document_url": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "cin_document_url": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "industry": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "company_size": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "timezone": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "UTC"
+        },
+        "last_active_at": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "created_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T14:45:45.256011+00:00"
+        },
+        "updated_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T14:48:45.867417+00:00"
+        }
+      },
+      "sample_data": {
+        "id": "e7261be4-fdc0-4299-8be6-0b5e8b842b43",
+        "app_id": "cb73a00138",
+        "name": "Xencus",
+        "logo": "https://brkyyeropjslfzwnhxcw.supabase.co/storage/v1/object/public/minecertificate/company-logos/cb73a00138/logo_1764254925393.png",
+        "email": "info@xencus.com",
+        "phone": "9939797551",
+        "website": "https://xencus.com/",
+        "address": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "billing_address": null,
+        "billing_city": null,
+        "billing_state": null,
+        "billing_country": null,
+        "billing_postal_code": null,
+        "gst_number": "",
+        "cin_number": "",
+        "tax_id": null,
+        "gst_document_url": null,
+        "cin_document_url": null,
+        "industry": null,
+        "company_size": null,
+        "timezone": "UTC",
+        "last_active_at": null,
+        "created_at": "2025-11-27T14:45:45.256011+00:00",
+        "updated_at": "2025-11-27T14:48:45.867417+00:00"
+      },
+      "total_columns": 28,
+      "column_names": [
+        "id",
+        "app_id",
+        "name",
+        "logo",
+        "email",
+        "phone",
+        "website",
+        "address",
+        "city",
+        "state",
+        "country",
+        "postal_code",
+        "billing_address",
+        "billing_city",
+        "billing_state",
+        "billing_country",
+        "billing_postal_code",
+        "gst_number",
+        "cin_number",
+        "tax_id",
+        "gst_document_url",
+        "cin_document_url",
+        "industry",
+        "company_size",
+        "timezone",
+        "last_active_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "users": {
+      "exists": true,
+      "row_count": 1,
+      "columns": {
+        "id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "cef734f8-f7d8-462c-ad38-c9a3b30d59d3"
+        },
+        "company_id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "e7261be4-fdc0-4299-8be6-0b5e8b842b43"
+        },
+        "email": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "info@xencus.com"
+        },
+        "full_name": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "Mayank"
+        },
+        "role": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "admin"
+        },
+        "invited_by": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "last_login_at": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "created_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T14:45:45.256011+00:00"
+        },
+        "updated_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T14:45:45.256011+00:00"
+        }
+      },
+      "sample_data": {
+        "id": "cef734f8-f7d8-462c-ad38-c9a3b30d59d3",
+        "company_id": "e7261be4-fdc0-4299-8be6-0b5e8b842b43",
+        "email": "info@xencus.com",
+        "full_name": "Mayank",
+        "role": "admin",
+        "invited_by": null,
+        "last_login_at": null,
+        "created_at": "2025-11-27T14:45:45.256011+00:00",
+        "updated_at": "2025-11-27T14:45:45.256011+00:00"
+      },
+      "total_columns": 9,
+      "column_names": [
+        "id",
+        "company_id",
+        "email",
+        "full_name",
+        "role",
+        "invited_by",
+        "last_login_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "templates": {
+      "exists": true,
+      "row_count": 4,
+      "columns": {
+        "id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "e2cdf652-ed35-4065-a453-421dc261de74"
+        },
+        "company_id": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "e7261be4-fdc0-4299-8be6-0b5e8b842b43"
+        },
+        "name": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "Test"
+        },
+        "course_name": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "Big Data with Hadoop"
+        },
+        "file_type": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "pdf"
+        },
+        "storage_path": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "templates/cb73a00138/1764262578313_ry3wp5.pdf"
+        },
+        "preview_url": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "https://brkyyeropjslfzwnhxcw.supabase.co/storage/v"
+        },
+        "description": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "active": {
+          "inferred_type": "boolean",
+          "is_nullable": false,
+          "sample_value": "true"
+        },
+        "created_by": {
+          "inferred_type": "NULL",
+          "is_nullable": true,
+          "sample_value": null
+        },
+        "created_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T16:56:18.867864+00:00"
+        },
+        "updated_at": {
+          "inferred_type": "string",
+          "is_nullable": false,
+          "sample_value": "2025-11-27T16:56:18.867864+00:00"
+        }
+      },
+      "sample_data": {
+        "id": "e2cdf652-ed35-4065-a453-421dc261de74",
+        "company_id": "e7261be4-fdc0-4299-8be6-0b5e8b842b43",
+        "name": "Test",
+        "course_name": "Big Data with Hadoop",
+        "file_type": "pdf",
+        "storage_path": "templates/cb73a00138/1764262578313_ry3wp5.pdf",
+        "preview_url": "https://brkyyeropjslfzwnhxcw.supabase.co/storage/v1/object/public/minecertificate/templates/cb73a00138/1764262578313_ry3wp5.pdf",
+        "description": null,
+        "active": true,
+        "created_by": null,
+        "created_at": "2025-11-27T16:56:18.867864+00:00",
+        "updated_at": "2025-11-27T16:56:18.867864+00:00"
+      },
+      "total_columns": 12,
+      "column_names": [
+        "id",
+        "company_id",
+        "name",
+        "course_name",
+        "file_type",
+        "storage_path",
+        "preview_url",
+        "description",
+        "active",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "import_jobs": {
+      "exists": true,
+      "row_count": 0,
+      "columns": "EMPTY_TABLE",
+      "sample_data": null
+    },
+    "certificates": {
+      "exists": true,
+      "row_count": 0,
+      "columns": "EMPTY_TABLE",
+      "sample_data": null
+    },
+    "verification_logs": {
+      "exists": true,
+      "row_count": 0,
+      "columns": "EMPTY_TABLE",
+      "sample_data": null
+    }
+  },
+  "storage_buckets": {
+    "minecertificate": {
+      "id": "minecertificate",
+      "public": true,
+      "file_size_limit": 52428800,
+      "allowed_mime_types": [
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/svg+xml",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/html",
+        "text/css",
+        "application/javascript",
+        "font/ttf",
+        "font/woff",
+        "font/woff2",
+        "application/zip"
+      ],
+      "folders": [
+        "audit-files",
+        "branding",
+        "bulk-downloads",
+        "certificates",
+        "certificates-previews",
+        "company-logos",
+        "email-attachments",
+        "enterprise",
+        "failed-rows",
+        "imports"
+      ],
+      "object_count": 15
+    }
+  },
+  "summary": {
+    "tables_expected": 6,
+    "tables_found": 6,
+    "tables_missing": [],
+    "total_rows": 6,
+    "storage_buckets": 1,
+    "has_data": true
+  }
+}
