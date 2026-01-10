@@ -5,7 +5,6 @@ import {
   backendAuthRequest,
   setServerAuthCookies,
   sanitizeErrorMessage,
-  ServerApiError,
 } from "@/lib/api/server";
 
 /**

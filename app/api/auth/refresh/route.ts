@@ -4,13 +4,16 @@ import {
   setServerAuthCookies,
   clearServerAuthCookies,
   sanitizeErrorMessage,
-  ServerApiError,
 } from "@/lib/api/server";
 
-const API_BASE_URL =
-  process.env.BACKEND_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3000/api/v1";
+function getBackendUrl(): string {
+  const url = process.env.BACKEND_API_URL;
+  if (url) return url;
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3000/api/v1";
+  }
+  return "";
+}
 
 interface RefreshResponse {
   session: {
@@ -21,6 +24,15 @@ interface RefreshResponse {
 }
 
 export async function POST() {
+  const backendUrl = getBackendUrl();
+
+  if (!backendUrl) {
+    return NextResponse.json(
+      { success: false, error: "Service unavailable" },
+      { status: 503 }
+    );
+  }
+
   try {
     const refreshToken = await getServerRefreshToken();
 
@@ -31,8 +43,7 @@ export async function POST() {
       );
     }
 
-    // Call backend refresh endpoint
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    const response = await fetch(`${backendUrl}/auth/refresh`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -43,9 +54,7 @@ export async function POST() {
     const data = await response.json();
 
     if (!response.ok || !data.success) {
-      // Clear invalid cookies
       await clearServerAuthCookies();
-
       return NextResponse.json(
         { success: false, error: "Session expired" },
         { status: 401 }
@@ -53,21 +62,15 @@ export async function POST() {
     }
 
     const result = data.data as RefreshResponse;
-
-    // Update cookies with new tokens
     await setServerAuthCookies(result.session);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[API] Token refresh error:", error);
-
-    // Clear cookies on refresh failure
     await clearServerAuthCookies();
 
-    const message = sanitizeErrorMessage(error);
-
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: sanitizeErrorMessage(error) },
       { status: 401 }
     );
   }

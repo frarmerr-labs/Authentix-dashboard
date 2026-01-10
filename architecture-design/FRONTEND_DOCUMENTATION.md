@@ -1,270 +1,383 @@
-# Frontend Architecture & Documentation
+# MineCertificate Frontend Architecture
 
 ## Overview
 
-The Authentix frontend is a Next.js 16 application built with React 19, TypeScript 5.9, and Tailwind CSS 4. It serves as a pure UI layer that communicates exclusively with the backend API through a secure BFF (Backend For Frontend) proxy pattern. All business logic, database operations, and external service integrations are handled by the dedicated backend.
-
-**Last Updated**: January 2026
+MineCertificate is a certificate generation and management platform built with modern web technologies following 2026 best practices.
 
 ## Tech Stack
 
-### Core Framework
-| Package | Version | Notes |
-|---------|---------|-------|
-| **Next.js** | 16.1.1 | App Router, Turbopack |
-| **React** | 19.2.3 | Server Components, Server Actions |
-| **TypeScript** | 5.9.3 | Strict mode, satisfies operator |
-| **Node.js** | >=24.0.0 | LTS 2026 |
-
-### UI & Styling
-- **Tailwind CSS**: 4.1.18 (CSS-first configuration)
-- **shadcn/ui**: Component library (Radix UI primitives)
-- **lucide-react**: 0.562.0 (Icons)
-- **class-variance-authority**: 0.7.1 (Component variants)
-- **tailwind-merge**: 3.4.0 (Class merging)
-
-### Authentication & Security
-- **HttpOnly Cookies**: Secure token storage (no localStorage)
-- **BFF Proxy Pattern**: All API calls proxied through Next.js Route Handlers
-- **Server Actions**: React 19 form handling pattern
-- **Security Headers**: CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy
-- **Next.js Proxy**: Route-level middleware for auth checks
-
-### File Processing (Dynamic Imports)
-- **pdf-lib**: 1.17.1 (PDF manipulation)
-- **react-pdf**: 10.3.0 (PDF rendering)
-- **xlsx**: 0.18.5 (Excel file parsing)
-- **jszip**: 3.10.1 (ZIP file creation)
-- **csv-stringify**: 6.6.0 (CSV generation)
-- **qrcode**: 1.5.4 (QR code generation)
-
-*All heavy libraries are dynamically imported to reduce initial bundle size.*
-
-## URL Routing Structure
-
-### Organization-Based URLs (Multi-Tenant)
-
-The dashboard uses organization-scoped URLs similar to platforms like Supabase:
-
-\`\`\`
-/dashboard                              → Resolver (redirects to /org/[orgId])
-/dashboard/org/[orgId]                  → Dashboard home
-/dashboard/org/[orgId]/templates        → Template management
-/dashboard/org/[orgId]/generate-certificate → Certificate generation
-/dashboard/org/[orgId]/imports          → Data imports
-/dashboard/org/[orgId]/certificates     → Certificate listing
-/dashboard/org/[orgId]/billing          → Billing overview
-/dashboard/org/[orgId]/billing/invoices/[id] → Invoice detail
-/dashboard/org/[orgId]/company          → Company settings
-/dashboard/org/[orgId]/settings         → General settings
-/dashboard/org/[orgId]/settings/api     → API key management
-/dashboard/org/[orgId]/users            → User management
-/dashboard/org/[orgId]/verification-logs → Verification history
-\`\`\`
-
-### Route Flow
-
-\`\`\`
-1. User visits /dashboard
-2. proxy.ts checks for auth cookie
-3. If no auth → redirect to /login
-4. If auth → let /dashboard page load
-5. /dashboard page fetches user profile
-6. Gets company_id from profile
-7. Redirects to /dashboard/org/[company_id]
-8. Org layout validates user belongs to this org
-9. Dashboard content loads
-\`\`\`
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Next.js** | 16.1.1 | React framework with App Router |
+| **React** | 19.2.3 | UI library with Server Components |
+| **TypeScript** | 5.9.3 | Type safety |
+| **Tailwind CSS** | 4.1.18 | Utility-first CSS |
+| **Node.js** | ≥24.0.0 | Runtime (LTS) |
 
 ## Project Structure
 
-\`\`\`
+```
 MineCertificate/
-├── app/                              # Next.js App Router pages
-│   ├── (auth)/                       # Auth route group (public)
+├── app/                          # Next.js App Router
+│   ├── (auth)/                   # Auth route group
 │   │   ├── login/
-│   │   │   ├── page.tsx              # Login page (Server Actions)
-│   │   │   └── actions.ts            # Login Server Action
+│   │   │   ├── page.tsx          # Login page (Client Component)
+│   │   │   └── actions.ts        # Server Action for login
 │   │   └── signup/
-│   │       ├── page.tsx              # Signup page (Server Actions)
-│   │       ├── actions.ts            # Signup Server Action
-│   │       └── success/page.tsx
-│   ├── api/                          # Next.js Route Handlers (BFF)
-│   │   ├── auth/
-│   │   │   ├── login/route.ts        # POST /api/auth/login
-│   │   │   ├── logout/route.ts       # POST /api/auth/logout
-│   │   │   ├── signup/route.ts       # POST /api/auth/signup
-│   │   │   ├── session/route.ts      # GET /api/auth/session
-│   │   │   └── refresh/route.ts      # POST /api/auth/refresh
-│   │   └── proxy/
-│   │       └── [...path]/route.ts    # Catch-all API proxy
-│   ├── dashboard/                    # Protected dashboard routes
-│   │   ├── layout.tsx                # Passthrough layout
-│   │   ├── page.tsx                  # Org resolver
-│   │   └── org/[orgId]/              # Organization-scoped routes
-│   │       ├── layout.tsx            # Dashboard layout with sidebar
-│   │       ├── page.tsx              # Dashboard home (stats)
-│   │       ├── templates/page.tsx
-│   │       ├── generate-certificate/page.tsx
-│   │       ├── imports/page.tsx
-│   │       ├── certificates/page.tsx
-│   │       ├── billing/page.tsx
-│   │       ├── company/page.tsx
-│   │       ├── settings/page.tsx
-│   │       ├── users/page.tsx
-│   │       └── verification-logs/page.tsx
-│   ├── layout.tsx                    # Root layout
-│   ├── page.tsx                      # Landing page
-│   └── globals.css                   # Global styles (Tailwind v4)
+│   │       ├── page.tsx          # Signup page (Client Component)
+│   │       ├── actions.ts        # Server Action for signup
+│   │       └── success/page.tsx  # Email verification page
+│   ├── api/                      # API Route Handlers (BFF)
+│   │   ├── auth/                 # Auth endpoints
+│   │   │   ├── login/route.ts    # POST - Login, set cookies
+│   │   │   ├── logout/route.ts   # POST - Clear cookies
+│   │   │   ├── refresh/route.ts  # POST - Refresh tokens
+│   │   │   ├── session/route.ts  # GET - Check session
+│   │   │   └── signup/route.ts   # POST - Register user
+│   │   ├── proxy/[...path]/      # Hardened API proxy
+│   │   │   └── route.ts          # Proxies all backend calls
+│   │   └── templates/
+│   │       └── with-previews/    # BFF aggregation route
+│   │           └── route.ts      # Fixes N+1 pattern
+│   ├── dashboard/
+│   │   ├── page.tsx              # Org resolver (redirects to /org/[orgId])
+│   │   ├── layout.tsx            # Passthrough layout
+│   │   └── org/[orgId]/          # Organization-scoped routes
+│   │       ├── layout.tsx        # Server Component - auth validation
+│   │       ├── page.tsx          # Server Component - dashboard stats
+│   │       ├── loading.tsx       # Streaming skeleton
+│   │       ├── templates/
+│   │       │   ├── page.tsx      # Templates list (Client Component)
+│   │       │   └── loading.tsx   # Streaming skeleton
+│   │       ├── generate-certificate/
+│   │       ├── billing/
+│   │       ├── certificates/
+│   │       ├── imports/
+│   │       ├── settings/
+│   │       ├── users/
+│   │       └── verification-logs/
+│   ├── globals.css               # Tailwind CSS imports
+│   ├── layout.tsx                # Root layout
+│   └── page.tsx                  # Landing page
 ├── src/
-│   ├── components/ui/                # shadcn/ui components
-│   ├── features/templates/           # Templates feature module
-│   │   ├── api.ts
-│   │   ├── types.ts
-│   │   ├── utils.ts
-│   │   └── hooks/use-templates.ts
+│   ├── components/               # Shared components
+│   │   ├── dashboard/
+│   │   │   └── DashboardShell.tsx # Client Component - interactive shell
+│   │   ├── onboarding/
+│   │   ├── templates/
+│   │   └── ui/                   # shadcn/ui components
+│   ├── features/                 # Feature modules
+│   │   └── templates/
+│   │       ├── api.ts
+│   │       ├── hooks/
+│   │       ├── types.ts
+│   │       └── utils.ts
 │   └── lib/
-│       ├── api/client.ts             # Client API (uses proxy)
-│       ├── api/server.ts             # Server API utilities
-│       ├── auth/storage.ts           # Auth helpers (deprecated)
-│       ├── org/context.tsx           # OrgProvider, useOrg hook
-│       └── utils/dynamic-imports.ts  # Heavy library imports
-├── proxy.ts                          # Next.js 16 Proxy (auth middleware)
-├── next.config.ts                    # Next.js configuration
-├── tsconfig.json                     # TypeScript configuration
-└── .nvmrc                            # Node version (24.0.0)
-\`\`\`
+│       ├── api/
+│       │   ├── client.ts         # Client-side API (calls /api/proxy)
+│       │   └── server.ts         # Server-side API (calls backend directly)
+│       ├── auth/
+│       │   └── storage.ts        # Legacy cleanup + session hints
+│       ├── org/
+│       │   ├── context.tsx       # OrgProvider + useOrg hook
+│       │   └── index.ts
+│       ├── billing-ui/
+│       ├── hooks/
+│       ├── types/
+│       └── utils/
+├── proxy.ts                      # Next.js 16 proxy (auth + routing)
+├── next.config.ts                # Next.js configuration
+├── tailwind.config.ts            # Tailwind CSS configuration
+├── tsconfig.json                 # TypeScript configuration
+├── eslint.config.mjs             # ESLint 9 flat config
+└── .env.example                  # Environment variables template
+```
 
-## Architecture Patterns
+## URL Routing Structure
 
-### 1. Organization Context
+```
+/                                    # Landing page
+/login                               # Login
+/signup                              # Registration
+/signup/success                      # Email verification waiting
+/dashboard                           # Org resolver → redirects to /dashboard/org/[orgId]
+/dashboard/org/[orgId]               # Dashboard home
+/dashboard/org/[orgId]/templates     # Template management
+/dashboard/org/[orgId]/generate-certificate
+/dashboard/org/[orgId]/billing
+/dashboard/org/[orgId]/certificates
+/dashboard/org/[orgId]/imports
+/dashboard/org/[orgId]/settings
+/dashboard/org/[orgId]/users
+/dashboard/org/[orgId]/verification-logs
+```
 
-\`\`\`typescript
-// In layout.tsx
-import { OrgProvider } from "@/lib/org";
+## Authentication Architecture
 
-export default function OrgLayout({ children, params }: OrgLayoutProps) {
-  const { orgId } = use(params); // React 19 use() hook
-  return <OrgProvider orgId={orgId}>{children}</OrgProvider>;
+### Security Model
+
+All authentication uses **HttpOnly cookies** - tokens are never accessible via JavaScript.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      CLIENT (Browser)                           │
+│  ┌─────────────────┐                                           │
+│  │ Client Components│  No access to tokens                     │
+│  │ (use client)     │  Cookies sent automatically              │
+│  └────────┬────────┘                                           │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────────────────────────────────────┐           │
+│  │  API Client (src/lib/api/client.ts)             │           │
+│  │  - Calls /api/proxy/* only                      │           │
+│  │  - credentials: 'include'                       │           │
+│  └────────┬────────────────────────────────────────┘           │
+└───────────│─────────────────────────────────────────────────────┘
+            │ HttpOnly cookies (automatic)
+            ▼
+┌───────────────────────────────────────────────────────────────┐
+│                    SERVER (Next.js)                           │
+│  ┌─────────────────┐  ┌─────────────────────────────────────┐ │
+│  │ /api/auth/*     │  │ /api/proxy/[...path]                │ │
+│  │ Login/Logout    │  │ - Path allowlist validation         │ │
+│  │ Set/Clear       │  │ - Method restrictions               │ │
+│  │ Cookies         │  │ - Hop-by-hop header stripping       │ │
+│  └────────┬────────┘  │ - 30s timeout                       │ │
+│           │           │ - Sanitized errors                  │ │
+│           │           └─────────────────────────────────────┘ │
+│           │                        │                          │
+│           ▼                        ▼                          │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │              BACKEND_API_URL (server-only)              │  │
+│  │          Tokens never exposed to browser                │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Cookie Configuration
+
+```typescript
+const COOKIE_OPTIONS = {
+  httpOnly: true,                    // Not accessible via JS
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 7,         // 7 days
+};
+```
+
+### Auth Flow
+
+1. **Login**: User submits credentials → Server Action calls backend → Sets HttpOnly cookies → Redirects to `/dashboard`
+2. **Session Check**: Server Component calls `isServerAuthenticated()` → Reads cookies → Validates with backend
+3. **API Calls**: Client calls `/api/proxy/*` → Cookies auto-attached → Proxy forwards to backend with token
+4. **Logout**: Server Action clears cookies → Redirects to `/login`
+
+## API Architecture
+
+### Client-Side (src/lib/api/client.ts)
+
+- All requests go through `/api/proxy/*`
+- Cookies included automatically via `credentials: 'include'`
+- No direct backend URL exposure
+
+```typescript
+// Example: Fetch templates
+const templates = await api.templates.list();
+// Actually calls: /api/proxy/templates
+```
+
+### Server-Side (src/lib/api/server.ts)
+
+- Direct calls to `BACKEND_API_URL`
+- Reads tokens from cookies
+- Used by Route Handlers and Server Components
+
+```typescript
+// Server Component example
+const data = await serverApiRequest<DashboardData>("/dashboard/stats");
+```
+
+### Hardened Proxy Security
+
+The `/api/proxy/[...path]` route implements:
+
+| Security Measure | Implementation |
+|------------------|----------------|
+| Path Allowlist | Only `/auth/`, `/templates`, `/companies/`, etc. |
+| Method Restriction | GET, POST, PUT, PATCH, DELETE, OPTIONS |
+| Path Traversal Prevention | Blocks `..`, `%2e%2e`, `//`, `\` |
+| Header Stripping | Removes hop-by-hop headers |
+| Timeout | 30s with AbortController |
+| Error Sanitization | No backend URL leakage |
+
+## Server Components vs Client Components
+
+### Server Components (default)
+
+Used for:
+- Data fetching
+- Authentication validation
+- Static content rendering
+
+```typescript
+// app/dashboard/org/[orgId]/page.tsx
+export default async function DashboardPage({ params }) {
+  const { orgId } = await params;
+  const data = await serverApiRequest("/dashboard/stats");
+  return <DashboardContent data={data} />;
 }
+```
 
-// In child components
-import { useOrg, useOrgPath } from "@/lib/org";
+### Client Components ("use client")
 
-function TemplatesList() {
-  const { orgId } = useOrg();
-  const orgPath = useOrgPath();
-  return <Link href={orgPath("/templates/new")}>Create</Link>;
+Used for:
+- Interactive UI (forms, modals, dropdowns)
+- Browser APIs (localStorage for theme)
+- Event handlers
+
+```typescript
+// src/components/dashboard/DashboardShell.tsx
+"use client";
+export function DashboardShell({ children, orgId, initialUser }) {
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  // ...
 }
-\`\`\`
+```
 
-### 2. React 19 Server Actions
+## Organization Context
 
-\`\`\`typescript
-// actions.ts
-"use server";
-export async function loginAction(_prevState: LoginState, formData: FormData) {
-  const result = await backendAuthRequest("/auth/login", {...});
-  await setServerAuthCookies(result.session);
-  redirect("/dashboard");
+### Provider Setup
+
+```typescript
+// app/dashboard/org/[orgId]/layout.tsx (Server Component)
+export default async function OrgLayout({ children, params }) {
+  const { orgId } = await params;
+  const { session, profile } = await getServerAuthData();
+  
+  // Validate org access server-side
+  if (profile?.company_id !== orgId) {
+    redirect(`/dashboard/org/${profile.company_id}`);
+  }
+  
+  return (
+    <DashboardShell orgId={orgId} initialUser={session.user}>
+      {children}
+    </DashboardShell>
+  );
 }
+```
 
-// page.tsx
-const [state, formAction] = useActionState(loginAction, initialState);
-<form action={formAction}>...</form>
-\`\`\`
+### Using Context
 
-### 3. React 19 use() Hook for Async Params
+```typescript
+import { useOrg } from "@/lib/org";
 
-\`\`\`typescript
-interface OrgLayoutProps {
-  children: React.ReactNode;
-  params: Promise<{ orgId: string }>; // Params are now a Promise
+function MyComponent() {
+  const { orgId, orgPath } = useOrg();
+  
+  return <Link href={orgPath("/templates")}>Templates</Link>;
 }
+```
 
-export default function OrgLayout({ params }: OrgLayoutProps) {
-  const { orgId } = use(params); // React 19 use() hook
+## Streaming & Loading States
+
+### Route-Level Loading
+
+```typescript
+// app/dashboard/org/[orgId]/loading.tsx
+export default function DashboardLoading() {
+  return (
+    <div className="space-y-8 animate-in fade-in">
+      <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+      {/* Skeleton UI */}
+    </div>
+  );
 }
-\`\`\`
+```
 
-### 4. BFF Proxy Pattern
+### Data Flow
 
-\`\`\`
-Client → /api/proxy/* → Next.js Route Handler → Backend API
-\`\`\`
+1. User navigates to `/dashboard/org/[orgId]`
+2. `loading.tsx` shows immediately (streaming)
+3. Server fetches data
+4. Page renders with data
 
-### 5. TypeScript 5.9 Patterns
+## Environment Variables
 
-\`\`\`typescript
-// Const assertions
-export const TEMPLATE_STATUSES = ["draft", "active", "archived"] as const;
-export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
+### Required
 
-// Satisfies operator
-export const DEFAULT_STATUS = "draft" satisfies TemplateStatus;
+```bash
+# Server-only - Backend API URL
+BACKEND_API_URL=https://api.yourapp.com/api/v1
+```
 
-// Discriminated unions
-export type CertificateField =
-  | TextCertificateField
-  | DateCertificateField
-  | QRCodeCertificateField;
-\`\`\`
+### Cookie Names (Reference)
 
-## Security
+```
+auth_access_token   # JWT access token
+auth_refresh_token  # JWT refresh token
+auth_expires_at     # Expiration timestamp
+```
 
-### Headers (next.config.ts)
-- Content-Security-Policy
-- Strict-Transport-Security
-- X-Frame-Options: SAMEORIGIN
-- X-Content-Type-Options: nosniff
-- Referrer-Policy: strict-origin-when-cross-origin
-- Permissions-Policy
+## Commands
 
-### Cookie-Based Auth
-- HttpOnly cookies (not accessible via JavaScript)
-- Secure flag in production
-- SameSite: lax
-- Server-side token management
+```bash
+# Development
+npm run dev
 
-## API Client
+# Build
+npm run build
 
-\`\`\`typescript
-const API_BASE_URL = "/api/proxy";
+# Type checking
+npm run typecheck
 
-api.auth.login(email, password)     // → /api/auth/login
-api.auth.logout()                   // → /api/auth/logout
-api.templates.list()                // → /api/proxy/templates
-api.companies.get()                 // → /api/proxy/companies/me
-api.certificates.generate(params)  // → /api/proxy/certificates/generate
-\`\`\`
+# Linting
+npm run lint
 
-## Build Commands
+# Start production
+npm start
+```
 
-\`\`\`bash
-nvm use           # Node 24 (.nvmrc)
-npm install       # Install deps
-npm run dev       # Dev server (Turbopack)
-npm run build     # Production build
-npm run typecheck # Type checking
-npm run lint      # Linting
-\`\`\`
+## Key Design Decisions
 
-## Key Patterns Summary
+| Decision | Rationale |
+|----------|-----------|
+| HttpOnly Cookies | Prevents XSS token theft |
+| Server Components | Faster initial load, better SEO |
+| BFF Proxy | Hides backend URL, prevents CORS |
+| Org-scoped URLs | Multi-tenant support, clear context |
+| Feature-based structure | Scalable code organization |
+| React 19 Server Actions | Type-safe form handling |
 
-| Pattern | Description |
-|---------|-------------|
-| **Organization Context** | URL-based multi-tenant (\`/dashboard/org/[orgId]\`) |
-| **BFF Proxy** | All API calls through Route Handlers |
-| **HttpOnly Cookies** | Secure token storage |
-| **Server Actions** | React 19 form handling |
-| **use() Hook** | React 19 Promise unwrapping |
-| **Dynamic Imports** | Heavy libraries loaded on demand |
-| **Feature Modules** | Domain-specific code organization |
+## Dependencies
 
-## Important Notes
+### Core
 
-- **No Direct Backend Access**: Client never calls backend directly
-- **No localStorage Tokens**: All auth tokens in HttpOnly cookies
-- **No Business Logic**: All business logic in backend
-- **Multi-Tenant**: Organization context throughout dashboard
-- **Type Safety**: Strict TypeScript with discriminated unions
+- `next`: 16.1.1
+- `react` / `react-dom`: 19.2.3
+- `typescript`: 5.9.3
+
+### UI
+
+- `tailwindcss`: 4.1.18
+- `lucide-react`: Icons
+- `@radix-ui/*`: Accessible primitives
+- `class-variance-authority`: Component variants
+- `clsx` / `tailwind-merge`: Class utilities
+
+### Heavy Libraries (Dynamic Imports)
+
+These are lazy-loaded to reduce bundle size:
+
+- `pdf-lib`: PDF manipulation
+- `xlsx`: Excel parsing
+- `jszip`: ZIP creation
+- `qrcode`: QR code generation
+
+```typescript
+// src/lib/utils/dynamic-imports.ts
+export async function getPdfLib() {
+  return import("pdf-lib");
+}
+```

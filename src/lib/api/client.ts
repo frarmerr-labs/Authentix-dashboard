@@ -113,13 +113,11 @@ async function authApiRequest<T>(
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit & { skipAuth?: boolean } = {}
+  options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-  const { skipAuth, ...fetchOptions } = options;
-
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...fetchOptions.headers,
+    ...options.headers,
   };
 
   const url = `${API_BASE_URL}${endpoint}`;
@@ -127,7 +125,7 @@ async function apiRequest<T>(
   let response: Response;
   try {
     response = await fetch(url, {
-      ...fetchOptions,
+      ...options,
       headers,
       credentials: "include", // Include HttpOnly cookies
     });

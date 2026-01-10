@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  getServerAccessToken,
-  serverApiRequest,
-  isServerAuthenticated,
-  sanitizeErrorMessage,
-} from "@/lib/api/server";
+import { serverApiRequest, isServerAuthenticated } from "@/lib/api/server";
 
 interface SessionResponse {
   user: {
