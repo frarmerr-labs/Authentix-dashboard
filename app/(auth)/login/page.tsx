@@ -72,13 +72,13 @@ export default function LoginPage() {
                 Email
               </Label>
               <Input
-                id="email"
+                  id="email"
                 name="email"
-                type="email"
-                placeholder="name@company.com"
-                required
+                  type="email"
+                  placeholder="name@company.com"
+                  required
                 autoComplete="email"
-                className="h-10"
+                  className="h-10"
               />
             </div>
 

@@ -120,25 +120,25 @@ export default function SignupPage() {
             <FormField
               id="full_name"
               label="Full name"
-              placeholder="John Doe"
-              required
+                placeholder="John Doe"
+                required
               error={state.fieldErrors.full_name}
             />
 
             <FormField
               id="company_name"
               label="Company name"
-              placeholder="Acme Corporation"
-              required
+                placeholder="Acme Corporation"
+                required
               error={state.fieldErrors.company_name}
             />
 
             <FormField
-              id="email"
+                id="email"
               label="Email"
-              type="email"
-              placeholder="name@company.com"
-              required
+                type="email"
+                placeholder="name@company.com"
+                required
               error={state.fieldErrors.email}
               hint="Personal email domains (gmail, yahoo, etc.) are not allowed"
             />

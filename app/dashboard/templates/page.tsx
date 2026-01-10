@@ -246,34 +246,34 @@ export default function TemplatesPage() {
                           const category = template.certificate_category;
                           const categoryColors = getColorForText(category);
                           return (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs border",
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs border",
                                 categoryColors.bg,
                                 categoryColors.text,
                                 categoryColors.border
-                              )}
-                            >
+                            )}
+                          >
                               {category}
-                            </Badge>
+                          </Badge>
                           );
                         })()}
                         {template.certificate_subcategory && (() => {
                           const subcategory = template.certificate_subcategory;
                           const subcategoryColors = getColorForText(subcategory);
                           return (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs border",
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs border",
                                 subcategoryColors.bg,
                                 subcategoryColors.text,
                                 subcategoryColors.border
-                              )}
-                            >
+                            )}
+                          >
                               {subcategory}
-                            </Badge>
+                          </Badge>
                           );
                         })()}
                       </div>

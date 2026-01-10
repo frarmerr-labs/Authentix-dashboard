@@ -77,7 +77,7 @@ export default function DashboardLayout({
   useEffect(() => {
     const savedTheme =
       typeof window !== "undefined"
-        ? (localStorage.getItem("theme") as "light" | "dark" | "system" | null)
+      ? (localStorage.getItem("theme") as "light" | "dark" | "system" | null)
         : null;
 
     const prefersDark =
@@ -142,10 +142,10 @@ export default function DashboardLayout({
       const shouldDark = value === "dark" || (value === "system" && prefersDark);
       setDarkMode(shouldDark);
       if (shouldDark) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
     }
   };
 
@@ -188,7 +188,7 @@ export default function DashboardLayout({
             <Link href="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
                 <Award className="h-4 w-4 text-primary-foreground" />
-              </div>
+            </div>
               {sidebarExpanded && (
                 <span className="font-bold text-base whitespace-nowrap">
                   MineCert
@@ -260,7 +260,7 @@ export default function DashboardLayout({
               )}
             </button>
             <button
-              onClick={handleLogout}
+                onClick={handleLogout}
               className={cn(
                 "flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-all w-full group",
                 sidebarExpanded ? "px-3" : "justify-center",
@@ -297,30 +297,30 @@ export default function DashboardLayout({
                 <Bell className="h-5 w-5" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full"></span>
               </Button>
-
+              
               {mounted ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-3 pl-3 border-l hover:opacity-80 transition-opacity">
-                      <div className="text-right hidden sm:block">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-3 pl-3 border-l hover:opacity-80 transition-opacity">
+                    <div className="text-right hidden sm:block">
                         <p className="text-sm font-medium">{profileName || "User"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {companyName || "Company"}
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold cursor-pointer overflow-hidden">
-                        {companyLogo ? (
-                          <img
-                            src={companyLogo}
-                            alt={companyName || "Company logo"}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          (profileName || companyName || "U").charAt(0).toUpperCase()
-                        )}
-                      </div>
-                    </button>
-                  </DropdownMenuTrigger>
+                      <p className="text-xs text-muted-foreground">
+                        {companyName || "Company"}
+                      </p>
+                    </div>
+                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold cursor-pointer overflow-hidden">
+                      {companyLogo ? (
+                        <img
+                          src={companyLogo}
+                          alt={companyName || "Company logo"}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        (profileName || companyName || "U").charAt(0).toUpperCase()
+                      )}
+                    </div>
+                  </button>
+                </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
@@ -389,8 +389,8 @@ export default function DashboardLayout({
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
               ) : (
                 /* Placeholder to prevent layout shift during hydration */
                 <div className="flex items-center gap-3 pl-3 border-l">
