@@ -9,9 +9,7 @@ The Authentix frontend is a Next.js 16 application built with React 19, TypeScri
 ## Tech Stack
 
 ### Core Framework
-- **Next.js**: 16.1.1 (App Router)
-- **React**: 19.2.3
-- **TypeScript**: 5.9.3
+-    
 - **Node.js**: >=24.0.0 (LTS)
 
 ### UI & Styling
