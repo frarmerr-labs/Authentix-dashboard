@@ -229,7 +229,7 @@ export default function GenerateCertificatePage() {
           alert(
             '❌ Storage Bucket Error\n\n' +
             `Error: ${error?.message}\n\n` +
-            'The storage bucket "minecertificate" might not exist or you don\'t have access.\n\n' +
+            'The storage bucket "authentix" might not exist or you don\'t have access.\n\n' +
             'Check:\n' +
             '1. Bucket exists in Supabase Storage\n' +
             '2. Storage policies allow uploads\n' +

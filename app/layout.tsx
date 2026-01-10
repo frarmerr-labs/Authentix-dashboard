@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MineCertificate - Certificate Generation & Verification Platform",
-  description: "Multi-tenant certificate generation and verification platform",
+  title: "Authentix - Certificate Generation & Verification Platform",
+  description: "Enterprise certificate generation, management, and verification platform",
 };
 
 export default function RootLayout({

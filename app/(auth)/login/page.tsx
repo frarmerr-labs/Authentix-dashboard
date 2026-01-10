@@ -60,7 +60,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold">Welcome back</h1>
           <p className="text-sm text-muted-foreground mt-2">
-            Sign in to your MineCertificate account
+            Sign in to your Authentix account
           </p>
         </div>
 

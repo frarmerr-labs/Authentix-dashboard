@@ -1,268 +1,206 @@
-# MineCertificate
+# Authentix
 
-A multi-tenant certificate generation and verification platform built with Next.js, Supabase, and TypeScript.
+Enterprise certificate generation, management, and verification platform.
 
-## 🚀 Features
-
-- **Bulk Certificate Generation**: Upload Excel files and generate certificates in bulk
-- **Template Management**: Create and manage certificate templates with custom fields
-- **Fast Search**: Full-text search with sub-2s response times for 100k+ certificates
-- **Secure Verification**: Public verification with QR codes and rate limiting
-- **Multi-Tenant**: Complete data isolation with Row-Level Security (RLS)
-- **Bulk Operations**: Download multiple certificates as ZIP, bulk revoke with audit trail
-- **Background Jobs**: Async processing for imports and bulk downloads
-- **Audit Logging**: Complete audit trail for all actions
-
-## 🛠 Tech Stack
-
-- **Frontend**: Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui
-- **Backend**: Supabase (PostgreSQL, Auth, Storage, Edge Functions)
-- **Search**: PostgreSQL Full-Text Search with GIN indices
-- **File Processing**: XLSX parsing, PDF generation, QR code generation
-- **State Management**: React Server Components, Server Actions
-
-## 📦 Project Structure
-
-```
-minecertificate/
-├── app/                          # Next.js App Router
-│   ├── (auth)/                   # Authentication pages
-│   ├── (dashboard)/              # Dashboard pages
-│   │   ├── templates/            # Template management
-│   │   ├── imports/              # Import jobs
-│   │   ├── certificates/         # Certificate listing
-│   │   ├── verification-logs/    # Verification logs
-│   │   └── settings/             # Company settings
-│   ├── api/                      # API routes
-│   └── verify/                   # Public verification page
-├── components/                   # React components
-│   ├── dashboard/                # Dashboard components
-│   ├── templates/                # Template components
-│   ├── imports/                  # Import components
-│   ├── certificates/             # Certificate components
-│   ├── verification/             # Verification components
-│   ├── shared/                   # Shared components
-│   └── ui/                       # shadcn/ui components
-├── lib/                          # Utilities and helpers
-│   ├── supabase/                 # Supabase clients
-│   ├── api/                      # API helpers
-│   ├── jobs/                     # Background job logic
-│   └── utils/                    # Utility functions
-├── types/                        # TypeScript types
-└── supabase/                     # Supabase migrations & functions
-    ├── migrations/               # Database migrations
-    └── functions/                # Edge Functions
-```
-
-## 🚀 Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- Supabase account (for production) or local Supabase setup
+- **Node.js** ≥ 24.0.0 (LTS)
+- **npm** ≥ 10.0.0
+- Backend API running (see [Backend Setup](#backend-setup))
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   cd MineCertificate
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-
-   Copy `.env.local` and update with your Supabase credentials:
-   ```bash
-   # .env.local
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
-   ```
-
-4. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-5. **Open your browser**
-
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## 📚 Documentation
-
-### Complete Implementation Plan
-
-See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for the complete implementation guide including:
-
-1. **File Structure & Component Responsibilities**
-2. **Complete Component Implementations** (TSX stubs with props, behaviors, acceptance criteria)
-3. **Full API Contract** (endpoints with request/response JSON examples)
-4. **SQL Schema, Indices & Full-Text Search Setup**
-5. **Supabase RLS Policies** (multi-tenant security)
-6. **Background Job Architecture** (imports, bulk downloads)
-7. **Testing Checklist & QA Steps**
-8. **Environment Setup Guide**
-
-### Database Setup
-
-1. **Create Supabase Project**
-   - Go to [supabase.com](https://supabase.com)
-   - Create a new project
-   - Copy the project URL and anon key
-
-2. **Run Migrations**
-
-   Execute the SQL files in order:
-   ```bash
-   # Using Supabase CLI
-   supabase db push
-
-   # Or manually in Supabase SQL Editor
-   # Run migrations in order:
-   # - 001_initial_schema.sql
-   # - 002_rls_policies.sql
-   # - 003_indices.sql
-   # - 004_full_text_search.sql
-   ```
-
-3. **Configure Storage Buckets**
-
-   Create these buckets in Supabase Storage:
-   - `templates` - For certificate templates
-   - `certificates` - For generated PDFs and QR codes
-   - `bulk-downloads` - For ZIP files
-
-4. **Deploy Edge Functions**
-   ```bash
-   supabase functions deploy process-import
-   supabase functions deploy generate-bulk-download
-   ```
-
-## 🎨 UI Components
-
-This project uses [shadcn/ui](https://ui.shadcn.com/) components. Key components include:
-
-- **Button** - Primary actions and navigation
-- **Card** - Content containers with headers and footers
-- **Badge** - Status indicators and labels
-- **Table** - Data tables with sorting and filtering
-- **Dialog** - Modals and confirmations
-- **Select** - Dropdowns for forms
-- **Checkbox** - Multi-selection in tables
-- **Tabs** - Tabbed interfaces
-
-To add more components:
 ```bash
-npx shadcn-ui@latest add [component-name]
+# Clone the repository
+git clone <repository-url>
+cd authentix
+
+# Install dependencies
+npm install
+
+# Copy environment file
+cp .env.example .env.local
+
+# Configure environment variables
+# Edit .env.local and set BACKEND_API_URL
 ```
 
-## 🔐 Security Features
+### Development
 
-- **Row-Level Security (RLS)**: All database queries scoped by company_id
-- **Signed URLs**: All file downloads use signed URLs with expiration
-- **Rate Limiting**: Verification endpoint limited to 100 requests/hour per IP
-- **Input Validation**: All user inputs sanitized and validated
-- **Audit Logging**: All actions logged with user ID, IP, and timestamp
-- **HMAC Webhooks**: Webhook signatures for external integrations
+```bash
+npm run dev
+```
 
-## 📊 Performance Features
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-- **Server-Side Pagination**: Default 20 per page, max 200
-- **Full-Text Search**: GIN index on certificates for sub-2s search
-- **Optimized Indices**: Strategic indices on company_id, dates, tokens
-- **Background Jobs**: Long-running tasks processed async
-- **Chunked Processing**: Large imports processed in batches of 50
+### Build & Deploy
 
-## 🧪 Testing
+```bash
+# Type check
+npm run typecheck
 
-See the Testing Checklist in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md#7-testing-checklist--qa-steps) for:
+# Lint
+npm run lint
 
-- Component testing (UI, accessibility, keyboard nav)
-- API testing (endpoints, RLS, rate limiting)
-- Security testing (cross-company access, XSS, SQL injection)
-- Performance testing (search speed, bulk operations)
-- Edge case testing (empty states, large files, errors)
+# Production build
+npm run build
 
-## 📝 API Documentation
+# Start production server
+npm start
+```
+
+## Environment Variables
+
+Create a `.env.local` file in the root directory:
+
+```bash
+# Required: Backend API URL (server-only, never exposed to browser)
+BACKEND_API_URL=https://api.authentix.com/api/v1
+```
+
+> ⚠️ **Security Note**: `BACKEND_API_URL` must NOT start with `NEXT_PUBLIC_`. It's server-only.
+
+## Tech Stack
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| [Next.js](https://nextjs.org) | 16.1.1 | React framework with App Router |
+| [React](https://react.dev) | 19.2.3 | UI library with Server Components |
+| [TypeScript](https://www.typescriptlang.org) | 5.9.3 | Type safety |
+| [Tailwind CSS](https://tailwindcss.com) | 4.1.18 | Utility-first CSS |
+
+## Project Structure
+
+```
+authentix/
+├── app/                      # Next.js App Router
+│   ├── (auth)/               # Auth pages (login, signup)
+│   ├── api/                  # API Route Handlers (BFF)
+│   │   ├── auth/             # Auth endpoints
+│   │   └── proxy/            # Backend proxy
+│   └── dashboard/            # Protected dashboard routes
+│       └── org/[orgId]/      # Organization-scoped pages
+├── src/
+│   ├── components/           # React components
+│   │   └── ui/               # shadcn/ui components
+│   ├── features/             # Feature modules
+│   └── lib/                  # Utilities and API clients
+├── proxy.ts                  # Next.js middleware (auth/routing)
+└── .env.example              # Environment template
+```
+
+## Architecture
 
 ### Authentication
 
-All authenticated endpoints require:
+All authentication uses **HttpOnly cookies** - tokens are never accessible via JavaScript.
+
 ```
-Authorization: Bearer <supabase_access_token>
+Browser → /api/proxy/* → Backend API
+              ↑
+         Cookies sent automatically
 ```
 
-### Key Endpoints
+### URL Structure
 
-- `GET /api/me` - Get current user
-- `GET /api/templates` - List templates
-- `POST /api/imports` - Start import job
-- `GET /api/certificates` - List certificates (with search, filters, pagination)
-- `POST /api/certificates/bulk-download` - Bulk download
-- `GET /api/public/verify` - Verify certificate (public)
+```
+/login                          # Sign in
+/signup                         # Register
+/dashboard                      # Redirects to org dashboard
+/dashboard/org/[orgId]          # Organization dashboard
+/dashboard/org/[orgId]/templates
+/dashboard/org/[orgId]/certificates
+/dashboard/org/[orgId]/billing
+```
 
-See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md#3-complete-api-contract) for full API documentation.
+### Data Flow
 
-## 🚢 Deployment
+1. **Server Components** fetch data on the server
+2. **Client Components** handle interactivity only
+3. **Streaming** with `loading.tsx` for instant feedback
 
-### Deploy to Vercel
+## Scripts
 
-1. **Connect to Vercel**
-   ```bash
-   vercel --prod
-   ```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server with Turbopack |
+| `npm run build` | Create production build |
+| `npm start` | Start production server |
+| `npm run typecheck` | Run TypeScript type checking |
+| `npm run lint` | Run ESLint |
 
-2. **Set Environment Variables**
+## Documentation
 
-   Add these in Vercel project settings:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `NEXT_PUBLIC_APP_URL`
+- [Frontend Architecture](./architecture-design/FRONTEND_DOCUMENTATION.md) - Detailed architecture documentation
+- [Email Templates](./email-templates/README.md) - Email template setup guide
 
-3. **Configure Custom Domain** (optional)
+## Development Guidelines
 
-   Update `NEXT_PUBLIC_APP_URL` to your production domain
+### Code Style
 
-### Production Checklist
+- **Server Components** by default for data fetching
+- **`"use client"`** only for interactive components
+- **TypeScript strict mode** enabled
+- **ESLint + Prettier** for code formatting
 
-- [ ] Database migrations run
-- [ ] Storage buckets created and configured
-- [ ] Edge Functions deployed
-- [ ] Environment variables set
-- [ ] RLS policies enabled
-- [ ] Rate limiting configured
-- [ ] Error tracking set up (Sentry)
-- [ ] Uptime monitoring configured
+### Naming Conventions
 
-## 🤝 Contributing
+| Type | Convention | Example |
+|------|------------|---------|
+| Folders | kebab-case | `generate-certificate/` |
+| Components | PascalCase | `DashboardShell.tsx` |
+| Hooks | camelCase with `use` prefix | `useOrg.ts` |
+| Utilities | camelCase | `formatDate.ts` |
 
-This is a reference implementation. Feel free to:
+### Security Practices
 
-- Extend features based on your needs
-- Customize UI components and styling
-- Add additional authentication providers
-- Implement custom template engines
-- Add webhook integrations
+- ✅ HttpOnly cookies for authentication
+- ✅ Server-side token validation
+- ✅ API proxy to hide backend URL
+- ✅ CSP headers configured
+- ✅ No sensitive data in client code
 
-## 📄 License
+## Backend Setup
 
-MIT License - See LICENSE file for details
+This frontend requires a backend API. Configure `BACKEND_API_URL` in your `.env.local` file.
 
-## 🙏 Acknowledgments
+### Expected API Endpoints
 
-- Built with [Next.js](https://nextjs.org/)
-- Backend powered by [Supabase](https://supabase.com/)
-- UI components from [shadcn/ui](https://ui.shadcn.com/)
-- Icons from [Lucide](https://lucide.dev/)
+```
+POST /auth/login
+POST /auth/signup
+POST /auth/logout
+POST /auth/refresh
+GET  /auth/session
+GET  /templates
+GET  /companies/:id
+GET  /users/me
+...
+```
 
----
+## Troubleshooting
 
-**Status**: ✅ Development server running at http://localhost:3000
+### "BACKEND_API_URL not configured"
 
-For questions or issues, check the [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) documentation.
+Ensure `.env.local` exists with `BACKEND_API_URL` set.
+
+### "Session expired" errors
+
+Clear browser cookies and sign in again.
+
+### Build fails with type errors
+
+Run `npm run typecheck` to see detailed errors.
+
+## Contributing
+
+1. Create a feature branch
+2. Make changes following the guidelines above
+3. Run `npm run typecheck && npm run lint && npm run build`
+4. Submit a pull request
+
+## License
+
+Proprietary - All rights reserved.

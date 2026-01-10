@@ -1,6 +1,6 @@
 # Email Templates
 
-This directory contains HTML email templates for MineCertificate.
+This directory contains HTML email templates for Authentix.
 
 ## Verification Email Template
 

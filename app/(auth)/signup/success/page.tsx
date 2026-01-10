@@ -153,7 +153,7 @@ function SignupSuccessContent() {
                 <div>
                   <p className="font-medium">Open your email inbox</p>
                   <p className="text-muted-foreground">
-                    Look for an email from MineCertificate
+                    Look for an email from Authentix
                   </p>
                 </div>
               </div>

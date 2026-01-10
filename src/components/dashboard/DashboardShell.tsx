@@ -333,7 +333,7 @@ export function DashboardShell({
                 </div>
                 {sidebarExpanded && (
                   <span className="font-bold text-base whitespace-nowrap">
-                    MineCert
+                    Authentix
                   </span>
                 )}
               </Link>

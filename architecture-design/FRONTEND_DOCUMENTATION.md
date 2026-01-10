@@ -1,8 +1,8 @@
-# MineCertificate Frontend Architecture
+# Authentix Frontend Architecture
 
 ## Overview
 
-MineCertificate is a certificate generation and management platform built with modern web technologies following 2026 best practices.
+Authentix is an enterprise certificate generation, management, and verification platform built with modern web technologies following 2026 best practices.
 
 ## Tech Stack
 
@@ -17,7 +17,7 @@ MineCertificate is a certificate generation and management platform built with m
 ## Project Structure
 
 ```
-MineCertificate/
+authentix/
 ├── app/                          # Next.js App Router
 │   ├── (auth)/                   # Auth route group
 │   │   ├── login/

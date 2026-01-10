@@ -311,7 +311,7 @@ export default function APISettingsPage() {
           <div className="space-y-2">
             <p className="text-sm font-medium">Example Request</p>
             <div className="bg-muted p-3 rounded-lg font-mono text-xs overflow-x-auto">
-              <pre>{`curl -X POST https://api.minecertificate.com/v1/certificates \\
+              <pre>{`curl -X POST https://api.authentix.com/v1/certificates \\
   -H "X-Application-ID: ${applicationId || "your-application-id"}" \\
   -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json" \\
