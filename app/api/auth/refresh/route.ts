@@ -9,9 +9,8 @@ import {
 function getBackendUrl(): string {
   const url = process.env.BACKEND_API_URL;
   if (url) return url;
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:3000/api/v1";
-  }
+  // In development, BACKEND_API_URL should be set in .env file
+  // No fallback to avoid incorrect API calls
   return "";
 }
 

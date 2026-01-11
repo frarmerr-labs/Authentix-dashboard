@@ -16,8 +16,12 @@ function getBackendUrl(): string {
   if (url) return url;
 
   // Fallback for development only
+  // Note: In development, BACKEND_API_URL should be set to point to your backend server
+  // This fallback is only used if BACKEND_API_URL is not set
   if (process.env.NODE_ENV === "development") {
-    return "http://localhost:3000/api/v1";
+    // If no backend URL is configured, we can't make requests
+    // The user should set BACKEND_API_URL in their .env file
+    return "";
   }
 
   // In production, we'll check at runtime when actually making requests
