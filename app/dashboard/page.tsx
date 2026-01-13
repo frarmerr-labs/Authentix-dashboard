@@ -15,14 +15,20 @@ export default function DashboardResolver() {
   useEffect(() => {
     async function resolveOrg() {
       try {
-        const profile = await api.users.getProfile();
+        // Use a timeout to avoid hanging if the request is slow
+        const profilePromise = api.users.getProfile();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Request timeout")), 5000)
+        );
+        
+        const profile = await Promise.race([profilePromise, timeoutPromise]) as Awaited<ReturnType<typeof api.users.getProfile>>;
         
         if (!profile.company_id) {
           setError("No organization found.");
           return;
         }
 
-        // Check for redirect path from legacy URLs
+        // Check for redirect path from saved URLs
         const redirectPath = document.cookie
           .split("; ")
           .find((row) => row.startsWith("redirect_path="))
@@ -31,7 +37,9 @@ export default function DashboardResolver() {
 
         const targetPath = redirectPath ? redirectPath.replace("/dashboard", "") : "";
         router.replace(`/dashboard/org/${profile.company_id}${targetPath}`);
-      } catch {
+      } catch (error) {
+        console.error("[DashboardResolver] Error:", error);
+        // If it's a timeout or 401, redirect to login
         router.replace("/login");
       }
     }

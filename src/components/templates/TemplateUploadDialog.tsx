@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
 import { useCertificateCategories } from "@/lib/hooks/use-certificate-categories";
+import { IndustrySelectModal } from "./IndustrySelectModal";
+import { getCategoryGroups } from "@/lib/utils/category-grouping";
 
 interface TemplateUploadDialogProps {
   open: boolean;
@@ -27,6 +29,8 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [showIndustryModal, setShowIndustryModal] = useState(false);
+  const [checkingIndustry, setCheckingIndustry] = useState(false);
 
   // Use the shared hook for DB-driven category logic
   const {
@@ -35,6 +39,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
     error: categoriesError,
     getSubcategories,
     requiresSubcategory,
+    reload: reloadCategories,
   } = useCertificateCategories();
 
   // Get subcategories for selected category
@@ -47,6 +52,35 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       setSubcategoryName("");
     }
   }, [showSubcategory]);
+
+  // Check industry when modal opens
+  useEffect(() => {
+    if (open && !checkingIndustry) {
+      checkIndustry();
+    }
+  }, [open]);
+
+  const checkIndustry = async () => {
+    setCheckingIndustry(true);
+    try {
+      const org = await api.organizations.get();
+      if (!org.industry_id && !org.industry) {
+        // No industry set - show modal
+        setShowIndustryModal(true);
+      }
+    } catch (err) {
+      console.error("Error checking industry:", err);
+      // Continue anyway - let categories hook handle the error
+    } finally {
+      setCheckingIndustry(false);
+    }
+  };
+
+  const handleIndustrySelected = () => {
+    // Reload categories after industry is set
+    reloadCategories();
+    setShowIndustryModal(false);
+  };
 
   // Set error from categories hook
   useEffect(() => {
@@ -167,14 +201,20 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Upload Certificate Template</DialogTitle>
-          <DialogDescription>
-            Upload your certificate design and assign it to a category
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <IndustrySelectModal
+        open={showIndustryModal}
+        onOpenChange={setShowIndustryModal}
+        onIndustrySelected={handleIndustrySelected}
+      />
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Upload Certificate Template</DialogTitle>
+            <DialogDescription>
+              Upload your certificate design and assign it to a category
+            </DialogDescription>
+          </DialogHeader>
 
         {categoriesError && (
           <Alert variant="destructive">
@@ -183,8 +223,8 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
               {categoriesError.includes('Industry') ? (
                 <>
                   <strong>Industry Not Set:</strong> Please{" "}
-                  <Link href="/dashboard/company" className="text-primary hover:underline font-medium">
-                    complete your company profile
+                  <Link href="/dashboard/organization" className="text-primary hover:underline font-medium">
+                    complete your organization profile
                   </Link>{" "}
                   to continue. You must set your industry to upload templates.
                 </>
@@ -282,7 +322,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
                 />
               </div>
 
-              {/* Category Dropdown */}
+              {/* Category Dropdown with Grouping */}
               <div className="space-y-2">
                 <Label htmlFor="category">
                   Category <span className="text-destructive">*</span>
@@ -296,11 +336,24 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
                     <SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const groups = getCategoryGroups(categories);
+                      return groups.map((group) => (
+                        <div key={group.name}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
+                            {group.name}
+                          </div>
+                          {group.categories.map((cat) => (
+                            <SelectItem key={cat} value={cat} className="pl-4">
+                              {cat}
+                            </SelectItem>
+                          ))}
+                          {groups.indexOf(group) < groups.length - 1 && (
+                            <div className="border-t my-1" />
+                          )}
+                        </div>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
@@ -372,5 +425,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

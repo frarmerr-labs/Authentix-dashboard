@@ -23,8 +23,8 @@ export default function BillingPage() {
 
   const loadCompany = async () => {
     try {
-      const companyData = await api.companies.get() as { id: string; name: string };
-      setCompany({ id: companyData.id, name: companyData.name });
+      const organizationData = await api.organizations.get() as { id: string; name: string };
+      setCompany({ id: organizationData.id, name: organizationData.name });
     } catch (error) {
       console.error('Error loading company:', error);
       router.push('/login');

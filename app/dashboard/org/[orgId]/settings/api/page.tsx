@@ -29,7 +29,7 @@ export default function APISettingsPage() {
 
   const loadAPIData = async () => {
     try {
-      const settings = await api.companies.getAPISettings();
+      const settings = await api.organizations.getAPISettings();
 
       setApplicationId(settings.application_id || "");
       setApiEnabled(settings.api_enabled || false);
@@ -52,8 +52,8 @@ export default function APISettingsPage() {
     try {
       // Use backend API for bootstrap or rotation
       const result = apiKeyExists
-        ? await api.companies.rotateAPIKey()
-        : await api.companies.bootstrapIdentity();
+        ? await api.organizations.rotateAPIKey()
+        : await api.organizations.bootstrapIdentity();
 
       // Update application_id if bootstrap generated a new one
       if (result.application_id) {
@@ -78,7 +78,7 @@ export default function APISettingsPage() {
 
   const handleToggleAPI = async () => {
     try {
-      await api.companies.updateAPIEnabled(!apiEnabled);
+      await api.organizations.updateAPIEnabled(!apiEnabled);
       setApiEnabled(!apiEnabled);
     } catch (err: any) {
       setError(err.message || "Failed to update API status");

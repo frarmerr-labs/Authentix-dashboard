@@ -46,7 +46,7 @@ const ALLOWED_METHODS = new Set([
 const ALLOWED_PATH_PREFIXES = [
   "/auth/",
   "/templates",
-  "/companies/",
+  "/organizations/",
   "/users/",
   "/certificates/",
   "/import-jobs",
@@ -54,6 +54,7 @@ const ALLOWED_PATH_PREFIXES = [
   "/verification/",
   "/dashboard/",
   "/webhooks/",
+  "/industries",
 ] as const;
 
 // ============================================================================
@@ -215,12 +216,32 @@ async function proxyRequest(
   // Build backend URL
   const backendUrl = `${BACKEND_API_URL}${pathSegments}${url.search}`;
 
-  // Get auth token from cookies
+  // Get auth cookies to forward to backend
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(AUTH_COOKIES.ACCESS_TOKEN)?.value ?? null;
+  const refreshToken = cookieStore.get(AUTH_COOKIES.REFRESH_TOKEN)?.value ?? null;
+  const expiresAt = cookieStore.get(AUTH_COOKIES.EXPIRES_AT)?.value ?? null;
 
   // Create safe headers
   const safeHeaders = createSafeHeaders(request.headers, accessToken);
+
+  // Forward auth cookies to backend (Step-1 auth uses cookies, not just Bearer tokens)
+  // Build cookie string for backend
+  const backendCookies: string[] = [];
+  if (accessToken) {
+    backendCookies.push(`${AUTH_COOKIES.ACCESS_TOKEN}=${accessToken}`);
+  }
+  if (refreshToken) {
+    backendCookies.push(`${AUTH_COOKIES.REFRESH_TOKEN}=${refreshToken}`);
+  }
+  if (expiresAt) {
+    backendCookies.push(`${AUTH_COOKIES.EXPIRES_AT}=${expiresAt}`);
+  }
+  
+  // Add cookies to headers if any exist
+  if (backendCookies.length > 0) {
+    safeHeaders.set("Cookie", backendCookies.join("; "));
+  }
 
   // Get request body for non-GET requests
   let body: ArrayBuffer | null = null;
@@ -244,6 +265,8 @@ async function proxyRequest(
       signal: controller.signal,
       // Don't follow redirects - let backend handle them
       redirect: "manual",
+      // Forward cookies to backend (in addition to Cookie header)
+      credentials: "include",
     });
 
     clearTimeout(timeoutId);

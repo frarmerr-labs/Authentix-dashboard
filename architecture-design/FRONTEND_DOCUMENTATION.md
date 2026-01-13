@@ -23,17 +23,21 @@ authentix/
 │   │   ├── login/
 │   │   │   ├── page.tsx          # Login page (Client Component)
 │   │   │   └── actions.ts        # Server Action for login
-│   │   └── signup/
-│   │       ├── page.tsx          # Signup page (Client Component)
-│   │       ├── actions.ts        # Server Action for signup
-│   │       └── success/page.tsx  # Email verification page
+│   │   ├── signup/
+│   │   │   ├── page.tsx          # Signup page (Client Component)
+│   │   │   ├── actions.ts        # Server Action for signup
+│   │   │   └── success/page.tsx  # Email verification waiting page
+│   │   └── verify-email/
+│   │       └── page.tsx          # Email verification page with resend
 │   ├── api/                      # API Route Handlers (BFF)
 │   │   ├── auth/                 # Auth endpoints
 │   │   │   ├── login/route.ts    # POST - Login, set cookies
 │   │   │   ├── logout/route.ts   # POST - Clear cookies
 │   │   │   ├── refresh/route.ts  # POST - Refresh tokens
 │   │   │   ├── session/route.ts  # GET - Check session
-│   │   │   └── signup/route.ts   # POST - Register user
+│   │   │   ├── signup/route.ts   # POST - Register user
+│   │   │   ├── me/route.ts       # GET - Get user + email verification status
+│   │   │   └── resend-verification/route.ts # POST - Resend verification email
 │   │   ├── proxy/[...path]/      # Hardened API proxy
 │   │   │   └── route.ts          # Proxies all backend calls
 │   │   └── templates/
@@ -50,6 +54,8 @@ authentix/
 │   │       │   ├── page.tsx      # Templates list (Client Component)
 │   │       │   └── loading.tsx   # Streaming skeleton
 │   │       ├── generate-certificate/
+│   │       ├── organization/         # Organization profile
+│   │       │   └── page.tsx
 │   │       ├── billing/
 │   │       ├── certificates/
 │   │       ├── imports/
@@ -65,6 +71,8 @@ authentix/
 │   │   │   └── DashboardShell.tsx # Client Component - interactive shell
 │   │   ├── onboarding/
 │   │   ├── templates/
+│   │   │   ├── TemplateUploadDialog.tsx # Template upload with industry gating
+│   │   │   └── IndustrySelectModal.tsx  # Industry selection modal
 │   │   └── ui/                   # shadcn/ui components
 │   ├── features/                 # Feature modules
 │   │   └── templates/
@@ -76,8 +84,9 @@ authentix/
 │       ├── api/
 │       │   ├── client.ts         # Client-side API (calls /api/proxy)
 │       │   └── server.ts         # Server-side API (calls backend directly)
-│       ├── auth/
-│       │   └── storage.ts        # Legacy cleanup + session hints
+│       ├── auth/                  # Auth utilities (removed - using cookies only)
+│       └── utils/
+│           └── category-grouping.ts # Category grouping helper
 │       ├── org/
 │       │   ├── context.tsx       # OrgProvider + useOrg hook
 │       │   └── index.ts
@@ -99,11 +108,13 @@ authentix/
 /                                    # Landing page
 /login                               # Login
 /signup                              # Registration
-/signup/success                      # Email verification waiting
+/signup/success                      # Email verification waiting (polls for status)
+/auth/verify-email                   # Email verification page with resend
 /dashboard                           # Org resolver → redirects to /dashboard/org/[orgId]
-/dashboard/org/[orgId]               # Dashboard home
+/dashboard/org/[orgId]               # Dashboard home (Analytics)
 /dashboard/org/[orgId]/templates     # Template management
 /dashboard/org/[orgId]/generate-certificate
+/dashboard/org/[orgId]/organization  # Organization profile
 /dashboard/org/[orgId]/billing
 /dashboard/org/[orgId]/certificates
 /dashboard/org/[orgId]/imports
@@ -168,10 +179,13 @@ const COOKIE_OPTIONS = {
 
 ### Auth Flow
 
-1. **Login**: User submits credentials → Server Action calls backend → Sets HttpOnly cookies → Redirects to `/dashboard`
-2. **Session Check**: Server Component calls `isServerAuthenticated()` → Reads cookies → Validates with backend
-3. **API Calls**: Client calls `/api/proxy/*` → Cookies auto-attached → Proxy forwards to backend with token
-4. **Logout**: Server Action clears cookies → Redirects to `/login`
+1. **Signup**: User submits form → Server Action calls backend → User created → Redirects to `/signup/success` (no session if email verification required)
+2. **Email Verification**: User clicks link in email → Backend verifies → Sets HttpOnly cookies → Redirects to dashboard
+3. **Login**: User submits credentials → Server Action calls backend → Sets HttpOnly cookies → Redirects to `/dashboard` (or `/auth/verify-email` if not verified)
+4. **Session Check**: Server Component calls `isServerAuthenticated()` → Reads cookies → Validates with backend
+5. **Email Verification Gating**: Dashboard layout checks `api.auth.me()` → Redirects to `/auth/verify-email` if `email_verified === false`
+6. **API Calls**: Client calls `/api/proxy/*` → Cookies auto-attached → Proxy forwards cookies to backend
+7. **Logout**: Server Action clears cookies → Redirects to `/login`
 
 ## API Architecture
 
@@ -204,10 +218,12 @@ The `/api/proxy/[...path]` route implements:
 
 | Security Measure | Implementation |
 |------------------|----------------|
-| Path Allowlist | Only `/auth/`, `/templates`, `/companies/`, etc. |
+| Path Allowlist | `/auth/`, `/templates`, `/organizations/`, `/users/`, `/industries`, etc. |
 | Method Restriction | GET, POST, PUT, PATCH, DELETE, OPTIONS |
 | Path Traversal Prevention | Blocks `..`, `%2e%2e`, `//`, `\` |
 | Header Stripping | Removes hop-by-hop headers |
+| Cookie Forwarding | Forwards auth cookies to backend (Step-1 auth flow) |
+| Bearer Token | Also adds `Authorization: Bearer <token>` header if token exists |
 | Timeout | 30s with AbortController |
 | Error Sanitization | No backend URL leakage |
 
@@ -315,10 +331,30 @@ BACKEND_API_URL=https://api.yourapp.com/api/v1
 ### Cookie Names (Reference)
 
 ```
-auth_access_token   # JWT access token
-auth_refresh_token  # JWT refresh token
-auth_expires_at     # Expiration timestamp
+auth_access_token   # JWT access token (HttpOnly)
+auth_refresh_token  # JWT refresh token (HttpOnly)
+auth_expires_at     # Expiration timestamp (HttpOnly)
 ```
+
+### API Client Methods
+
+#### Auth API (`api.auth.*`)
+- `login(email, password)` - Login and set cookies
+- `signup(email, password, full_name, company_name)` - Register user
+- `logout()` - Clear cookies
+- `getSession()` - Get current session
+- `me()` - Get user info including `email_verified` status
+- `resendVerification()` - Resend verification email
+- `refresh()` - Refresh access token
+
+#### Organizations API (`api.organizations.*`)
+- `get()` - Get organization profile (includes `industry_id`)
+- `update(data, logoFile?)` - Update organization
+- `getAPISettings()` - Get API settings
+- `updateAPIEnabled(enabled)` - Enable/disable API
+- `bootstrapIdentity()` - Bootstrap API identity
+- `rotateAPIKey()` - Rotate API key
+
 
 ## Commands
 
@@ -344,9 +380,14 @@ npm start
 | Decision | Rationale |
 |----------|-----------|
 | HttpOnly Cookies | Prevents XSS token theft |
+| Email Verification Gating | Users cannot access dashboard until email is verified |
 | Server Components | Faster initial load, better SEO |
 | BFF Proxy | Hides backend URL, prevents CORS |
+| Cookie Forwarding | Proxy forwards cookies to backend (Step-1 auth requires cookies, not just Bearer tokens) |
 | Org-scoped URLs | Multi-tenant support, clear context |
+| Company → Organization | Consistent naming across frontend (backend may still use "company" internally) |
+| Industry Gating | Template upload requires organization industry to be set first |
+| Category Grouping | Categories grouped into "Course Certificates" and "Company Work" for better UX |
 | Feature-based structure | Scalable code organization |
 | React 19 Server Actions | Type-safe form handling |
 
@@ -381,3 +422,38 @@ export async function getPdfLib() {
   return import("pdf-lib");
 }
 ```
+
+## Recent Updates (Step-1 Auth Flow)
+
+### Email Verification Flow
+
+1. **Signup**: User signs up → Backend creates user (email not verified) → Redirects to `/signup/success`
+2. **Verification**: User clicks link in email → Backend verifies email → Sets cookies → Redirects to dashboard
+3. **Gating**: Dashboard layout checks `email_verified` → Redirects to `/auth/verify-email` if false
+4. **Resend**: User can click "Resend verification email" on verify-email page
+
+### Organization Rename
+
+- All UI references changed from "Company" to "Organization"
+- API client methods: `api.organizations.*` (removed deprecated `api.companies.*`)
+- Routes: `/dashboard/org/[orgId]/organization` (removed deprecated `/company` redirect)
+- Sidebar: "Dashboard" → "Analytics"
+
+### Industry Selection Gating
+
+- Template upload checks if organization has `industry_id` set
+- If missing, shows `IndustrySelectModal` before allowing category selection
+- Categories are filtered by industry after selection
+
+### Category Grouping
+
+- Categories grouped into:
+  - **Course Certificates**: `course_completion`, `internship_letter`, `training_certificate`
+  - **Company Work**: All other categories
+- Dropdown shows grouped sections with dividers
+
+### Proxy Cookie Forwarding
+
+- Proxy now forwards auth cookies to backend in `Cookie` header
+- Also includes `Authorization: Bearer <token>` header if token exists
+- Required for Step-1 auth flow where backend expects cookies

@@ -241,6 +241,35 @@ export const api = {
       }>("/auth/session");
     },
 
+    /**
+     * Get current authenticated user info including email verification status
+     */
+    me: async () => {
+      const response = await apiRequest<{
+        authenticated: boolean;
+        user: {
+          id: string;
+          email: string;
+          email_verified: boolean;
+          full_name: string | null;
+        } | null;
+        organization?: {
+          id: string;
+          name: string;
+        } | null;
+      }>("/auth/me");
+      return response.data!;
+    },
+
+    /**
+     * Resend verification email
+     */
+    resendVerification: async () => {
+      return authApiRequest<void>("/auth/resend-verification", {
+        method: "POST",
+      });
+    },
+
     refresh: async () => {
       return authApiRequest<void>("/auth/refresh", {
         method: "POST",
@@ -641,9 +670,9 @@ export const api = {
   },
 
   /**
-   * Companies API
+   * Organizations API (renamed from Companies)
    */
-  companies: {
+  organizations: {
     get: async () => {
       const response = await apiRequest<{
         id: string;
@@ -652,6 +681,7 @@ export const api = {
         phone: string | null;
         website: string | null;
         industry: string | null;
+        industry_id: string | null;
         address: string | null;
         city: string | null;
         state: string | null;
@@ -662,7 +692,7 @@ export const api = {
         logo: string | null;
         created_at: string;
         updated_at: string;
-      }>("/companies/me");
+      }>("/organizations/me");
       return response.data!;
     },
 
@@ -673,6 +703,7 @@ export const api = {
         phone?: string | null;
         website?: string | null;
         industry?: string | null;
+        industry_id?: string | null;
         address?: string | null;
         city?: string | null;
         state?: string | null;
@@ -689,6 +720,7 @@ export const api = {
       phone: string | null;
       website: string | null;
       industry: string | null;
+      industry_id: string | null;
       address: string | null;
       city: string | null;
       state: string | null;
@@ -700,13 +732,14 @@ export const api = {
       created_at: string;
       updated_at: string;
     }> => {
-      type CompanyResponse = {
+      type OrganizationResponse = {
         id: string;
         name: string;
         email: string | null;
         phone: string | null;
         website: string | null;
         industry: string | null;
+        industry_id: string | null;
         address: string | null;
         city: string | null;
         state: string | null;
@@ -724,20 +757,20 @@ export const api = {
         formData.append("file", logoFile);
         formData.append("metadata", JSON.stringify(data));
 
-        const response = await fetch(`${API_BASE_URL}/companies/me`, {
+        const response = await fetch(`${API_BASE_URL}/organizations/me`, {
           method: "PUT",
           body: formData,
           credentials: "include",
         });
 
-        const result = (await response.json()) as ApiResponse<CompanyResponse>;
+        const result = (await response.json()) as ApiResponse<OrganizationResponse>;
         if (!response.ok || !result.success) {
           const errorMsg =
             typeof result.error === "object"
-              ? result.error?.message ?? "Failed to update company"
+              ? result.error?.message ?? "Failed to update organization"
               : typeof result.error === "string"
               ? result.error
-              : "Failed to update company";
+              : "Failed to update organization";
           throw new ApiError(
             typeof result.error === "object" ? result.error?.code ?? "HTTP_ERROR" : "HTTP_ERROR",
             errorMsg
@@ -746,7 +779,7 @@ export const api = {
 
         return result.data!;
       } else {
-        const response = await apiRequest<CompanyResponse>("/companies/me", {
+        const response = await apiRequest<OrganizationResponse>("/organizations/me", {
           method: "PUT",
           body: JSON.stringify(data),
         });
@@ -761,12 +794,12 @@ export const api = {
         api_key_exists: boolean;
         api_key_created_at: string | null;
         api_key_last_rotated_at: string | null;
-      }>("/companies/me/api-settings");
+      }>("/organizations/me/api-settings");
       return response.data!;
     },
 
     updateAPIEnabled: async (enabled: boolean) => {
-      const response = await apiRequest("/companies/me/api-settings", {
+      const response = await apiRequest("/organizations/me/api-settings", {
         method: "PUT",
         body: JSON.stringify({ api_enabled: enabled }),
       });
@@ -777,7 +810,7 @@ export const api = {
       const response = await apiRequest<{
         application_id: string;
         api_key: string;
-      }>("/companies/me/bootstrap-identity", {
+      }>("/organizations/me/bootstrap-identity", {
         method: "POST",
       });
       return response.data!;
@@ -787,12 +820,13 @@ export const api = {
       const response = await apiRequest<{
         application_id: string;
         api_key: string;
-      }>("/companies/me/rotate-api-key", {
+      }>("/organizations/me/rotate-api-key", {
         method: "POST",
       });
       return response.data!;
     },
   },
+
 
   /**
    * Users API

@@ -23,7 +23,6 @@ import {
   CreditCard,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { clearLegacyTokens } from "@/lib/auth/storage";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -71,7 +70,7 @@ type Theme = "light" | "dark" | "system";
 // ============================================================================
 
 const NAVIGATION_ITEMS: readonly NavItem[] = [
-  { name: "Dashboard", href: "", icon: LayoutDashboard },
+  { name: "Analytics", href: "", icon: LayoutDashboard },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Generate", href: "/generate-certificate", icon: Sparkles },
   { name: "Imports", href: "/imports", icon: Upload },
@@ -220,9 +219,9 @@ function UserMenu({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/org/${orgId}/company`}>
+          <Link href={`/dashboard/org/${orgId}/organization`}>
             <Building2 className="mr-2 h-4 w-4" />
-            Company
+            Organization
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -302,7 +301,6 @@ export function DashboardShell({
     } catch {
       // Continue with logout even if API fails
     }
-    clearLegacyTokens();
     router.push("/login");
     router.refresh();
   }, [router]);

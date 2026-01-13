@@ -23,6 +23,7 @@ export interface SignupState {
 
 /**
  * Signup response from backend
+ * In Step-1 auth flow, signup may not return a session if email verification is required
  */
 interface SignupResponse {
   user: {
@@ -30,11 +31,12 @@ interface SignupResponse {
     email: string;
     full_name: string | null;
   };
-  session: {
+  session?: {
     access_token: string;
     refresh_token: string;
     expires_at: number;
   };
+  message?: string;
 }
 
 /**
@@ -126,16 +128,54 @@ export async function signupAction(
       }),
     });
 
-    // Set HttpOnly cookies
-    await setServerAuthCookies(result.session);
+    // In Step-1 auth flow, signup may not return a session if email verification is required
+    // Only set cookies if session is provided
+    if (result?.session) {
+      try {
+        await setServerAuthCookies(result.session);
+      } catch (cookieError) {
+        // Log but don't fail - user was created successfully
+        console.warn("[Signup] Failed to set cookies (non-fatal):", cookieError);
+      }
+    }
+    // If no session, user needs to verify email first (this is expected behavior)
+    
+    // Success - redirect to success page
+    // Note: redirect() throws a NEXT_REDIRECT error which is expected behavior
+    redirect("/signup/success");
   } catch (error) {
+    // Check if this is a Next.js redirect (which is actually success)
+    if (error && typeof error === "object" && "digest" in error) {
+      const nextError = error as { digest?: string };
+      if (nextError.digest?.startsWith("NEXT_REDIRECT")) {
+        // This is a redirect, re-throw it
+        throw error;
+      }
+    }
+    
+    console.error("[Signup] Error:", error);
+    // Log the actual error for debugging
+    if (error instanceof Error) {
+      console.error("[Signup] Error details:", error.message);
+      if ("stack" in error) {
+        console.error("[Signup] Stack:", error.stack);
+      }
+    }
+    
+    // Check if this is a ServerApiError to get more details
+    if (error && typeof error === "object" && "code" in error) {
+      const apiError = error as { code?: string; message?: string; status?: number };
+      console.error("[Signup] API Error:", {
+        code: apiError.code,
+        message: apiError.message,
+        status: apiError.status,
+      });
+    }
+    
     return {
       error: sanitizeErrorMessage(error),
       fieldErrors: {},
       success: false,
     };
   }
-
-  // Redirect on success
-  redirect("/signup/success");
 }

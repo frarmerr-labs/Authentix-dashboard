@@ -267,23 +267,59 @@ export async function backendAuthRequest<T>(
 
   const url = `${BACKEND_URL}${endpoint}`;
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Network error";
+    console.error(`[BackendAuth] Network error for ${url}:`, errorMessage);
+    throw new ServerApiError(
+      "NETWORK_ERROR",
+      `Failed to connect to backend: ${errorMessage}`,
+      503
+    );
+  }
 
-  const data = (await response.json()) as ApiResponse<T>;
+  let data: ApiResponse<T>;
+  try {
+    data = (await response.json()) as ApiResponse<T>;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Parse error";
+    console.error(`[BackendAuth] JSON parse error for ${url}:`, errorMessage);
+    throw new ServerApiError(
+      "PARSE_ERROR",
+      `Failed to parse backend response: ${errorMessage}`,
+      response.status
+    );
+  }
 
+  // Log the response for debugging
   if (!response.ok || !data.success) {
+    console.error(`[BackendAuth] Error response from ${url}:`, {
+      status: response.status,
+      success: data.success,
+      error: data.error,
+    });
+    
     throw new ServerApiError(
       data.error?.code ?? "AUTH_ERROR",
       data.error?.message ?? "Authentication failed",
       response.status,
       data.error?.details
     );
+  }
+
+  // Check if data.data exists
+  if (!data.data) {
+    console.warn(`[BackendAuth] No data in response from ${url}, but success=true`);
+    // Return empty object as fallback (caller should handle this)
+    return {} as T;
   }
 
   return data.data as T;

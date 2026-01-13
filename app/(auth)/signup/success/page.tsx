@@ -17,22 +17,39 @@ function SignupSuccessContent() {
 
   const checkVerification = useCallback(async (): Promise<boolean> => {
     try {
-      // Call session API directly - auth is handled via HttpOnly cookies
+      // First check if we have a session (cookies might have been set from verification link)
       const session = await api.auth.getSession();
-
+      
       if (session.valid && session.user) {
-        setIsVerified(true);
-        setIsChecking(false);
-
-        // Redirect to dashboard after a brief delay
-        setTimeout(() => {
-          router.push("/dashboard");
-          router.refresh();
-        }, 1500);
-        return true;
+        // We have a session, now check email verification status
+        try {
+          const me = await api.auth.me();
+          if (me.authenticated && me.user?.email_verified) {
+            setIsVerified(true);
+            setIsChecking(false);
+            setTimeout(() => {
+              router.push("/dashboard");
+              router.refresh();
+            }, 1500);
+            return true;
+          }
+        } catch (meError) {
+          // If me endpoint fails, assume verified if we have a valid session
+          // (Backend might have set session only after verification)
+          console.debug("[SignupSuccess] Me check failed, but session exists:", meError);
+          setIsVerified(true);
+          setIsChecking(false);
+          setTimeout(() => {
+            router.push("/dashboard");
+            router.refresh();
+          }, 1500);
+          return true;
+        }
       }
-    } catch {
-      // Silently handle errors - no session is expected until verification
+    } catch (error) {
+      // No session yet - user hasn't clicked verification link in this browser
+      // This is expected, so we don't log it as an error
+      console.debug("[SignupSuccess] No session yet (expected if verification link clicked in another browser)");
     }
     return false;
   }, [router]);
@@ -46,14 +63,14 @@ function SignupSuccessContent() {
       const verified = await checkVerification();
       if (verified) return;
 
-      // Poll every 3 seconds for verification
+      // Poll every 2 seconds for verification (faster polling)
       pollInterval = setInterval(async () => {
         const verified = await checkVerification();
         if (verified) {
           clearInterval(pollInterval);
           clearTimeout(timeout);
         }
-      }, 3000);
+      }, 2000);
 
       // Stop polling after 5 minutes (300 seconds)
       timeout = setTimeout(() => {
@@ -92,6 +109,10 @@ function SignupSuccessContent() {
 
   const handleManualCheck = async () => {
     setIsChecking(true);
+    // Force a refresh to get latest cookies
+    router.refresh();
+    // Wait a bit for cookies to sync
+    await new Promise(resolve => setTimeout(resolve, 500));
     const verified = await checkVerification();
     if (!verified) {
       setIsChecking(false);
@@ -137,10 +158,24 @@ function SignupSuccessContent() {
             </div>
 
             {isChecking && (
-              <div className="flex items-center justify-center gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <p className="text-sm font-medium text-primary">
-                  Waiting for email verification...
+              <div className="space-y-3">
+                <div className="flex items-center justify-center gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <p className="text-sm font-medium text-primary">
+                    Waiting for email verification...
+                  </p>
+                </div>
+                <p className="text-xs text-center text-muted-foreground">
+                  If you&apos;ve already clicked the verification link,{" "}
+                  <button
+                    onClick={() => {
+                      router.refresh();
+                      checkVerification();
+                    }}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    click here to refresh
+                  </button>
                 </p>
               </div>
             )}
@@ -192,6 +227,19 @@ function SignupSuccessContent() {
                   try signing up again
                 </Link>
               </p>
+
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-xs text-blue-900 dark:text-blue-200 text-center">
+                  <strong>Tip:</strong> If you clicked the verification link in another browser or tab,{" "}
+                  <button
+                    onClick={handleManualCheck}
+                    className="font-semibold underline hover:no-underline"
+                  >
+                    click here to check your status
+                  </button>{" "}
+                  or refresh this page.
+                </p>
+              </div>
 
               {!isChecking && (
                 <div className="mb-4">

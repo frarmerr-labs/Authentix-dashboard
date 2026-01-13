@@ -19,10 +19,10 @@ export function OnboardingModal() {
 
   const checkOnboardingStatus = async () => {
     try {
-      const company = await api.companies.get();
+      const organization = await api.organizations.get();
 
       // Show onboarding if industry is not set
-      if (!company.industry) {
+      if (!organization.industry) {
         // Check if user has dismissed onboarding before
         const dismissed = localStorage.getItem('onboarding_dismissed');
         if (!dismissed) {
@@ -39,7 +39,7 @@ export function OnboardingModal() {
 
     setSaving(true);
     try {
-      await api.companies.update({ industry });
+      await api.organizations.update({ industry });
 
       setOpen(false);
     } catch (error: any) {

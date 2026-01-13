@@ -10,8 +10,8 @@ import { Building2, Upload, Loader2, CheckCircle2, Globe, MapPin, Phone, Mail } 
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 
-export default function CompanyPage() {
-  const [companyData, setCompanyData] = useState({
+export default function OrganizationPage() {
+  const [organizationData, setOrganizationData] = useState({
     name: "",
     email: "",
     phone: "",
@@ -34,38 +34,38 @@ export default function CompanyPage() {
   const [applicationId, setApplicationId] = useState("");
 
   useEffect(() => {
-    loadCompanyData();
+    loadOrganizationData();
   }, []);
 
-  const loadCompanyData = async () => {
+  const loadOrganizationData = async () => {
     try {
-      const company = await api.companies.get();
+      const organization = await api.organizations.get();
 
-      setCompanyData({
-        name: company.name || "",
-        email: company.email || "",
-        phone: company.phone || "",
-        website: company.website || "",
-        industry: company.industry || "",
-        address: company.address || "",
-        city: company.city || "",
-        state: company.state || "",
-        country: company.country || "",
-        postal_code: company.postal_code || "",
-        gst_number: company.gst_number || "",
-        cin_number: company.cin_number || "",
+      setOrganizationData({
+        name: organization.name || "",
+        email: organization.email || "",
+        phone: organization.phone || "",
+        website: organization.website || "",
+        industry: organization.industry || "",
+        address: organization.address || "",
+        city: organization.city || "",
+        state: organization.state || "",
+        country: organization.country || "",
+        postal_code: organization.postal_code || "",
+        gst_number: organization.gst_number || "",
+        cin_number: organization.cin_number || "",
       });
-      setLogoPreview(company.logo || "");
+      setLogoPreview(organization.logo || "");
 
       // Load application_id from API settings separately
       try {
-        const apiSettings = await api.companies.getAPISettings();
+        const apiSettings = await api.organizations.getAPISettings();
         setApplicationId(apiSettings.application_id || "");
       } catch {
         // API settings may not be available yet
       }
     } catch (error) {
-      console.error('Error loading company data:', error);
+      console.error('Error loading organization data:', error);
     } finally {
       setLoading(false);
     }
@@ -94,17 +94,17 @@ export default function CompanyPage() {
     setSuccess(false);
 
     try {
-      const updatedCompany = await api.companies.update(companyData, logo || undefined);
+      const updatedOrganization = await api.organizations.update(organizationData, logo || undefined);
       
-      if (updatedCompany.logo) {
-        setLogoPreview(updatedCompany.logo);
+      if (updatedOrganization.logo) {
+        setLogoPreview(updatedOrganization.logo);
       }
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
       setLogo(null); // Clear logo file after successful upload
     } catch (err: any) {
-      setError(err.message || "Failed to save company profile");
+      setError(err.message || "Failed to save organization profile");
     } finally {
       setSaving(false);
     }
@@ -123,9 +123,9 @@ export default function CompanyPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Company Profile</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Organization Profile</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your company information
+            Manage your organization information
           </p>
         </div>
         {success && (
@@ -178,12 +178,12 @@ export default function CompanyPage() {
               <div className="flex-1 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name" className="text-xs font-semibold uppercase text-muted-foreground">
-                    Company Name
+                    Organization Name
                   </Label>
                   <Input
                     id="name"
-                    value={companyData.name}
-                    onChange={(e) => setCompanyData({ ...companyData, name: e.target.value })}
+                    value={organizationData.name}
+                    onChange={(e) => setOrganizationData({ ...organizationData, name: e.target.value })}
                     required
                     className="text-lg font-semibold h-10"
                   />
@@ -198,9 +198,9 @@ export default function CompanyPage() {
                     <Input
                       id="email"
                       type="email"
-                      value={companyData.email}
-                      onChange={(e) => setCompanyData({ ...companyData, email: e.target.value })}
-                      placeholder="contact@company.com"
+                      value={organizationData.email}
+                      onChange={(e) => setOrganizationData({ ...organizationData, email: e.target.value })}
+                      placeholder="contact@organization.com"
                       className="h-9"
                     />
                   </div>
@@ -212,8 +212,8 @@ export default function CompanyPage() {
                     <Input
                       id="phone"
                       type="tel"
-                      value={companyData.phone}
-                      onChange={(e) => setCompanyData({ ...companyData, phone: e.target.value })}
+                      value={organizationData.phone}
+                      onChange={(e) => setOrganizationData({ ...organizationData, phone: e.target.value })}
                       placeholder="+1 (555) 000-0000"
                       className="h-9"
                     />
@@ -228,9 +228,9 @@ export default function CompanyPage() {
                   <Input
                     id="website"
                     type="url"
-                    value={companyData.website}
-                    onChange={(e) => setCompanyData({ ...companyData, website: e.target.value })}
-                    placeholder="https://company.com"
+                    value={organizationData.website}
+                    onChange={(e) => setOrganizationData({ ...organizationData, website: e.target.value })}
+                    placeholder="https://organization.com"
                     className="h-9"
                   />
                 </div>
@@ -241,8 +241,8 @@ export default function CompanyPage() {
                     Industry
                   </Label>
                   <Select
-                    value={companyData.industry}
-                    onValueChange={(value) => setCompanyData({ ...companyData, industry: value })}
+                    value={organizationData.industry}
+                    onValueChange={(value) => setOrganizationData({ ...organizationData, industry: value })}
                   >
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Select industry" />
@@ -280,8 +280,8 @@ export default function CompanyPage() {
                 <Label htmlFor="address" className="text-xs">Street Address</Label>
                 <Input
                   id="address"
-                  value={companyData.address}
-                  onChange={(e) => setCompanyData({ ...companyData, address: e.target.value })}
+                  value={organizationData.address}
+                  onChange={(e) => setOrganizationData({ ...organizationData, address: e.target.value })}
                   placeholder="123 Main St"
                   className="h-9"
                 />
@@ -291,8 +291,8 @@ export default function CompanyPage() {
                   <Label htmlFor="city" className="text-xs">City</Label>
                   <Input
                     id="city"
-                    value={companyData.city}
-                    onChange={(e) => setCompanyData({ ...companyData, city: e.target.value })}
+                    value={organizationData.city}
+                    onChange={(e) => setOrganizationData({ ...organizationData, city: e.target.value })}
                     className="h-9"
                   />
                 </div>
@@ -300,8 +300,8 @@ export default function CompanyPage() {
                   <Label htmlFor="state" className="text-xs">State</Label>
                   <Input
                     id="state"
-                    value={companyData.state}
-                    onChange={(e) => setCompanyData({ ...companyData, state: e.target.value })}
+                    value={organizationData.state}
+                    onChange={(e) => setOrganizationData({ ...organizationData, state: e.target.value })}
                     className="h-9"
                   />
                 </div>
@@ -311,8 +311,8 @@ export default function CompanyPage() {
                   <Label htmlFor="country" className="text-xs">Country</Label>
                   <Input
                     id="country"
-                    value={companyData.country}
-                    onChange={(e) => setCompanyData({ ...companyData, country: e.target.value })}
+                    value={organizationData.country}
+                    onChange={(e) => setOrganizationData({ ...organizationData, country: e.target.value })}
                     className="h-9"
                   />
                 </div>
@@ -320,8 +320,8 @@ export default function CompanyPage() {
                   <Label htmlFor="postal_code" className="text-xs">Postal Code</Label>
                   <Input
                     id="postal_code"
-                    value={companyData.postal_code}
-                    onChange={(e) => setCompanyData({ ...companyData, postal_code: e.target.value })}
+                    value={organizationData.postal_code}
+                    onChange={(e) => setOrganizationData({ ...organizationData, postal_code: e.target.value })}
                     className="h-9"
                   />
                 </div>
@@ -344,8 +344,8 @@ export default function CompanyPage() {
                 <Label htmlFor="gst_number" className="text-xs">GST Number</Label>
                 <Input
                   id="gst_number"
-                  value={companyData.gst_number}
-                  onChange={(e) => setCompanyData({ ...companyData, gst_number: e.target.value })}
+                  value={organizationData.gst_number}
+                  onChange={(e) => setOrganizationData({ ...organizationData, gst_number: e.target.value })}
                   placeholder="22AAAAA0000A1Z5"
                   className="h-9"
                 />
@@ -354,8 +354,8 @@ export default function CompanyPage() {
                 <Label htmlFor="cin_number" className="text-xs">CIN Number</Label>
                 <Input
                   id="cin_number"
-                  value={companyData.cin_number}
-                  onChange={(e) => setCompanyData({ ...companyData, cin_number: e.target.value })}
+                  value={organizationData.cin_number}
+                  onChange={(e) => setOrganizationData({ ...organizationData, cin_number: e.target.value })}
                   placeholder="U74999MH2020PTC123456"
                   className="h-9"
                 />

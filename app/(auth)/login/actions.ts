@@ -67,13 +67,25 @@ export async function loginAction(
     // Set HttpOnly cookies
     await setServerAuthCookies(result.session);
   } catch (error) {
+    // Check if error is about email not verified
+    const errorMessage = sanitizeErrorMessage(error);
+    if (
+      errorMessage.toLowerCase().includes("email") &&
+      errorMessage.toLowerCase().includes("verif")
+    ) {
+      // Redirect to verify email page
+      redirect("/auth/verify-email");
+    }
+
     // Return sanitized error message
     return {
-      error: sanitizeErrorMessage(error),
+      error: errorMessage,
       success: false,
     };
   }
 
-  // Redirect on success (must be outside try-catch)
+  // Check email verification status before redirecting to dashboard
+  // If backend returns email_verified in login response, we could check here
+  // For now, the dashboard layout will handle the redirect
   redirect("/dashboard");
 }

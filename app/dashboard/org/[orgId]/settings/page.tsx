@@ -4,38 +4,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Building2, Palette, Bell, Shield, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useOrg } from "@/lib/org";
 
 export default function SettingsPage() {
+  const { orgPath } = useOrg();
+  
   const settingsSections = [
     {
       icon: Building2,
-      title: "Company Profile",
-      description: "Manage your company information and branding",
-      href: "/dashboard/company",
+      title: "Organization Profile",
+      description: "Manage your organization information and branding",
+      href: orgPath("/organization"),
     },
-    {
+      {
       icon: Key,
       title: "API Settings",
       description: "Generate and manage API keys for integration",
-      href: "/dashboard/settings/api",
+      href: orgPath("/settings/api"),
     },
-    {
+      {
       icon: Palette,
       title: "Appearance",
       description: "Customize the look and feel of your dashboard",
-      href: "/dashboard/settings",
+      href: orgPath("/settings"),
     },
     {
       icon: Bell,
       title: "Notifications",
       description: "Configure email and webhook notifications",
-      href: "/dashboard/settings",
+      href: orgPath("/settings"),
     },
     {
       icon: Shield,
       title: "Security",
       description: "Manage authentication and access control",
-      href: "/dashboard/settings",
+      href: orgPath("/settings"),
     },
   ];
 
@@ -45,7 +48,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1.5 text-base">
-          Manage your account and company preferences
+          Manage your account and organization preferences
         </p>
       </div>
 
