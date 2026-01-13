@@ -12,11 +12,11 @@ import { formatCurrency, formatGSTRate } from '@/lib/billing-ui/utils/currency-f
 import { getCurrentBillingPeriod } from '@/lib/billing-ui/utils/invoice-helpers';
 
 interface BillingOverviewProps {
-  companyId: string;
+  organizationId: string;
 }
 
-export function BillingOverview({ companyId }: BillingOverviewProps) {
-  const { usage, billingProfile, loading, error } = useBillingOverview(companyId);
+export function BillingOverview({ organizationId }: BillingOverviewProps) {
+  const { usage, billingProfile, loading, error } = useBillingOverview(organizationId);
 
   if (loading) {
     return (

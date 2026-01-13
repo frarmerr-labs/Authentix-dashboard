@@ -31,7 +31,7 @@ interface Template {
   height: number | null;
   fields: unknown[];
   certificate_count: number;
-  company_id: string;
+  organization_id: string;
   created_at: string;
   updated_at: string;
   preview_url?: string;
@@ -59,8 +59,8 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10_000; // 10 seconds
 
-function getCacheKey(companyId: string, params: string): string {
-  return `${companyId}:${params}`;
+function getCacheKey(organizationId: string, params: string): string {
+  return `${organizationId}:${params}`;
 }
 
 function getFromCache(key: string): TemplateListResponse | null {
@@ -109,10 +109,10 @@ export async function GET(request: NextRequest) {
     const page = searchParams.get("page") || "1";
     const limit = searchParams.get("limit") || "50";
 
-    // Build cache key (we'd need company ID for proper cache isolation)
+    // Build cache key (we'd need organization ID for proper cache isolation)
     // For now, we'll use token hash as isolation
     const cacheKey = getCacheKey(
-      accessToken.slice(-16), // Use last 16 chars as pseudo-company ID
+      accessToken.slice(-16), // Use last 16 chars as pseudo-organization ID
       `${sortBy}:${sortOrder}:${page}:${limit}`
     );
 

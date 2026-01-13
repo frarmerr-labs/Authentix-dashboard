@@ -233,7 +233,7 @@ export default function GenerateCertificatePage() {
             'Check:\n' +
             '1. Bucket exists in Supabase Storage\n' +
             '2. Storage policies allow uploads\n' +
-            '3. User has company_id set'
+            '3. User has organization_id set'
           );
         } else {
           alert(`Failed to save template: ${error?.message || 'Unknown error'}\n\nYou can still use it for this session.`);

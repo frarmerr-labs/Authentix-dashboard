@@ -16,19 +16,19 @@ export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const invoiceId = params.id as string;
-  const [company, setCompany] = useState<{ name: string; email: string | null } | null>(null);
+  const [organization, setOrganization] = useState<{ name: string; email: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadCompany();
+    loadOrganization();
   }, []);
 
-  const loadCompany = async () => {
+  const loadOrganization = async () => {
     try {
       const organizationData = await api.organizations.get() as { name: string; email: string | null };
-      setCompany({ name: organizationData.name, email: organizationData.email });
+      setOrganization({ name: organizationData.name, email: organizationData.email });
     } catch (error) {
-      console.error('Error loading company:', error);
+      console.error('Error loading organization:', error);
       router.push('/login');
     } finally {
       setLoading(false);
@@ -43,7 +43,7 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  if (!company) {
+  if (!organization) {
     return null;
   }
 
@@ -75,8 +75,8 @@ export default function InvoiceDetailPage() {
       {/* Invoice Detail */}
       <InvoiceDetail
         invoiceId={invoiceId}
-        companyName={company.name}
-        companyEmail={company.email || ''}
+        companyName={organization.name}
+        companyEmail={organization.email || ''}
       />
 
       {/* Print Button */}

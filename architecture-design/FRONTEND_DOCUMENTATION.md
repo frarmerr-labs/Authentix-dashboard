@@ -272,8 +272,8 @@ export default async function OrgLayout({ children, params }) {
   const { session, profile } = await getServerAuthData();
   
   // Validate org access server-side
-  if (profile?.company_id !== orgId) {
-    redirect(`/dashboard/org/${profile.company_id}`);
+  if (profile?.organization_id !== orgId) {
+    redirect(`/dashboard/org/${profile.organization_id}`);
   }
   
   return (

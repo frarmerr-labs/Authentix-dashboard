@@ -18,11 +18,11 @@ import {
 } from '@/lib/billing-ui/utils/invoice-helpers';
 
 interface InvoiceListProps {
-  companyId: string;
+  organizationId: string;
 }
 
-export function InvoiceList({ companyId }: InvoiceListProps) {
-  const { invoices, loading, error } = useInvoiceList(companyId);
+export function InvoiceList({ organizationId }: InvoiceListProps) {
+  const { invoices, loading, error } = useInvoiceList(organizationId);
 
   if (loading) {
     return (

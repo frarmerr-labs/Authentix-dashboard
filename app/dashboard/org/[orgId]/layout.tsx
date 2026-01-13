@@ -76,12 +76,12 @@ export default async function OrgDashboardLayout({
   }
 
   // Validate org access
-  if (profile?.company_id && profile.company_id !== orgId) {
+  if (profile?.organization_id && profile.organization_id !== orgId) {
     // User belongs to a different org - redirect to their org
-    redirect(`/dashboard/org/${profile.company_id}`);
+    redirect(`/dashboard/org/${profile.organization_id}`);
   }
 
-  // Prepare user and company data for client
+  // Prepare user and organization data for client
   const userData = session.user
     ? {
         id: session.user.id,
@@ -90,10 +90,10 @@ export default async function OrgDashboardLayout({
       }
     : null;
 
-  const companyData = profile?.company
+  const organizationData = profile?.organization
     ? {
-        name: profile.company.name,
-        logo: profile.company.logo,
+        name: profile.organization.name,
+        logo: profile.organization.logo,
       }
     : null;
 
@@ -101,7 +101,7 @@ export default async function OrgDashboardLayout({
     <DashboardShell
       orgId={orgId}
       initialUser={userData}
-      initialCompany={companyData}
+      initialCompany={organizationData}
     >
       {children}
     </DashboardShell>

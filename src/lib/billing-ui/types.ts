@@ -7,7 +7,7 @@
 
 export interface BillingProfile {
   id: string;
-  company_id: string;
+  organization_id: string;
   platform_fee_amount: number;
   certificate_unit_price: number;
   gst_rate: number;
@@ -19,7 +19,7 @@ export interface BillingProfile {
 
 export interface Invoice {
   id: string;
-  company_id: string;
+  organization_id: string;
   period_start: string;
   period_end: string;
   subtotal: number;
@@ -42,7 +42,7 @@ export type InvoiceStatus = 'pending' | 'paid' | 'overdue' | 'cancelled' | 'refu
 export interface InvoiceLineItem {
   id: string;
   invoice_id: string;
-  company_id: string;
+  organization_id: string;
   description: string;
   quantity: number;
   unit_price: number;

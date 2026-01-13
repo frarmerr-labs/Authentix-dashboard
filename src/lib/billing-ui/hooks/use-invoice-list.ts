@@ -1,7 +1,7 @@
 /**
  * USE INVOICE LIST HOOK
  *
- * Fetches invoice history for company.
+ * Fetches invoice history for organization.
  * Provides real-time updates via Supabase subscriptions.
  */
 
@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api/client';
 import { Invoice } from '../types';
 
-export function useInvoiceList(companyId: string) {
+export function useInvoiceList(organizationId: string) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +35,10 @@ export function useInvoiceList(companyId: string) {
 
   // Initial fetch
   useEffect(() => {
-    if (companyId) {
+    if (organizationId) {
       fetchInvoices();
     }
-  }, [companyId]);
+  }, [organizationId]);
 
   return {
     invoices,

@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api/client';
 import { CurrentMonthUsage, BillingProfile } from '../types';
 
-export function useBillingOverview(companyId: string) {
+export function useBillingOverview(organizationId: string) {
   const [usage, setUsage] = useState<CurrentMonthUsage | null>(null);
   const [billingProfile, setBillingProfile] = useState<BillingProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,10 +41,10 @@ export function useBillingOverview(companyId: string) {
   };
 
   useEffect(() => {
-    if (companyId) {
+    if (organizationId) {
       loadOverview();
     }
-  }, [companyId]);
+  }, [organizationId]);
 
   return {
     usage,

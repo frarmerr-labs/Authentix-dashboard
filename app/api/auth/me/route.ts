@@ -53,8 +53,8 @@ export async function GET() {
           id: string;
           email: string;
           full_name: string | null;
-          company_id: string;
-          company: {
+          organization_id: string;
+          organization: {
             name: string;
             logo: string | null;
           } | null;
@@ -86,10 +86,10 @@ export async function GET() {
             email_verified: false, // TODO: Backend should return this from /auth/me
             full_name: session.user.full_name,
           },
-          organization: profile?.company
+          organization: profile?.organization
             ? {
-                id: profile.company_id,
-                name: profile.company.name,
+                id: profile.organization_id,
+                name: profile.organization.name,
               }
             : null,
         },

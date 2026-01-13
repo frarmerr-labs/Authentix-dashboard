@@ -344,8 +344,8 @@ export interface ServerUserProfile {
   id: string;
   email: string;
   full_name: string | null;
-  company_id: string;
-  company: {
+  organization_id: string;
+  organization: {
     name: string;
     logo: string | null;
   } | null;

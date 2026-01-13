@@ -23,7 +23,7 @@ export default function DashboardResolver() {
         
         const profile = await Promise.race([profilePromise, timeoutPromise]) as Awaited<ReturnType<typeof api.users.getProfile>>;
         
-        if (!profile.company_id) {
+        if (!profile.organization_id) {
           setError("No organization found.");
           return;
         }
@@ -36,7 +36,7 @@ export default function DashboardResolver() {
         document.cookie = "redirect_path=; path=/; max-age=0";
 
         const targetPath = redirectPath ? redirectPath.replace("/dashboard", "") : "";
-        router.replace(`/dashboard/org/${profile.company_id}${targetPath}`);
+        router.replace(`/dashboard/org/${profile.organization_id}${targetPath}`);
       } catch (error) {
         console.error("[DashboardResolver] Error:", error);
         // If it's a timeout or 401, redirect to login

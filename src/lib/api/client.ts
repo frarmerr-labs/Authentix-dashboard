@@ -42,7 +42,7 @@ export interface PaginatedResponse<T> {
 
 export interface ImportJob {
   id: string;
-  company_id: string;
+  organization_id: string;
   file_name: string;
   file_type: string;
   file_size: number;
@@ -537,7 +537,7 @@ export const api = {
         };
         recent_invoices: Array<{
           id: string;
-          company_id: string;
+          organization_id: string;
           invoice_number: string;
           period_start: string;
           period_end: string;
@@ -557,7 +557,7 @@ export const api = {
         total_outstanding: number;
         billing_profile: {
           id: string;
-          company_id: string;
+          organization_id: string;
           platform_fee_amount: number;
           certificate_unit_price: number;
           gst_rate: number;
@@ -837,8 +837,8 @@ export const api = {
         id: string;
         email: string;
         full_name: string | null;
-        company_id: string;
-        company: {
+        organization_id: string;
+        organization: {
           name: string;
           logo: string | null;
         } | null;

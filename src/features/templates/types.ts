@@ -117,7 +117,7 @@ export interface Template {
   height: number | null;
   fields: CertificateField[];
   certificate_count: number;
-  company_id: string;
+  organization_id: string;
   readonly created_at: string;
   readonly updated_at: string;
   /** Computed at runtime - signed URL for preview */

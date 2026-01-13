@@ -45,7 +45,7 @@ interface UserData {
   full_name: string | null;
 }
 
-interface CompanyData {
+interface OrganizationData {
   name: string;
   logo: string | null;
 }
@@ -54,7 +54,7 @@ interface DashboardShellProps {
   children: React.ReactNode;
   orgId: string;
   initialUser: UserData | null;
-  initialCompany: CompanyData | null;
+  initialCompany: OrganizationData | null;
 }
 
 interface NavItem {
@@ -162,8 +162,8 @@ function ThemeButton({ theme, onCycle, expanded }: ThemeButtonProps) {
 interface UserMenuProps {
   readonly user: UserData | null;
   readonly profileName: string;
-  readonly companyName: string;
-  readonly companyLogo: string | null;
+  readonly organizationName: string;
+  readonly organizationLogo: string | null;
   readonly orgId: string;
   readonly onLogout: () => void;
   readonly mounted: boolean;
@@ -172,8 +172,8 @@ interface UserMenuProps {
 function UserMenu({
   user,
   profileName,
-  companyName,
-  companyLogo,
+  organizationName,
+  organizationLogo,
   orgId,
   onLogout,
   mounted,
@@ -196,13 +196,13 @@ function UserMenu({
           <div className="text-right hidden sm:block">
             <p className="text-sm font-medium">{profileName || "User"}</p>
             <p className="text-xs text-muted-foreground">
-              {companyName || "Company"}
+              {organizationName || "Organization"}
             </p>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold overflow-hidden">
-            {companyLogo ? (
+            {organizationLogo ? (
               <img
-                src={companyLogo}
+                src={organizationLogo}
                 alt=""
                 className="w-full h-full object-cover"
               />
@@ -255,8 +255,8 @@ export function DashboardShell({
   // Derived values
   const profileName =
     initialUser?.full_name ?? initialUser?.email?.split("@")[0] ?? "User";
-  const companyName = initialCompany?.name ?? "Company";
-  const companyLogo = initialCompany?.logo ?? null;
+  const organizationName = initialCompany?.name ?? "Organization";
+  const organizationLogo = initialCompany?.logo ?? null;
 
   // Mounted effect for hydration safety
   useEffect(() => {
@@ -391,8 +391,8 @@ export function DashboardShell({
                 <UserMenu
                   user={initialUser}
                   profileName={profileName}
-                  companyName={companyName}
-                  companyLogo={companyLogo}
+                  organizationName={organizationName}
+                  organizationLogo={organizationLogo}
                   orgId={orgId}
                   onLogout={handleLogout}
                   mounted={mounted}

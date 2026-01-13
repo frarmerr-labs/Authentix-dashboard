@@ -13,20 +13,20 @@ import { BillingOverview } from './components/billing-overview';
 import { InvoiceList } from './components/invoice-list';
 
 export default function BillingPage() {
-  const [company, setCompany] = useState<{ id: string; name: string } | null>(null);
+  const [organization, setOrganization] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    loadCompany();
+    loadOrganization();
   }, []);
 
-  const loadCompany = async () => {
+  const loadOrganization = async () => {
     try {
       const organizationData = await api.organizations.get() as { id: string; name: string };
-      setCompany({ id: organizationData.id, name: organizationData.name });
+      setOrganization({ id: organizationData.id, name: organizationData.name });
     } catch (error) {
-      console.error('Error loading company:', error);
+      console.error('Error loading organization:', error);
       router.push('/login');
     } finally {
       setLoading(false);
@@ -41,7 +41,7 @@ export default function BillingPage() {
     );
   }
 
-  if (!company) {
+  if (!organization) {
     return null;
   }
 
@@ -51,13 +51,13 @@ export default function BillingPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Track your usage and manage invoices for {company.name}
+          Track your usage and manage invoices for {organization.name}
         </p>
       </div>
 
       {/* Billing Overview */}
       <div className="mb-8">
-        <BillingOverview companyId={company.id} />
+        <BillingOverview organizationId={organization.id} />
       </div>
 
       {/* Invoice History */}
@@ -65,7 +65,7 @@ export default function BillingPage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Invoice History
         </h2>
-        <InvoiceList companyId={company.id} />
+        <InvoiceList organizationId={organization.id} />
       </div>
     </div>
   );
