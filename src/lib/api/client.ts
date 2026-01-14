@@ -122,14 +122,28 @@ async function apiRequest<T>(
 
   const url = `${API_BASE_URL}${endpoint}`;
 
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
   let response: Response;
   try {
     response = await fetch(url, {
       ...options,
       headers,
       credentials: "include", // Include HttpOnly cookies
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
   } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(
+        "TIMEOUT",
+        "Request timed out. Please try again.",
+        { url, endpoint }
+      );
+    }
     const errorMessage = error instanceof Error ? error.message : "Network error";
     console.error(`[API] Network error for ${url}:`, errorMessage);
     throw new ApiError(
@@ -145,17 +159,49 @@ async function apiRequest<T>(
 
   try {
     if (contentType?.includes("application/json")) {
-      data = (await response.json()) as ApiResponse<T>;
+      const responseText = await response.text();
+      console.log(`[API] Raw response for ${endpoint}:`, {
+        status: response.status,
+        contentType,
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 500), // First 500 chars
+      });
+      
+      try {
+        data = JSON.parse(responseText) as ApiResponse<T>;
+        console.log(`[API] Parsed JSON for ${endpoint}:`, {
+          success: data.success,
+          hasError: !!data.error,
+          hasData: !!data.data,
+          errorType: typeof data.error,
+          dataKeys: data.data ? Object.keys(data.data) : [],
+          fullData: JSON.stringify(data, null, 2),
+        });
+      } catch (parseError) {
+        console.error(`[API] JSON parse error for ${endpoint}:`, parseError);
+        console.error(`[API] Response text that failed to parse:`, responseText);
+        throw new ApiError(
+          "PARSE_ERROR",
+          `Failed to parse JSON response`,
+          { status: response.status, statusText: response.statusText, responseText: responseText.substring(0, 200) }
+        );
+      }
     } else {
       const text = await response.text();
+      console.error(`[API] Non-JSON response for ${endpoint}:`, {
+        status: response.status,
+        contentType,
+        textPreview: text.substring(0, 200),
+      });
       throw new ApiError(
         "INVALID_RESPONSE",
-        `Unexpected response format`,
+        `Unexpected response format: ${contentType}`,
         { status: response.status, statusText: response.statusText }
       );
     }
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    console.error(`[API] Error processing response for ${endpoint}:`, error);
     throw new ApiError(
       "PARSE_ERROR",
       `Failed to process response`,
@@ -164,6 +210,16 @@ async function apiRequest<T>(
   }
 
   if (!response.ok || !data.success) {
+    console.error(`[API] Request failed for ${endpoint}:`, {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      dataSuccess: data.success,
+      data: JSON.stringify(data, null, 2),
+      error: data.error,
+      errorType: typeof data.error,
+    });
+
     // Handle 401 by potentially redirecting to login
     if (response.status === 401) {
       // Session expired - could trigger refresh here
@@ -179,8 +235,24 @@ async function apiRequest<T>(
         ? error
         : `HTTP ${response.status}: ${response.statusText}`;
 
-    throw new ApiError(errorCode, errorMessage);
+    // Preserve status code for 409 (ORG_INDUSTRY_REQUIRED) and other specific errors
+    const apiError = new ApiError(errorCode, errorMessage);
+    // Attach status to error object for checking
+    Object.defineProperty(apiError, 'status', {
+      value: response.status,
+      writable: false,
+      enumerable: true,
+    });
+    throw apiError;
   }
+
+  console.log(`[API] Request successful for ${endpoint}:`, {
+    success: data.success,
+    hasData: !!data.data,
+    dataType: typeof data.data,
+    dataKeys: data.data ? Object.keys(data.data) : [],
+    fullData: JSON.stringify(data, null, 2),
+  });
 
   return data;
 }
@@ -331,33 +403,139 @@ export const api = {
       return response.data!;
     },
 
+    /**
+     * Get template editor data (template + version + source file + fields)
+     */
+    getEditorData: async (templateId: string) => {
+      const response = await apiRequest<{
+        template: {
+          id: string;
+          title: string;
+          category_id: string;
+          subcategory_id: string;
+          category?: {
+            id: string;
+            name: string;
+          };
+          subcategory?: {
+            id: string;
+            name: string;
+          };
+        };
+        version: {
+          id: string;
+          version_number: number;
+          status: string;
+        };
+        source_file: {
+          id: string;
+          file_name: string;
+          file_type: string;
+          bucket?: string;
+          path?: string;
+          url?: string; // Signed URL if available
+        };
+        fields: Array<{
+          id: string;
+          field_key: string;
+          label: string;
+          type: string;
+          page_number: number;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          style?: Record<string, unknown>;
+          required?: boolean;
+        }>;
+      }>(`/templates/${templateId}/editor`);
+      return response.data!;
+    },
+
+    /**
+     * Save template version fields (replace semantics)
+     */
+    saveFields: async (
+      templateId: string,
+      versionId: string,
+      fields: Array<{
+        field_key: string;
+        label: string;
+        type: string;
+        page_number: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        style?: Record<string, unknown>;
+        required?: boolean;
+      }>
+    ) => {
+      const response = await apiRequest<{
+        fields: Array<{
+          id: string;
+          field_key: string;
+          label: string;
+          type: string;
+          page_number: number;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          style?: Record<string, unknown>;
+          required?: boolean;
+        }>;
+      }>(`/templates/${templateId}/versions/${versionId}/fields`, {
+        method: "PUT",
+        body: JSON.stringify({ fields }),
+      });
+      return response.data!;
+    },
+
+    /**
+     * Create a new certificate template
+     * 
+     * IMPORTANT: Frontend sends ONLY metadata and file blob.
+     * Backend is responsible for ALL storage path generation.
+     * Frontend MUST NOT:
+     * - Build files.path
+     * - Reference org/... paths
+     * - Decide bucket or folder names
+     * - Generate any storage-related paths
+     */
     create: async (
       file: File,
-      metadata: {
-        name: string;
-        description?: string;
-        file_type?: "pdf" | "png" | "jpg" | "jpeg";
-        certificate_category?: string;
-        certificate_subcategory?: string;
-        width?: number;
-        height?: number;
-        fields?: unknown[];
-        status?: "draft" | "active" | "archived";
+      params: {
+        title: string;
+        category_id: string;
+        subcategory_id: string;
       }
     ): Promise<{
       id: string;
-      name: string;
-      file_type: string;
-      status: string;
-      certificate_category?: string;
-      certificate_subcategory?: string;
-      width?: number;
-      height?: number;
-      fields?: unknown[];
+      title: string;
+      category_id: string;
+      subcategory_id: string;
+      template?: {
+        id: string;
+        title: string;
+        status: string;
+      };
+      version?: {
+        id: string;
+        version_number: number;
+      };
+      source_file?: {
+        id: string;
+        file_name: string;
+        file_type: string;
+      };
     }> => {
+      // Send only file blob and metadata - backend handles all storage logic
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("metadata", JSON.stringify(metadata));
+      formData.append("title", params.title);
+      formData.append("category_id", params.category_id);
+      formData.append("subcategory_id", params.subcategory_id);
 
       const response = await fetch(`${API_BASE_URL}/templates`, {
         method: "POST",
@@ -367,14 +545,23 @@ export const api = {
 
       const data = (await response.json()) as ApiResponse<{
         id: string;
-        name: string;
-        file_type: string;
-        status: string;
-        certificate_category?: string;
-        certificate_subcategory?: string;
-        width?: number;
-        height?: number;
-        fields?: unknown[];
+        title: string;
+        category_id: string;
+        subcategory_id: string;
+        template?: {
+          id: string;
+          title: string;
+          status: string;
+        };
+        version?: {
+          id: string;
+          version_number: number;
+        };
+        source_file?: {
+          id: string;
+          file_name: string;
+          file_type: string;
+        };
       }>;
       if (!response.ok || !data.success) {
         const errorMsg =
@@ -418,10 +605,23 @@ export const api = {
     },
 
     getPreviewUrl: async (id: string) => {
-      const response = await apiRequest<{ preview_url: string }>(
-        `/templates/${id}/preview`
+      const response = await apiRequest<{ url: string }>(
+        `/templates/${id}/preview-url`
       );
-      return response.data!.preview_url;
+      return response.data!.url;
+    },
+
+    /**
+     * Generate/retry preview for a template version
+     */
+    generatePreview: async (templateId: string, versionId: string) => {
+      const response = await apiRequest<{ url?: string; status: string }>(
+        `/templates/${templateId}/versions/${versionId}/preview`,
+        {
+          method: "POST",
+        }
+      );
+      return response.data!;
     },
 
     getCategories: async () => {
@@ -658,6 +858,61 @@ export const api = {
       }
 
       return data.data!;
+    },
+  },
+
+  /**
+   * Catalog API
+   */
+  catalog: {
+    /**
+     * Get grouped certificate categories
+     * Returns groups with dividers (e.g., "Course Certificates", "Company Work")
+     * May return 409 with ORG_INDUSTRY_REQUIRED if organization industry is not set
+     */
+    getCategories: async () => {
+      console.log('[API] Fetching categories from /catalog/categories');
+      const response = await apiRequest<{
+        groups: Array<{
+          group_key: string;
+          label: string;
+          items: Array<{
+            id: string;
+            name: string;
+            key: string;
+            // Add other fields as needed
+          }>;
+        }>;
+        flat?: Array<{
+          id: string;
+          name: string;
+          key: string;
+        }>;
+      }>("/catalog/categories");
+      console.log('[API] Categories response:', JSON.stringify(response, null, 2));
+      console.log('[API] Categories data:', response.data);
+      console.log('[API] Returning response.data:', response.data);
+      // response.data should be { groups: [...], flat: [...] }
+      return response.data!;
+    },
+
+    /**
+     * Get subcategories for a specific category
+     * Returns subcategories with metadata
+     * May return 404/403 if category is invalid or not allowed
+     */
+    getSubcategories: async (categoryId: string) => {
+      const response = await apiRequest<{
+        category_id: string;
+        items: Array<{
+          id: string;
+          key: string;
+          name: string;
+          sort_order: number | null;
+          is_org_custom: boolean;
+        }>;
+      }>(`/catalog/categories/${categoryId}/subcategories`);
+      return response.data!;
     },
   },
 

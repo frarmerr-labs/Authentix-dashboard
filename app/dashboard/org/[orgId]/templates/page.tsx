@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Eye, Trash2, FileImage, FileType, Sparkles } from "lucide-react";
+import { Plus, FileText, Eye, Trash2, FileImage, FileType, Sparkles, RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { TemplateUploadDialog } from "@/components/templates/TemplateUploadDialog";
@@ -11,6 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useOrg } from "@/lib/org";
+import { getCachedPreviewUrl, cachePreviewUrl, getPreviewCacheKey, clearPreviewCache } from "@/lib/utils/preview-url-cache";
+import { useCatalogCategories } from "@/lib/hooks/use-catalog-categories";
+
+interface TemplatePreviewState {
+  [templateId: string]: {
+    url: string | null;
+    loading: boolean;
+    error: boolean;
+  };
+}
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
@@ -21,8 +31,11 @@ export default function TemplatesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewStates, setPreviewStates] = useState<TemplatePreviewState>({});
+  const [retryingPreviews, setRetryingPreviews] = useState<Set<string>>(new Set());
   const router = useRouter();
   const { orgPath } = useOrg();
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Generate consistent color for category/subcategory badges
   const getColorForText = (text: string): { bg: string; text: string; border: string } => {
@@ -48,9 +61,90 @@ export default function TemplatesPage() {
     return colors[index]!;
   };
 
+  // Pre-fetch categories when page loads (for instant upload dialog)
+  useCatalogCategories();
+
   useEffect(() => {
     loadTemplates();
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
   }, []);
+
+  // Refresh templates after upload (with delay)
+  const handleUploadSuccess = useCallback(() => {
+    // Clear any existing timeout
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+
+    // Refresh after a short delay
+    refreshTimeoutRef.current = setTimeout(() => {
+      loadTemplates();
+    }, 1000);
+  }, []);
+
+  // Load preview URL for a template (with caching)
+  const loadPreviewUrl = useCallback(async (template: any): Promise<string | null> => {
+    const cacheKey = getPreviewCacheKey(
+      template.id,
+      template.preview_file_id,
+      template.preview_bucket,
+      template.preview_path
+    );
+
+    // Check cache first
+    const cached = getCachedPreviewUrl(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // If preview_url already exists, cache and return it
+    if (template.preview_url) {
+      cachePreviewUrl(cacheKey, template.preview_url);
+      return template.preview_url;
+    }
+
+    // If preview data exists but no URL, try to fetch it
+    if (template.preview_bucket && template.preview_path) {
+      try {
+        const url = await api.templates.getPreviewUrl(template.id);
+        if (url) {
+          cachePreviewUrl(cacheKey, url);
+          return url;
+        }
+      } catch (err) {
+        console.error(`Error loading preview for template ${template.id}:`, err);
+      }
+    }
+
+    return null;
+  }, []);
+
+  // Load preview URLs for all templates
+  const loadAllPreviews = useCallback(async (templatesList: any[]) => {
+    const previewPromises = templatesList.map(async (template) => {
+      const url = await loadPreviewUrl(template);
+      return { templateId: template.id, url };
+    });
+
+    const results = await Promise.all(previewPromises);
+    const newPreviewStates: TemplatePreviewState = {};
+
+    results.forEach(({ templateId, url }) => {
+      newPreviewStates[templateId] = {
+        url,
+        loading: false,
+        error: url === null,
+      };
+    });
+
+    setPreviewStates((prev) => ({ ...prev, ...newPreviewStates }));
+  }, [loadPreviewUrl]);
 
   const loadTemplates = async () => {
     try {
@@ -68,6 +162,9 @@ export default function TemplatesPage() {
       const result = await response.json();
       const data = result.data?.items || [];
       setTemplates(data);
+
+      // Load preview URLs in background (non-blocking)
+      loadAllPreviews(data);
     } catch (error: unknown) {
       console.error("Error loading templates:", error);
       setTemplates([]);
@@ -75,6 +172,60 @@ export default function TemplatesPage() {
       setLoading(false);
     }
   };
+
+  // Retry preview generation
+  const handleRetryPreview = useCallback(async (template: any) => {
+    // Need version ID to generate preview
+    const versionId = template.version?.id || template.latest_version?.id;
+    if (!versionId || retryingPreviews.has(template.id)) return;
+
+    setRetryingPreviews((prev) => new Set(prev).add(template.id));
+    setPreviewStates((prev) => ({
+      ...prev,
+      [template.id]: { 
+        url: prev[template.id]?.url || null, 
+        loading: true, 
+        error: false 
+      },
+    }));
+
+    try {
+      // Clear cache for this template
+      clearPreviewCache(template.id);
+
+      // Generate preview
+      await api.templates.generatePreview(template.id, versionId);
+
+      // Wait a bit then reload preview URL
+      setTimeout(async () => {
+        const url = await loadPreviewUrl(template);
+        setPreviewStates((prev) => ({
+          ...prev,
+          [template.id]: { url, loading: false, error: url === null },
+        }));
+        setRetryingPreviews((prev) => {
+          const next = new Set(prev);
+          next.delete(template.id);
+          return next;
+        });
+      }, 2000);
+    } catch (err: any) {
+      console.error(`Error retrying preview for template ${template.id}:`, err);
+      setPreviewStates((prev) => ({
+        ...prev,
+        [template.id]: { 
+          url: prev[template.id]?.url || null, 
+          loading: false, 
+          error: true 
+        },
+      }));
+      setRetryingPreviews((prev) => {
+        const next = new Set(prev);
+        next.delete(template.id);
+        return next;
+      });
+    }
+  }, [loadPreviewUrl, retryingPreviews]);
 
   const handleGenerateCertificate = (template: any) => {
     // Navigate to generate certificate page which will auto-select this template
@@ -183,39 +334,112 @@ export default function TemplatesPage() {
               >
                 {/* Preview / Icon - No gaps from top, left, right */}
                 <div className="aspect-[4/3] bg-muted relative overflow-hidden">
-                  {template.preview_url ? (
-                    (template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg') ? (
-                      <img
-                        src={template.preview_url}
-                        alt={template.name}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      // PDF preview using iframe so the browser renders first page
-                      <iframe
-                        src={template.preview_url}
-                        className="w-full h-full border-0"
-                      />
-                    )
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      {template.file_type === 'pdf' ? (
-                        <FileType className="h-12 w-12 text-muted-foreground/50" />
+                  {(() => {
+                    const previewState = previewStates[template.id];
+                    const previewUrl = previewState?.url || template.preview_url;
+                    const isLoading = previewState?.loading || false;
+                    const hasError = previewState?.error || false;
+                    const hasPreviewData = template.preview_bucket || template.preview_path || template.preview_file_id;
+                    const previewStatus = template.preview_status;
+
+                    // Show skeleton while loading
+                    if (isLoading || (!previewUrl && hasPreviewData && previewStatus !== "failed")) {
+                      return (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-muted/50">
+                          <div className="w-full h-full bg-muted animate-pulse" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                            <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                            <span className="text-xs text-muted-foreground">Generating preview...</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Show preview if available
+                    if (previewUrl) {
+                      return (template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg') ? (
+                        <img
+                          src={previewUrl}
+                          alt={template.title || template.name}
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                          onError={() => {
+                            // Handle image load error
+                            setPreviewStates((prev) => ({
+                              ...prev,
+                              [template.id]: { url: null, loading: false, error: true },
+                            }));
+                          }}
+                        />
                       ) : (
-                        <FileImage className="h-12 w-12 text-muted-foreground/50" />
-                      )}
-                    </div>
-                  )}
+                        // PDF preview using iframe so the browser renders first page
+                        <iframe
+                          src={previewUrl}
+                          className="w-full h-full border-0"
+                        />
+                      );
+                    }
+
+                    // Show placeholder with retry option if preview data exists but failed
+                    if (hasPreviewData && (hasError || previewStatus === "failed")) {
+                      const versionId = template.version?.id || template.latest_version?.id;
+                      return (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-muted/50 gap-2">
+                          {template.file_type === 'pdf' ? (
+                            <FileType className="h-12 w-12 text-muted-foreground/50" />
+                          ) : (
+                            <FileImage className="h-12 w-12 text-muted-foreground/50" />
+                          )}
+                          <span className="text-xs text-muted-foreground text-center px-2">
+                            Preview unavailable
+                          </span>
+                          {versionId && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRetryPreview(template);
+                              }}
+                              disabled={retryingPreviews.has(template.id)}
+                            >
+                              {retryingPreviews.has(template.id) ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                              Retry preview
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Default placeholder (no preview data)
+                    return (
+                      <div className="w-full h-full flex items-center justify-center">
+                        {template.file_type === 'pdf' ? (
+                          <FileType className="h-12 w-12 text-muted-foreground/50" />
+                        ) : (
+                          <FileImage className="h-12 w-12 text-muted-foreground/50" />
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {template.preview_url && (
+                    {(previewStates[template.id]?.url || template.preview_url) && (
                       <Button
                         type="button"
                         variant="secondary"
                         size="sm"
                         className="h-8 gap-1.5 shadow-lg"
                         onClick={() => {
-                          setPreviewTemplate(template);
+                          setPreviewTemplate({
+                            ...template,
+                            preview_url: previewStates[template.id]?.url || template.preview_url,
+                          });
                           setPreviewOpen(true);
                         }}
                       >
@@ -237,7 +461,7 @@ export default function TemplatesPage() {
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     <div>
-                      <h3 className="font-semibold truncate mb-1">{template.name}</h3>
+                      <h3 className="font-semibold truncate mb-1">{template.title || template.name}</h3>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {template.certificate_category && (() => {
                           const category = template.certificate_category;
@@ -326,43 +550,46 @@ export default function TemplatesPage() {
       <TemplateUploadDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
-        onSuccess={loadTemplates}
+        onSuccess={handleUploadSuccess}
       />
 
       {/* Preview Modal */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-4xl w-full">
-          {previewTemplate && (
-            <>
-              <DialogHeader>
-                <DialogTitle>{previewTemplate.name}</DialogTitle>
-              </DialogHeader>
-              <div className="mt-4">
-                <div className="w-full aspect-[4/3] bg-muted overflow-hidden rounded-md">
-                  {(previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || previewTemplate.file_type === 'jpeg') && previewTemplate.preview_url ? (
-                    <img
-                      src={previewTemplate.preview_url}
-                      alt={previewTemplate.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : previewTemplate.preview_url ? (
-                    <iframe
-                      src={previewTemplate.preview_url}
-                      className="w-full h-full border-0"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      {previewTemplate.file_type === 'pdf' ? (
-                        <FileType className="h-12 w-12 text-muted-foreground/50" />
-                      ) : (
-                        <FileImage className="h-12 w-12 text-muted-foreground/50" />
-                      )}
-                    </div>
-                  )}
+          {previewTemplate && (() => {
+            const previewUrl = previewStates[previewTemplate.id]?.url || previewTemplate.preview_url;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{previewTemplate.title || previewTemplate.name}</DialogTitle>
+                </DialogHeader>
+                <div className="mt-4">
+                  <div className="w-full aspect-[4/3] bg-muted overflow-hidden rounded-md">
+                    {(previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || previewTemplate.file_type === 'jpeg') && previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt={previewTemplate.title || previewTemplate.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : previewUrl ? (
+                      <iframe
+                        src={previewUrl}
+                        className="w-full h-full border-0"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        {previewTemplate.file_type === 'pdf' ? (
+                          <FileType className="h-12 w-12 text-muted-foreground/50" />
+                        ) : (
+                          <FileImage className="h-12 w-12 text-muted-foreground/50" />
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

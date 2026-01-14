@@ -21,12 +21,15 @@ import { cookies } from "next/headers";
 interface Template {
   id: string;
   name: string;
+  title?: string; // New field from backend
   description: string | null;
   file_type: string;
   file_path: string;
   status: string;
   certificate_category: string | null;
   certificate_subcategory: string | null;
+  category?: { id: string; name: string };
+  subcategory?: { id: string; name: string };
   width: number | null;
   height: number | null;
   fields: unknown[];
@@ -34,7 +37,12 @@ interface Template {
   organization_id: string;
   created_at: string;
   updated_at: string;
+  // Preview fields from backend
   preview_url?: string;
+  preview_bucket?: string | null;
+  preview_path?: string | null;
+  preview_file_id?: string | null;
+  preview_status?: "pending" | "ready" | "failed" | null;
 }
 
 interface TemplateListResponse {
@@ -140,32 +148,38 @@ export async function GET(request: NextRequest) {
 
     const templates = templatesResponse.data.items;
 
-    // Fetch preview URLs in parallel with concurrency limit
-    const CONCURRENCY = 5;
-    const templatesWithPreviews: Template[] = [];
+    // Process templates - use preview_url if available, otherwise try to generate from preview_bucket/path
+    const templatesWithPreviews: Template[] = templates.map((template) => {
+      // If preview_url already exists, use it
+      if (template.preview_url) {
+        return template;
+      }
 
-    for (let i = 0; i < templates.length; i += CONCURRENCY) {
-      const batch = templates.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.all(
-        batch.map(async (template) => {
-          if (!template.id) return template;
+      // If preview_bucket and preview_path exist, try to generate signed URL
+      if (template.preview_bucket && template.preview_path) {
+        try {
+          // Backend should return preview_url in the template response
+          // If not, we'll fetch it separately (but this should be rare)
+          // For now, we'll mark it as having preview data but no URL yet
+          return {
+            ...template,
+            preview_status: template.preview_status || "pending",
+          };
+        } catch {
+          // Graceful fallback
+          return {
+            ...template,
+            preview_status: "failed",
+          };
+        }
+      }
 
-          try {
-            const previewResponse = await serverApiRequest<{ url: string }>(
-              `/templates/${template.id}/preview-url`
-            );
-            return {
-              ...template,
-              preview_url: previewResponse.data?.url,
-            };
-          } catch {
-            // Graceful fallback - template without preview
-            return template;
-          }
-        })
-      );
-      templatesWithPreviews.push(...batchResults);
-    }
+      // No preview data available
+      return {
+        ...template,
+        preview_status: template.preview_status || null,
+      };
+    });
 
     const result: TemplateListResponse = {
       items: templatesWithPreviews,
