@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Upload, Loader2, CheckCircle2, Globe, MapPin, Phone, Mail } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
+import { getOrganizationLogoUrl } from "@/lib/utils/organization-logo";
 
 export default function OrganizationPage() {
   const [organizationData, setOrganizationData] = useState({
@@ -55,8 +56,9 @@ export default function OrganizationPage() {
         gst_number: organization.gst_number || "",
         cin_number: organization.cin_number || "",
       });
-      // Prefer backend-provided logo_url; if missing, fall back to no logo (placeholder)
-      setLogoPreview(organization.logo_url || "");
+      // Use utility to construct logo URL from backend response structure
+      const logoUrl = getOrganizationLogoUrl(organization);
+      setLogoPreview(logoUrl || "");
 
       // Load application_id from API settings separately
       try {
@@ -100,9 +102,10 @@ export default function OrganizationPage() {
         logo || undefined
       );
 
-      // After save, prefer updated logo_url if present
-      if (updatedOrganization.logo_url) {
-        setLogoPreview(updatedOrganization.logo_url);
+      // After save, use utility to construct logo URL from backend response
+      const updatedLogoUrl = getOrganizationLogoUrl(updatedOrganization);
+      if (updatedLogoUrl) {
+        setLogoPreview(updatedLogoUrl);
       }
 
       setSuccess(true);

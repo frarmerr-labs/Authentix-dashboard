@@ -35,7 +35,12 @@ interface DashboardStats {
 
 interface ImportItem {
   id: string;
-  file_name: string;
+  // Backend may return file_name (derived) or use files.original_name
+  file_name?: string | null;
+  // Fallback: files.original_name from related files table
+  files?: {
+    original_name?: string | null;
+  } | null;
   status: "completed" | "failed" | "processing";
   total_rows: number | null;
   created_at: string;
@@ -43,13 +48,15 @@ interface ImportItem {
 
 interface VerificationItem {
   id: string;
-  // Backend may return different result strings; keep this flexible
+  // Backend returns data from certificate_verification_events table
   result?: string | null;
   verified_at: string;
-  // Updated to match API client shape: `certificate` (singular), with optional fields
+  // Certificate data from certificate_verification_events
   certificate?: {
     recipient_name?: string | null;
     course_name?: string | null;
+    // Additional fields that may come from certificate_verification_events
+    [key: string]: unknown;
   } | null;
 }
 
@@ -212,7 +219,8 @@ function RecentImportsCard({ orgId, imports }: RecentImportsCardProps) {
                 <div className="flex-1 pt-1">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <p className="text-sm font-medium truncate">
-                      {item.file_name}
+                      {/* Use file_name if backend returns it, otherwise fallback to files.original_name */}
+                      {item.file_name || item.files?.original_name || "Unknown file"}
                     </p>
                     <Badge
                       variant={

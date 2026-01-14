@@ -203,14 +203,24 @@ function LoginPageContent() {
 
 /**
  * Login page using React 19 Server Actions
+ * Wrapped in Suspense for useSearchParams support
  */
+export const dynamic = 'force-dynamic';
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background px-4">
+          <div className="w-full max-w-[380px]">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
+              <p className="text-sm text-muted-foreground">Loading login page...</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
       <LoginPageContent />
     </Suspense>
   );

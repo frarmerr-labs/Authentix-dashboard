@@ -23,6 +23,7 @@ import {
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardLoadingScreen } from "@/components/dashboard/DashboardLoadingScreen";
 import { retryWithBackoff } from "@/lib/utils/retry";
+import { getOrganizationLogoUrl } from "@/lib/utils/organization-logo";
 
 interface OrgLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,39 @@ interface MeResponse {
   } | null;
 }
 
+// Backend returns: { profile: {...}, organization: {...}, membership: {...} }
+// Frontend expects: { id, email, full_name, organization, membership: { id, role } }
+interface BackendUserProfileResponse {
+  profile: {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    full_name: string | null;
+  };
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    application_id: string;
+    billing_status: string;
+    industry_id: string | null;
+    logo: {
+      file_id: string;
+      bucket: string;
+      path: string;
+    } | null;
+  } | null;
+  membership: {
+    id: string;
+    organization_id: string;
+    username: string;
+    role_id: string;
+    role_key: string;
+    status: string;
+  } | null;
+}
+
 interface UserProfileResponse {
   id: string;
   email: string;
@@ -50,11 +84,16 @@ interface UserProfileResponse {
   organization?: {
     id: string;
     name: string;
-    // New logo fields from backend
-    logo_file_id: string | null;
+    // Logo fields from backend - supports multiple structures
+    logo_file_id?: string | null;
     logo_bucket?: string | null;
     logo_path?: string | null;
     logo_url?: string | null;
+    // Nested structure: logo.bucket/path
+    logo?: {
+      bucket?: string | null;
+      path?: string | null;
+    } | null;
   } | null;
   membership?: {
     id: string;
@@ -119,16 +158,36 @@ export default async function OrgDashboardLayout({
   // Fetch session and profile first (these are fast)
   const { session, profile } = await getServerAuthData();
 
+  // Log session data for debugging
+  console.log("[DashboardLayout] Session check:", JSON.stringify({
+    hasSession: !!session,
+    sessionValid: session?.valid,
+    hasUser: !!session?.user,
+    userId: session?.user?.id,
+    userEmail: session?.user?.email,
+    emailVerified: session?.user?.email_verified,
+    sessionData: session,
+  }, null, 2));
+
   // Only check email verification if we have a valid session
   // This avoids unnecessary calls when not authenticated
   let me: MeResponse | null = null;
   if (session?.valid && session.user) {
     try {
       const meResult = await serverApiRequest<MeResponse>("/auth/me");
+      
+      // Log /auth/me response
+      console.log("[DashboardLayout] /auth/me response:", JSON.stringify({
+        success: meResult.success,
+        hasData: !!meResult.data,
+        emailVerified: meResult.data?.user?.email_verified,
+        fullResponse: meResult,
+      }, null, 2));
+      
       me = meResult.data;
     } catch (error) {
       // If /auth/me fails, we'll check email_verified from session if available
-      console.debug("[DashboardLayout] /auth/me check failed, using session data");
+      console.warn("[DashboardLayout] /auth/me check failed, using session data:", error);
     }
   }
 
@@ -159,7 +218,25 @@ export default async function OrgDashboardLayout({
     // Handles PROFILE_NOT_READY, 404, and transient 500 errors
     userProfile = await retryWithBackoff(
       async () => {
-        const profileResult = await serverApiRequest<UserProfileResponse>("/users/me");
+        const profileResult = await serverApiRequest<BackendUserProfileResponse>("/users/me");
+        
+        // Log full backend response for debugging
+        console.log("[DashboardLayout] /users/me response:", JSON.stringify({
+          success: profileResult.success,
+          hasData: !!profileResult.data,
+          dataKeys: profileResult.data ? Object.keys(profileResult.data) : [],
+          organization: profileResult.data?.organization ? {
+            id: profileResult.data.organization.id,
+            name: profileResult.data.organization.name,
+            hasLogo: !!profileResult.data.organization.logo,
+          } : null,
+          membership: profileResult.data?.membership ? {
+            id: profileResult.data.membership.id,
+            role: profileResult.data.membership.role_key,
+          } : null,
+          fullResponse: profileResult,
+        }, null, 2));
+        
         if (!profileResult.data) {
           throw new ServerApiError(
             "PROFILE_NOT_READY",
@@ -167,7 +244,31 @@ export default async function OrgDashboardLayout({
             404
           );
         }
-        return profileResult.data;
+
+        const backendData = profileResult.data;
+        
+        // Transform backend response to frontend format
+        // Backend returns: { profile, organization, membership }
+        // Frontend expects: { id, email, full_name, organization, membership: { id, role } }
+        const transformed: UserProfileResponse = {
+          id: backendData.profile.id,
+          email: backendData.profile.email,
+          full_name: backendData.profile.full_name,
+          organization: backendData.organization ? {
+            id: backendData.organization.id,
+            name: backendData.organization.name,
+            logo: backendData.organization.logo ? {
+              bucket: backendData.organization.logo.bucket,
+              path: backendData.organization.logo.path,
+            } : null,
+          } : null,
+          membership: backendData.membership ? {
+            id: backendData.membership.id,
+            role: backendData.membership.role_key,
+          } : null,
+        };
+        
+        return transformed;
       },
       {
         maxAttempts: 5,
@@ -177,6 +278,17 @@ export default async function OrgDashboardLayout({
         retryableStatusCodes: [404, 500, 503],
       }
     );
+    
+    // Log successful profile fetch
+    console.log("[DashboardLayout] User profile loaded successfully:", JSON.stringify({
+      userId: userProfile.id,
+      email: userProfile.email,
+      hasOrganization: !!userProfile.organization,
+      organizationId: userProfile.organization?.id,
+      organizationName: userProfile.organization?.name,
+      hasMembership: !!userProfile.membership,
+      membershipRole: userProfile.membership?.role,
+    }, null, 2));
   } catch (error) {
     // Handle specific error codes
     if (error instanceof ServerApiError) {
@@ -224,7 +336,17 @@ export default async function OrgDashboardLayout({
 
   // Verify organization and membership exist
   // Frontend is read-only - backend must have created these
+  // If missing, show loading screen
   if (!userProfile.organization || !userProfile.membership) {
+    // Log what's missing for debugging
+    console.warn("[DashboardLayout] Missing organization or membership:", JSON.stringify({
+      hasOrganization: !!userProfile.organization,
+      hasMembership: !!userProfile.membership,
+      organization: userProfile.organization,
+      membership: userProfile.membership,
+      fullProfile: userProfile,
+    }, null, 2));
+    
     return (
       <DashboardLoadingScreen
         message="Finalizing account setup"
@@ -255,13 +377,13 @@ export default async function OrgDashboardLayout({
     userProfile?.organization
       ? {
           name: userProfile.organization.name,
-          // Prefer backend-provided logo_url; otherwise, no logo (placeholder in UI)
-          logo: userProfile.organization.logo_url ?? null,
+          // Use utility to construct logo URL from backend response structure
+          logo: getOrganizationLogoUrl(userProfile.organization),
         }
       : profile?.organization
       ? {
           name: profile.organization.name,
-          logo: profile.organization.logo_url ?? null,
+          logo: getOrganizationLogoUrl(profile.organization),
         }
       : null;
 

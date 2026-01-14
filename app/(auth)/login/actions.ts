@@ -70,11 +70,20 @@ export async function loginAction(
 
     // After successful login, bootstrap organization (required by backend)
     try {
+      console.log("[Login] Calling bootstrap endpoint...");
       const bootstrapResult = await serverApiRequest<{
         organization: { id: string };
       }>("/auth/bootstrap", {
         method: "POST",
       });
+
+      // Log full bootstrap response
+      console.log("[Login] Bootstrap response:", JSON.stringify({
+        success: bootstrapResult.success,
+        hasData: !!bootstrapResult.data,
+        organization: bootstrapResult.data?.organization,
+        fullResponse: bootstrapResult,
+      }, null, 2));
 
       const orgId = bootstrapResult.data?.organization?.id;
 

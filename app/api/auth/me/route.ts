@@ -57,14 +57,24 @@ export async function GET() {
           id: string;
           email: string;
           full_name: string | null;
-          organization_id: string;
+          organization_id?: string;
           organization: {
+            id: string;
             name: string;
-            // New logo fields - logo is no longer a direct string
-            logo_file_id: string | null;
+            // Logo fields from backend - supports multiple structures
+            logo_file_id?: string | null;
             logo_bucket?: string | null;
             logo_path?: string | null;
             logo_url?: string | null;
+            // Nested structure: logo.bucket/path
+            logo?: {
+              bucket?: string | null;
+              path?: string | null;
+            } | null;
+          } | null;
+          membership?: {
+            id: string;
+            organization_id: string;
           } | null;
         }>("/users/me").catch(() => null),
       ]);
@@ -103,7 +113,7 @@ export async function GET() {
           },
           organization: profile?.organization
             ? {
-                id: profile.organization_id,
+                id: profile.organization_id || profile.organization.id,
                 name: profile.organization.name,
               }
             : null,

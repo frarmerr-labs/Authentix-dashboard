@@ -347,12 +347,16 @@ export interface ServerUserProfile {
   organization_id: string;
   organization: {
     name: string;
-    // New logo fields from backend - logo is no longer a direct string URL
-    logo_file_id: string | null;
+    // Logo fields from backend - supports multiple structures
+    logo_file_id?: string | null;
     logo_bucket?: string | null;
     logo_path?: string | null;
-    // Optional pre-signed URL if backend provides it
     logo_url?: string | null;
+    // Nested structure: logo.bucket/path
+    logo?: {
+      bucket?: string | null;
+      path?: string | null;
+    } | null;
   } | null;
 }
 

@@ -19,10 +19,19 @@ export default function DashboardResolver() {
         const mePromise = fetch("/api/auth/me", {
           credentials: "include",
         }).then(async (res) => {
+          const responseData = await res.json();
+          
+          // Log full backend response
+          console.log("[DashboardResolver] /api/auth/me response:", JSON.stringify({
+            status: res.status,
+            ok: res.ok,
+            response: responseData,
+          }, null, 2));
+          
           if (!res.ok) {
             throw new Error(`Me request failed: ${res.status}`);
           }
-          return (await res.json()) as {
+          return responseData as {
             success: boolean;
             data?: {
               authenticated: boolean;
@@ -46,9 +55,80 @@ export default function DashboardResolver() {
         }
 
         const orgId = me.data?.organization?.id;
+        console.log("[DashboardResolver] Organization check:", JSON.stringify({
+          hasOrgId: !!orgId,
+          orgId: orgId,
+          authenticated: me.data?.authenticated,
+          hasUser: !!me.data?.user,
+          userId: me.data?.user?.id,
+          userEmail: me.data?.user?.email,
+          fullMeData: me.data,
+        }, null, 2));
+        
         if (!orgId) {
-          setError("No organization found.");
-          return;
+          // Organization missing - try calling bootstrap if we have a session
+          // This handles cases where bootstrap didn't run after login
+          console.log("[DashboardResolver] No organization found, attempting bootstrap...");
+          try {
+            const bootstrapResponse = await fetch("/api/proxy/auth/bootstrap", {
+              method: "POST",
+              credentials: "include",
+            });
+
+            const bootstrapData = await bootstrapResponse.json();
+            
+            // Log full bootstrap response
+            console.log("[DashboardResolver] Bootstrap response:", JSON.stringify({
+              status: bootstrapResponse.status,
+              ok: bootstrapResponse.ok,
+              response: bootstrapData,
+            }, null, 2));
+
+            if (bootstrapResponse.ok && bootstrapData.data?.organization?.id) {
+              const newOrgId = bootstrapData.data.organization.id;
+              console.log("[DashboardResolver] Bootstrap succeeded, redirecting to org:", newOrgId);
+              // Bootstrap succeeded - redirect to new org
+              router.replace(`/dashboard/org/${newOrgId}`);
+              return;
+            } else {
+              console.warn("[DashboardResolver] Bootstrap response missing orgId, retrying /api/auth/me...");
+              
+              // Bootstrap might have succeeded but /users/me isn't ready yet
+              // Retry /api/auth/me a few times with delays
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 1s, 2s, 3s
+                
+                try {
+                  const retryMeResponse = await fetch("/api/auth/me", {
+                    credentials: "include",
+                  });
+                  
+                  if (retryMeResponse.ok) {
+                    const retryMeData = await retryMeResponse.json();
+                    const retryOrgId = retryMeData.data?.organization?.id;
+                    
+                    console.log(`[DashboardResolver] Retry ${attempt}/3 - orgId:`, retryOrgId);
+                    
+                    if (retryOrgId) {
+                      router.replace(`/dashboard/org/${retryOrgId}`);
+                      return;
+                    }
+                  }
+                } catch (retryError) {
+                  console.warn(`[DashboardResolver] Retry ${attempt}/3 failed:`, retryError);
+                }
+              }
+              
+              // If still no org after retries, show error
+              console.error("[DashboardResolver] No organization found after bootstrap and retries");
+              setError("Organization setup is taking longer than expected. Please refresh the page.");
+              return;
+            }
+          } catch (bootstrapError) {
+            console.error("[DashboardResolver] Bootstrap error:", bootstrapError);
+            setError("Failed to set up organization. Please try logging in again.");
+            return;
+          }
         }
 
         // Check for redirect path from saved URLs
@@ -77,10 +157,26 @@ export default function DashboardResolver() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <p className="text-destructive">{error}</p>
-          <button onClick={() => router.push("/login")} className="text-primary hover:underline">Return to login</button>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4 max-w-md px-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-destructive">Setup Error</h2>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+          <div className="flex flex-col gap-2 pt-4">
+            <button
+              onClick={() => router.refresh()}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
+            >
+              Return to Login
+            </button>
+          </div>
         </div>
       </div>
     );

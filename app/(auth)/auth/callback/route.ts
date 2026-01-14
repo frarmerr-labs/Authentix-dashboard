@@ -114,8 +114,30 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      // Call bootstrap immediately after verification to set up organization
+      // This ensures dashboard loads instantly without "Finalizing account setup" screen
+      // Bootstrap requires session cookies (which we just set above)
+      try {
+        const { serverApiRequest } = await import("@/lib/api/server");
+        const bootstrapResult = await serverApiRequest<{
+          organization: { id: string };
+        }>("/auth/bootstrap", {
+          method: "POST",
+        });
+
+        const orgId = bootstrapResult.data?.organization?.id;
+        if (orgId) {
+          // Bootstrap successful - redirect directly to org dashboard
+          return NextResponse.redirect(new URL(`/dashboard/org/${orgId}`, request.url));
+        }
+      } catch (bootstrapError) {
+        // Bootstrap failed - log but continue to dashboard (it will handle the error)
+        // This is non-fatal - user can still access dashboard and bootstrap will retry
+        console.error("[AuthCallback] Bootstrap error (non-fatal):", bootstrapError);
+      }
+
       // Success - redirect to dashboard (or next parameter)
-      // The dashboard layout will handle bootstrap if needed
+      // Dashboard layout will handle bootstrap if it wasn't called here
       return NextResponse.redirect(new URL(next, request.url));
     } catch (exchangeError) {
       console.error("[AuthCallback] Code exchange failed:", exchangeError);

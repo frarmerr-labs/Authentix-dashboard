@@ -675,7 +675,12 @@ export const api = {
         };
         recentImports?: Array<{
           id: string;
-          file_name: string | null;
+          // Backend may return file_name (derived) or use files.original_name
+          file_name?: string | null;
+          // Fallback: files.original_name from related files table
+          files?: {
+            original_name?: string | null;
+          } | null;
           status: string;
           total_rows: number;
           created_at: string;
@@ -714,12 +719,16 @@ export const api = {
         postal_code: string | null;
         gst_number: string | null;
         cin_number: string | null;
-        // New logo fields from backend
-        logo_file_id: string | null;
+        // Logo fields from backend - supports multiple structures
+        logo_file_id?: string | null;
         logo_bucket?: string | null;
         logo_path?: string | null;
-        // Optional pre-signed URL if backend provides it
         logo_url?: string | null;
+        // Nested structure: logo.bucket/path
+        logo?: {
+          bucket?: string | null;
+          path?: string | null;
+        } | null;
         created_at: string;
         updated_at: string;
       }>("/organizations/me");
@@ -758,11 +767,16 @@ export const api = {
       postal_code: string | null;
       gst_number: string | null;
       cin_number: string | null;
-      // New logo fields
-      logo_file_id: string | null;
+      // Logo fields from backend - supports multiple structures
+      logo_file_id?: string | null;
       logo_bucket?: string | null;
       logo_path?: string | null;
       logo_url?: string | null;
+      // Nested structure: logo.bucket/path
+      logo?: {
+        bucket?: string | null;
+        path?: string | null;
+      } | null;
       created_at: string;
       updated_at: string;
     }> => {
@@ -781,7 +795,7 @@ export const api = {
         postal_code: string | null;
         gst_number: string | null;
         cin_number: string | null;
-        logo_file_id: string | null;
+        logo_file_id?: string | null;
         logo_bucket?: string | null;
         logo_path?: string | null;
         logo_url?: string | null;
@@ -877,11 +891,16 @@ export const api = {
         organization_id: string;
         organization: {
           name: string;
-          // New logo fields from backend
-          logo_file_id: string | null;
+          // Logo fields from backend - supports multiple structures
+          logo_file_id?: string | null;
           logo_bucket?: string | null;
           logo_path?: string | null;
           logo_url?: string | null;
+          // Nested structure: logo.bucket/path
+          logo?: {
+            bucket?: string | null;
+            path?: string | null;
+          } | null;
         } | null;
       }>("/users/me");
       return response.data!;

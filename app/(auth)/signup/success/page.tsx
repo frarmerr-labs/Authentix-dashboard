@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mail, CheckCircle2, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { Mail, CheckCircle2, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,6 +51,15 @@ function SignupSuccessContent() {
       );
 
       if (!response.ok) {
+        // If 401, user needs to login (no session cookie)
+        // This is expected in signup flow - don't treat as error
+        if (response.status === 401) {
+          // Email might be verified but no session - show verified state
+          setIsVerified(true);
+          setIsChecking(false);
+          isCheckingRef.current = false;
+          return true;
+        }
         throw new Error(`Verification check failed: ${response.status}`);
       }
 
@@ -67,7 +76,7 @@ function SignupSuccessContent() {
       }
 
       if (result.data.verified) {
-        // Email is verified - show success and guide to login
+        // Email is verified - stop polling and show login CTA
         setIsVerified(true);
         setIsChecking(false);
         isCheckingRef.current = false;
@@ -134,10 +143,21 @@ function SignupSuccessContent() {
     };
   }, [checkVerification, isVerified]);
 
-  // NOTE: Do not auto-redirect after verification.
-  // Keep the confirmed screen visible and let the user proceed manually.
+  // Auto-redirect to login when verified (optional - can be disabled if you prefer manual button)
+  useEffect(() => {
+    if (isVerified && email) {
+      // Optional: Auto-redirect after 2 seconds, or user can click button immediately
+      // Comment out the timeout if you want manual button only
+      const redirectTimer = setTimeout(() => {
+        const loginUrl = `/login?verified=1&email=${encodeURIComponent(email)}`;
+        router.push(loginUrl);
+      }, 2000);
 
-  // Show verified state - guide user to login
+      return () => clearTimeout(redirectTimer);
+    }
+  }, [isVerified, email, router]);
+
+  // Show verified state - redirect to login (or show button)
   if (isVerified) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
@@ -149,15 +169,21 @@ function SignupSuccessContent() {
               </div>
               <h1 className="text-2xl font-bold">Email verified</h1>
               <p className="text-muted-foreground">
-                Your email has been verified successfully. Click below to sign in and continue to your dashboard.
+                Your email has been verified successfully. Please sign in to continue to your dashboard.
               </p>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <div className="pt-2">
                 <Button
                   onClick={() => {
                     // Prefill email + show verified banner on login
                     const loginUrl = email
                       ? `/login?verified=1&email=${encodeURIComponent(email)}`
-                      : "/login";
+                      : "/login?verified=1";
                     router.push(loginUrl);
                   }}
                   className="w-full bg-primary hover:bg-primary/90"
@@ -167,6 +193,9 @@ function SignupSuccessContent() {
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Redirecting to login in a moment...
+              </p>
             </div>
           </Card>
         </div>
