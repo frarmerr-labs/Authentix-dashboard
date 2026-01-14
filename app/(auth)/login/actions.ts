@@ -5,6 +5,7 @@ import {
   backendAuthRequest,
   setServerAuthCookies,
   sanitizeErrorMessage,
+  serverApiRequest,
 } from "@/lib/api/server";
 
 /**
@@ -66,7 +67,102 @@ export async function loginAction(
 
     // Set HttpOnly cookies
     await setServerAuthCookies(result.session);
+
+    // After successful login, bootstrap organization (required by backend)
+    try {
+      const bootstrapResult = await serverApiRequest<{
+        organization: { id: string };
+      }>("/auth/bootstrap", {
+        method: "POST",
+      });
+
+      const orgId = bootstrapResult.data?.organization?.id;
+
+      // Only redirect after bootstrap succeeds
+      if (orgId) {
+        redirect(`/dashboard/org/${orgId}`);
+      } else {
+        // Fallback to dashboard if org id is missing (should not happen)
+        redirect("/dashboard");
+      }
+    } catch (bootstrapError) {
+      // NEXT_REDIRECT is not an error - it's how Next.js handles redirects
+      // Check if this is a redirect error and re-throw it immediately
+      if (bootstrapError && typeof bootstrapError === 'object') {
+        const error = bootstrapError as any;
+        // Check for NEXT_REDIRECT by message or digest
+        if (
+          error.message === "NEXT_REDIRECT" ||
+          error.digest?.startsWith("NEXT_REDIRECT")
+        ) {
+          // Re-throw redirect errors so Next.js can handle them
+          throw bootstrapError;
+        }
+      }
+      
+      // Only log actual errors, not redirects
+      console.error("[Login] Bootstrap error:", bootstrapError);
+      
+      // Log detailed error information for debugging
+      if (bootstrapError instanceof Error) {
+        console.error("[Login] Bootstrap error details:", {
+          message: bootstrapError.message,
+          name: bootstrapError.name,
+          stack: bootstrapError.stack,
+        });
+      }
+      
+      // If it's a ServerApiError, log the code and details
+      if (bootstrapError && typeof bootstrapError === 'object' && 'code' in bootstrapError) {
+        console.error("[Login] Bootstrap API error:", {
+          code: (bootstrapError as any).code,
+          message: (bootstrapError as any).message,
+          status: (bootstrapError as any).status,
+          details: (bootstrapError as any).details,
+        });
+      }
+      
+      // Extract error message and step label for better UX
+      let errorMessage = "Failed to set up organization. Please try again.";
+      let stepLabel = "";
+
+      if (bootstrapError && typeof bootstrapError === 'object') {
+        const errorObj = bootstrapError as any;
+        
+        // Try to get step label from error details
+        if (errorObj.details?.step) {
+          stepLabel = ` (Step: ${errorObj.details.step})`;
+        }
+        
+        // Get error message
+        if (errorObj.message) {
+          errorMessage = errorObj.message;
+        } else if (errorObj.details?.message) {
+          errorMessage = errorObj.details.message;
+        } else {
+          errorMessage = sanitizeErrorMessage(bootstrapError);
+        }
+      } else {
+        errorMessage = sanitizeErrorMessage(bootstrapError) || errorMessage;
+      }
+
+      return {
+        error: `${errorMessage}${stepLabel}`,
+        success: false,
+      };
+    }
   } catch (error) {
+    // NEXT_REDIRECT is not an error - re-throw it so Next.js can handle it
+    if (error && typeof error === 'object') {
+      const nextError = error as any;
+      if (
+        nextError.message === "NEXT_REDIRECT" ||
+        nextError.digest?.startsWith("NEXT_REDIRECT")
+      ) {
+        throw error; // Re-throw redirect errors
+      }
+    }
+    
     // Check if error is about email not verified
     const errorMessage = sanitizeErrorMessage(error);
     if (
@@ -74,7 +170,7 @@ export async function loginAction(
       errorMessage.toLowerCase().includes("verif")
     ) {
       // Redirect to verify email page
-      redirect("/auth/verify-email");
+      redirect("/verify-email");
     }
 
     // Return sanitized error message
@@ -84,8 +180,5 @@ export async function loginAction(
     };
   }
 
-  // Check email verification status before redirecting to dashboard
-  // If backend returns email_verified in login response, we could check here
-  // For now, the dashboard layout will handle the redirect
-  redirect("/dashboard");
+  // Redirect handled above after bootstrap
 }

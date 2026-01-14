@@ -140,9 +140,10 @@ export async function signupAction(
     }
     // If no session, user needs to verify email first (this is expected behavior)
     
-    // Success - redirect to success page
+    // Success - redirect to success page with email parameter for polling
     // Note: redirect() throws a NEXT_REDIRECT error which is expected behavior
-    redirect("/signup/success");
+    const emailParam = encodeURIComponent((email as string).trim());
+    redirect(`/signup/success?email=${emailParam}`);
   } catch (error) {
     // Check if this is a Next.js redirect (which is actually success)
     if (error && typeof error === "object" && "digest" in error) {

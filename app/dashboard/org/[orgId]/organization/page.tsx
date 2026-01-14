@@ -55,7 +55,8 @@ export default function OrganizationPage() {
         gst_number: organization.gst_number || "",
         cin_number: organization.cin_number || "",
       });
-      setLogoPreview(organization.logo || "");
+      // Prefer backend-provided logo_url; if missing, fall back to no logo (placeholder)
+      setLogoPreview(organization.logo_url || "");
 
       // Load application_id from API settings separately
       try {
@@ -94,10 +95,14 @@ export default function OrganizationPage() {
     setSuccess(false);
 
     try {
-      const updatedOrganization = await api.organizations.update(organizationData, logo || undefined);
-      
-      if (updatedOrganization.logo) {
-        setLogoPreview(updatedOrganization.logo);
+      const updatedOrganization = await api.organizations.update(
+        organizationData,
+        logo || undefined
+      );
+
+      // After save, prefer updated logo_url if present
+      if (updatedOrganization.logo_url) {
+        setLogoPreview(updatedOrganization.logo_url);
       }
 
       setSuccess(true);

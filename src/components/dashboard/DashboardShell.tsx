@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
-  Award,
   LayoutDashboard,
   FileText,
   Upload,
@@ -22,6 +21,7 @@ import {
   Sparkles,
   CreditCard,
 } from "lucide-react";
+import Image from "next/image";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import {
@@ -326,8 +326,14 @@ export function DashboardShell({
                 href={`/dashboard/org/${orgId}`}
                 className="flex items-center gap-2"
               >
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-                  <Award className="h-4 w-4 text-primary-foreground" />
+                <div className="w-8 h-8 rounded-lg bg-card border flex items-center justify-center shrink-0">
+                  <Image
+                    src="/brand/authentix-24-24.svg"
+                    width={18}
+                    height={18}
+                    alt="Authentix"
+                    priority
+                  />
                 </div>
                 {sidebarExpanded && (
                   <span className="font-bold text-base whitespace-nowrap">

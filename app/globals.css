@@ -40,17 +40,17 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
   
-  /* Primary scale for orange theme */
-  --color-primary-50: #fff7ed;
-  --color-primary-100: #ffedd5;
-  --color-primary-200: #fed7aa;
-  --color-primary-300: #fdba74;
-  --color-primary-400: #fb923c;
-  --color-primary-500: #ff5400;
-  --color-primary-600: #ea580c;
-  --color-primary-700: #c2410c;
-  --color-primary-800: #9a3412;
-  --color-primary-900: #7c2d12;
+  /* Primary scale (green) aligned to brand primary #3ECF8E */
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #3ecf8e;
+  --color-primary-600: #21b27a;
+  --color-primary-700: #159263;
+  --color-primary-800: #0f7450;
+  --color-primary-900: #0b5a3e;
 }
 
 /* ============================================
@@ -65,7 +65,8 @@
     --card-foreground: 213 14% 14%;
     --popover: 0 0% 100%;
     --popover-foreground: 213 14% 14%;
-    --primary: 149 54% 58%;
+    /* Brand primary: #3ECF8E */
+    --primary: 153 60% 53%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 17% 98%;
     --secondary-foreground: 213 14% 14%;
@@ -77,7 +78,7 @@
     --destructive-foreground: 0 0% 98%;
     --border: 210 18% 82%;
     --input: 210 18% 82%;
-    --ring: 149 54% 58%;
+    --ring: 153 60% 53%;
     --radius: 0.5rem;
     
     /* GitHub light colors */
@@ -103,7 +104,8 @@
     --card-foreground: 210 40% 90%;
     --popover: 0 0% 9%;
     --popover-foreground: 210 40% 90%;
-    --primary: 149 54% 58%;
+    /* Brand primary: #3ECF8E */
+    --primary: 153 60% 53%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 13%;
     --secondary-foreground: 210 40% 90%;
@@ -115,7 +117,7 @@
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 19%;
     --input: 0 0% 19%;
-    --ring: 149 54% 58%;
+    --ring: 153 60% 53%;
     
     /* GitHub dark colors with #171717 base */
     --color-fg-default: #e6edf3;

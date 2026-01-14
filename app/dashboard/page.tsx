@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api/client";
-import { Loader2 } from "lucide-react";
 
 /**
  * Dashboard resolver - redirects to /dashboard/org/[orgId]
@@ -15,15 +13,40 @@ export default function DashboardResolver() {
   useEffect(() => {
     async function resolveOrg() {
       try {
-        // Use a timeout to avoid hanging if the request is slow
-        const profilePromise = api.users.getProfile();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Request timeout")), 5000)
-        );
-        
-        const profile = await Promise.race([profilePromise, timeoutPromise]) as Awaited<ReturnType<typeof api.users.getProfile>>;
-        
-        if (!profile.organization_id) {
+        const TIMEOUT_MS = 12000;
+        let timeoutId: NodeJS.Timeout | undefined;
+
+        const mePromise = fetch("/api/auth/me", {
+          credentials: "include",
+        }).then(async (res) => {
+          if (!res.ok) {
+            throw new Error(`Me request failed: ${res.status}`);
+          }
+          return (await res.json()) as {
+            success: boolean;
+            data?: {
+              authenticated: boolean;
+              user: { id: string; email: string } | null;
+              organization?: { id: string; name?: string } | null;
+            };
+          };
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("Request timeout")), TIMEOUT_MS);
+        });
+
+        const me = await Promise.race([mePromise, timeoutPromise]);
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (!me.data?.authenticated) {
+          router.replace("/login");
+          return;
+        }
+
+        const orgId = me.data?.organization?.id;
+        if (!orgId) {
           setError("No organization found.");
           return;
         }
@@ -36,10 +59,16 @@ export default function DashboardResolver() {
         document.cookie = "redirect_path=; path=/; max-age=0";
 
         const targetPath = redirectPath ? redirectPath.replace("/dashboard", "") : "";
-        router.replace(`/dashboard/org/${profile.organization_id}${targetPath}`);
-      } catch (error) {
+        router.replace(`/dashboard/org/${orgId}${targetPath}`);
+      } catch (error: unknown) {
+        // Handle timeout gracefully
+        if (error instanceof Error && error.message === "Request timeout") {
+          setError("Request timed out. Please try again.");
+          return;
+        }
+
         console.error("[DashboardResolver] Error:", error);
-        // If it's a timeout or 401, redirect to login
+        // Fallback: redirect to login
         router.replace("/login");
       }
     }
@@ -58,10 +87,105 @@ export default function DashboardResolver() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading workspace...</p>
+    <div className="min-h-screen bg-background">
+      {/* Dashboard Skeleton */}
+      <div className="flex">
+        {/* Sidebar Skeleton */}
+        <aside className="fixed top-0 left-0 z-40 h-screen w-14 bg-card border-r">
+          <div className="flex flex-col h-full">
+            {/* Logo skeleton */}
+            <div className="h-16 flex items-center justify-center border-b">
+              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
+            </div>
+            
+            {/* Navigation skeleton */}
+            <nav className="flex-1 p-2 space-y-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-10 w-full rounded-lg bg-muted animate-pulse"
+                />
+              ))}
+            </nav>
+            
+            {/* Bottom actions skeleton */}
+            <div className="p-2 border-t space-y-1">
+              <div className="h-10 w-full rounded-lg bg-muted animate-pulse" />
+              <div className="h-10 w-full rounded-lg bg-muted animate-pulse" />
+            </div>
+          </div>
+        </aside>
+
+        {/* Main content skeleton */}
+        <div className="pl-14 flex-1">
+          {/* Header skeleton */}
+          <header className="h-16 bg-card border-b sticky top-0 z-30">
+            <div className="h-full px-6 flex items-center justify-between">
+              <div className="h-6 w-48 bg-muted animate-pulse rounded" />
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+              </div>
+            </div>
+          </header>
+
+          {/* Content skeleton */}
+          <main className="p-6">
+            <div className="max-w-[1400px] mx-auto space-y-8">
+              {/* Header section skeleton */}
+              <div className="space-y-2">
+                <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+                <div className="h-4 w-96 bg-muted animate-pulse rounded" />
+              </div>
+
+              {/* KPI Cards skeleton */}
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card p-6 space-y-3"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="h-11 w-11 rounded-xl bg-muted animate-pulse" />
+                      <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
+                    </div>
+                    <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+                    <div className="h-9 w-20 bg-muted animate-pulse rounded" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Activity Grid skeleton */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card"
+                  >
+                    <div className="border-b bg-muted/30 p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 bg-muted animate-pulse rounded" />
+                        <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+                      </div>
+                      <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                    </div>
+                    <div className="p-6 space-y-4">
+                      {Array.from({ length: 3 }).map((_, j) => (
+                        <div key={j} className="flex items-start gap-4">
+                          <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
+                            <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );

@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Award, Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { loginAction, type LoginState } from "./actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import Image from "next/image";
 
 /**
  * Submit button with loading state using React 19's useFormStatus
@@ -44,25 +47,63 @@ const initialState: LoginState = {
 };
 
 /**
- * Login page using React 19 Server Actions
+ * Login page content component (needs Suspense for useSearchParams)
  */
-export default function LoginPage() {
+function LoginPageContent() {
   const [state, formAction] = useActionState(loginAction, initialState);
   const [showPassword, setShowPassword] = useState(false);
+  const searchParams = useSearchParams();
+  const isVerified = searchParams.get("verified") === "1";
+  const prefilledEmail = searchParams.get("email");
+  const isBootstrapError = state.error && (
+    state.error.toLowerCase().includes("bootstrap") ||
+    state.error.toLowerCase().includes("organization") ||
+    state.error.toLowerCase().includes("set up")
+  );
+
+  const handleRetryBootstrap = async () => {
+    // Retry login which will retry bootstrap
+    const form = document.querySelector('form') as HTMLFormElement;
+    if (form) {
+      form.requestSubmit();
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-[440px]">
+      <div className="w-full max-w-[380px]">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary mb-4">
-            <Award className="h-7 w-7 text-white" />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center mb-4">
+            <Image
+              src="/brand/authentix-24-24.svg"
+              width={48}
+              height={48}
+              alt="Authentix"
+              priority
+            />
           </div>
-          <h1 className="text-2xl font-bold">Welcome back</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Sign in to your Authentix account
-          </p>
+          {!isVerified && (
+            <>
+              <h1 className="text-2xl font-bold">Welcome back</h1>
+              <p className="text-sm text-muted-foreground mt-2">
+                Sign in to your Authentix account
+              </p>
+            </>
+          )}
         </div>
+
+        {/* Verified Success Message */}
+        {isVerified && (
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
+              <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0" />
+              <p className="text-sm font-medium text-primary">
+                Email verified. Please sign in to continue.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Login Card */}
         <Card className="p-8 shadow-sm">
@@ -72,13 +113,14 @@ export default function LoginPage() {
                 Email
               </Label>
               <Input
-                  id="email"
+                id="email"
                 name="email"
-                  type="email"
-                  placeholder="name@company.com"
-                  required
+                type="email"
+                placeholder="name@company.com"
+                required
                 autoComplete="email"
-                  className="h-10"
+                className="h-10"
+                defaultValue={prefilledEmail || undefined}
               />
             </div>
 
@@ -120,11 +162,23 @@ export default function LoginPage() {
             </div>
 
             {state.error && (
-              <div 
-                className="bg-destructive/10 border border-destructive/50 text-destructive px-4 py-3 rounded-lg text-sm"
-                role="alert"
-              >
-                {state.error}
+              <div className="space-y-3">
+                <div
+                  className="bg-destructive/10 border border-destructive/50 text-destructive px-4 py-3 rounded-lg text-sm"
+                  role="alert"
+                >
+                  {state.error}
+                </div>
+                {isBootstrapError && (
+                  <Button
+                    type="button"
+                    onClick={handleRetryBootstrap}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Retry Setup
+                  </Button>
+                )}
               </div>
             )}
 
@@ -144,5 +198,20 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Login page using React 19 Server Actions
+ */
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }

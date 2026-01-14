@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Award, Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { signupAction, type SignupState } from "./actions";
 
@@ -104,10 +105,16 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-[440px]">
+      <div className="w-full max-w-[380px]">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary mb-4">
-            <Award className="h-7 w-7 text-white" />
+          <div className="inline-flex items-center justify-center mb-4">
+            <Image
+              src="/brand/authentix-24-24.svg"
+              width={48}
+              height={48}
+              alt="Authentix"
+              priority
+            />
           </div>
           <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="text-sm text-muted-foreground mt-2">

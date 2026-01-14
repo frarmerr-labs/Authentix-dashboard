@@ -230,6 +230,16 @@ export const api = {
       });
     },
 
+    bootstrap: async () => {
+      const response = await apiRequest<{
+        organization: { id: string; name?: string; logo?: string | null };
+        membership?: { id: string; role?: string };
+      }>("/auth/bootstrap", {
+        method: "POST",
+      });
+      return response.data!;
+    },
+
     getSession: async () => {
       return authApiRequest<{
         user: {
@@ -243,8 +253,10 @@ export const api = {
 
     /**
      * Get current authenticated user info including email verification status
+     * @param email Optional email parameter for cross-device verification checks
      */
-    me: async () => {
+    me: async (email?: string) => {
+      const url = email ? `/auth/me?email=${encodeURIComponent(email)}` : "/auth/me";
       const response = await apiRequest<{
         authenticated: boolean;
         user: {
@@ -257,7 +269,20 @@ export const api = {
           id: string;
           name: string;
         } | null;
-      }>("/auth/me");
+      }>(url);
+      return response.data!;
+    },
+
+    /**
+     * Check verification status by email (cookie-independent)
+     * Useful for cross-device verification checks
+     */
+    checkVerificationStatus: async (email: string) => {
+      const response = await apiRequest<{
+        verified: boolean;
+        email?: string;
+        user_id?: string;
+      }>(`/auth/verification-status?email=${encodeURIComponent(email)}`);
       return response.data!;
     },
 
@@ -643,25 +668,25 @@ export const api = {
     getStats: async () => {
       const response = await apiRequest<{
         stats: {
-          totalCertificates: number;
-          pendingJobs: number;
-          verificationsToday: number;
-          revokedCertificates: number;
+          totalCertificates?: number;
+          pendingJobs?: number;
+          verificationsToday?: number;
+          revokedCertificates?: number;
         };
-        recentImports: Array<{
+        recentImports?: Array<{
           id: string;
           file_name: string | null;
           status: string;
           total_rows: number;
           created_at: string;
         }>;
-        recentVerifications: Array<{
+        recentVerifications?: Array<{
           id: string;
-          result: string;
+          result?: string | null;
           verified_at: string;
-          certificate: {
-            recipient_name: string;
-            course_name: string | null;
+          certificate?: {
+            recipient_name?: string | null;
+            course_name?: string | null;
           } | null;
         }>;
       }>("/dashboard/stats");
@@ -689,7 +714,12 @@ export const api = {
         postal_code: string | null;
         gst_number: string | null;
         cin_number: string | null;
-        logo: string | null;
+        // New logo fields from backend
+        logo_file_id: string | null;
+        logo_bucket?: string | null;
+        logo_path?: string | null;
+        // Optional pre-signed URL if backend provides it
+        logo_url?: string | null;
         created_at: string;
         updated_at: string;
       }>("/organizations/me");
@@ -728,7 +758,11 @@ export const api = {
       postal_code: string | null;
       gst_number: string | null;
       cin_number: string | null;
-      logo: string | null;
+      // New logo fields
+      logo_file_id: string | null;
+      logo_bucket?: string | null;
+      logo_path?: string | null;
+      logo_url?: string | null;
       created_at: string;
       updated_at: string;
     }> => {
@@ -747,7 +781,10 @@ export const api = {
         postal_code: string | null;
         gst_number: string | null;
         cin_number: string | null;
-        logo: string | null;
+        logo_file_id: string | null;
+        logo_bucket?: string | null;
+        logo_path?: string | null;
+        logo_url?: string | null;
         created_at: string;
         updated_at: string;
       };
@@ -840,7 +877,11 @@ export const api = {
         organization_id: string;
         organization: {
           name: string;
-          logo: string | null;
+          // New logo fields from backend
+          logo_file_id: string | null;
+          logo_bucket?: string | null;
+          logo_path?: string | null;
+          logo_url?: string | null;
         } | null;
       }>("/users/me");
       return response.data!;

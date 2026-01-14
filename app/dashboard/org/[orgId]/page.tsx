@@ -27,10 +27,10 @@ import { Badge } from "@/components/ui/badge";
 // ============================================================================
 
 interface DashboardStats {
-  totalCertificates: number;
-  pendingJobs: number;
-  verificationsToday: number;
-  revokedCertificates: number;
+  totalCertificates?: number | null;
+  pendingJobs?: number | null;
+  verificationsToday?: number | null;
+  revokedCertificates?: number | null;
 }
 
 interface ImportItem {
@@ -43,11 +43,13 @@ interface ImportItem {
 
 interface VerificationItem {
   id: string;
-  result: "valid" | "invalid";
+  // Backend may return different result strings; keep this flexible
+  result?: string | null;
   verified_at: string;
-  certificates?: {
-    recipient_name: string;
-    course_name: string;
+  // Updated to match API client shape: `certificate` (singular), with optional fields
+  certificate?: {
+    recipient_name?: string | null;
+    course_name?: string | null;
   } | null;
 }
 
@@ -266,7 +268,7 @@ function RecentVerificationsCard({
         {verifications.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-sm text-muted-foreground">
-              No verifications yet
+              No verification activity yet
             </p>
           </div>
         ) : (
@@ -282,16 +284,16 @@ function RecentVerificationsCard({
                 <div className="flex-1 pt-1">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <p className="text-sm font-medium truncate">
-                      {item.certificates?.recipient_name || "Unknown"}
+                      {item.certificate?.recipient_name || "Unknown"}
                     </p>
                     <Badge
                       variant={item.result === "valid" ? "default" : "destructive"}
                     >
-                      {item.result}
+                      {item.result || "unknown"}
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
-                    {item.certificates?.course_name || "N/A"} •{" "}
+                    {item.certificate?.course_name || "N/A"} •{" "}
                     {getTimeAgo(item.verified_at)}
                   </p>
                 </div>
@@ -312,12 +314,13 @@ export default async function OrgDashboardPage({ params }: PageProps) {
   const { orgId } = await params;
   const data = await getDashboardData();
 
-  // Default data if fetch failed
-  const stats = data?.stats ?? {
-    totalCertificates: 0,
-    pendingJobs: 0,
-    verificationsToday: 0,
-    revokedCertificates: 0,
+  // Default data if fetch failed or is partial
+  const rawStats = data?.stats ?? {};
+  const stats = {
+    totalCertificates: rawStats.totalCertificates ?? 0,
+    pendingJobs: rawStats.pendingJobs ?? 0,
+    verificationsToday: rawStats.verificationsToday ?? 0,
+    revokedCertificates: rawStats.revokedCertificates ?? 0,
   };
   const recentImports = data?.recentImports ?? [];
   const recentVerifications = data?.recentVerifications ?? [];
