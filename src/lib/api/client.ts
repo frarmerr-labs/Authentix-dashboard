@@ -379,19 +379,17 @@ export const api = {
    * Templates API
    */
   templates: {
-    list: async (params?: {
-      page?: number;
-      limit?: number;
-      status?: string;
-      sort_by?: string;
-      sort_order?: "asc" | "desc";
-    }) => {
-      const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.set("page", params.page.toString());
-      if (params?.limit) queryParams.set("limit", params.limit.toString());
-      if (params?.status) queryParams.set("status", params.status);
-      if (params?.sort_by) queryParams.set("sort_by", params.sort_by);
-      if (params?.sort_order) queryParams.set("sort_order", params.sort_order);
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        sort_by?: string;
+        sort_order?: "asc" | "desc";
+      }) => {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.set("page", params.page.toString());
+        if (params?.limit) queryParams.set("limit", params.limit.toString());
+        if (params?.sort_by) queryParams.set("sort_by", params.sort_by);
+        if (params?.sort_order) queryParams.set("sort_order", params.sort_order);
 
       const response = await apiRequest<PaginatedResponse<unknown>>(
         `/templates?${queryParams.toString()}`
@@ -736,7 +734,6 @@ export const api = {
       updates: {
         name?: string;
         description?: string;
-        status?: "draft" | "active" | "archived";
         fields?: unknown[];
         width?: number;
         height?: number;

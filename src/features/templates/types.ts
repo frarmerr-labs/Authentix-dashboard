@@ -6,12 +6,6 @@
  */
 
 /**
- * Template status options (const assertion for type narrowing)
- */
-export const TEMPLATE_STATUSES = ["draft", "active", "archived"] as const;
-export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
-
-/**
  * Supported template file types
  */
 export const TEMPLATE_FILE_TYPES = ["pdf", "png", "jpg", "jpeg"] as const;
@@ -110,7 +104,6 @@ export interface Template {
   description: string | null;
   file_type: TemplateFileType;
   file_path: string;
-  status: TemplateStatus;
   certificate_category: string | null;
   certificate_subcategory: string | null;
   width: number | null;
@@ -137,7 +130,6 @@ export interface CreateTemplateMetadata {
   width?: number;
   height?: number;
   fields?: CertificateField[];
-  status?: TemplateStatus;
 }
 
 /**
@@ -147,7 +139,6 @@ export interface CreateTemplateMetadata {
 export interface UpdateTemplateData {
   name?: string;
   description?: string;
-  status?: TemplateStatus;
   fields?: CertificateField[];
   width?: number;
   height?: number;
@@ -159,7 +150,6 @@ export interface UpdateTemplateData {
 export interface TemplateListParams {
   page?: number;
   limit?: number;
-  status?: TemplateStatus;
   sort_by?: TemplateSortField;
   sort_order?: SortOrder;
 }
@@ -202,10 +192,6 @@ export type ApiResult<T> =
 /**
  * Type guards for runtime type checking
  */
-export function isTemplateStatus(value: unknown): value is TemplateStatus {
-  return typeof value === "string" && TEMPLATE_STATUSES.includes(value as TemplateStatus);
-}
-
 export function isTemplateFileType(value: unknown): value is TemplateFileType {
   return typeof value === "string" && TEMPLATE_FILE_TYPES.includes(value as TemplateFileType);
 }
@@ -217,7 +203,6 @@ export function isCertificateFieldType(value: unknown): value is CertificateFiel
 /**
  * Default values using satisfies for type checking
  */
-export const DEFAULT_TEMPLATE_STATUS = "draft" satisfies TemplateStatus;
 export const DEFAULT_SORT_ORDER = "desc" satisfies SortOrder;
 export const DEFAULT_SORT_FIELD = "created_at" satisfies TemplateSortField;
 export const DEFAULT_PAGE_SIZE = 10;

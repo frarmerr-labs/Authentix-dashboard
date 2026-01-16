@@ -41,9 +41,6 @@ export default function TemplatesLoading() {
               {/* Meta */}
               <div className="h-4 w-1/2 bg-muted animate-pulse rounded" />
               
-              {/* Status */}
-              <div className="h-5 w-14 bg-muted animate-pulse rounded-full" />
-              
               {/* Actions */}
               <div className="flex gap-2 pt-2 border-t">
                 <div className="flex-1 h-9 bg-muted animate-pulse rounded" />

@@ -28,7 +28,6 @@ interface Template {
   description?: string | null;
   file_type?: string;
   file_path?: string;
-  status: string;
   // Backend returns category_id and category_name (from v_templates_list view)
   category_id?: string;
   category_name?: string;
@@ -162,6 +161,43 @@ export async function GET(request: NextRequest) {
         hasData: !!templatesResponse.data,
         itemsCount: templatesResponse.data?.items?.length || 0,
       });
+      
+      // Log raw backend data for all templates
+      if (templatesResponse.data?.items) {
+        console.log('[BFF] Raw templates data from backend:', JSON.stringify(
+          templatesResponse.data.items.map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            name: t.name,
+            file_type: t.file_type,
+            source_file: t.source_file ? {
+              id: t.source_file.id,
+              mime_type: t.source_file.mime_type,
+              path: t.source_file.path,
+              bucket: t.source_file.bucket,
+            } : null,
+            preview_url: t.preview_url,
+            category_name: t.category_name,
+            subcategory_name: t.subcategory_name,
+            category_id: t.category_id,
+            subcategory_id: t.subcategory_id,
+            latest_version_id: t.latest_version_id,
+            preview_file: t.preview_file,
+            preview_bucket: t.preview_bucket,
+            preview_path: t.preview_path,
+            preview_file_id: t.preview_file_id,
+            latest_preview_file_id: t.latest_preview_file_id,
+            storage_path: t.storage_path,
+            description: t.description,
+            width: t.width,
+            height: t.height,
+            created_at: t.created_at,
+            updated_at: t.updated_at,
+          })),
+          null,
+          2
+        ));
+      }
     } catch (error) {
       console.error('[BFF] Error fetching templates from backend:', {
         error,
@@ -299,25 +335,70 @@ export async function GET(request: NextRequest) {
       const previewBucket = template.preview_bucket;
       const previewPath = template.preview_path;
       
-      // Debug: Log normalized values for first template
-      if (templates.indexOf(template) === 0) {
-        console.log('[BFF] Normalized template:', {
-          id: normalizedId,
-          title: normalizedTitle,
-          categoryName,
-          subcategoryName,
-        });
+      // Get file_type from source_file.mime_type first (most accurate), then fallback to file_type or path
+      // Backend may send incorrect file_type, so we prioritize source_file.mime_type
+      let fileType: string | undefined;
+      
+      // Priority 1: Check source_file.mime_type (most reliable)
+      if (template.source_file?.mime_type) {
+        const mimeType = template.source_file.mime_type.toLowerCase();
+        if (mimeType.includes('application/pdf') || mimeType === 'application/pdf') {
+          fileType = 'pdf';
+        } else if (mimeType.includes('image/png') || mimeType === 'image/png') {
+          fileType = 'png';
+        } else if (mimeType.includes('image/jpeg') || mimeType.includes('image/jpg') || 
+                   mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+          fileType = 'jpg';
+        }
       }
-
+      
+      // Priority 2: Check file path extension if mime_type didn't work
+      if (!fileType && template.source_file?.path) {
+        const ext = template.source_file.path.split('.').pop()?.toLowerCase();
+        if (ext === 'png') fileType = 'png';
+        else if (ext === 'jpg' || ext === 'jpeg') fileType = 'jpg';
+        else if (ext === 'pdf') fileType = 'pdf';
+      }
+      
+      // Priority 3: Fallback to template.file_type (may be incorrect from backend)
+      if (!fileType) {
+        fileType = template.file_type;
+      }
+      
+      // Default to pdf if still not determined
+      fileType = fileType || 'pdf';
+      
+      // Debug: Log normalized values for all templates (after fileType is determined)
+      console.log(`[BFF] Normalized template [${templates.indexOf(template) + 1}/${templates.length}]:`, {
+        id: normalizedId,
+        title: normalizedTitle,
+        categoryName,
+        subcategoryName,
+          fileType: fileType,
+          sourceFileMimeType: template.source_file?.mime_type,
+        sourceFilePath: template.source_file?.path,
+        templateFileType: template.file_type,
+        previewUrl: template.preview_url,
+        previewFileId: previewFileId,
+        previewBucket: previewBucket,
+        previewPath: previewPath,
+        rawBackendData: {
+          file_type: template.file_type,
+          source_file: template.source_file,
+          preview_url: template.preview_url,
+          category_name: template.category_name,
+          subcategory_name: template.subcategory_name,
+        },
+      });
+      
       // Build normalized template object
       const normalized: Template = {
         id: normalizedId,
         title: normalizedTitle || 'Untitled Template', // Ensure title is never empty
         name: normalizedTitle || 'Untitled Template', // For backward compatibility
         description: template.description || null,
-        file_type: template.file_type || 'pdf',
+        file_type: fileType,
         file_path: template.file_path || '',
-        status: template.status || 'draft',
         category_id: template.category_id,
         category_name: categoryName || null,
         subcategory_id: template.subcategory_id,

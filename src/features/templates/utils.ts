@@ -52,38 +52,6 @@ export function isPdfFileType(fileType: TemplateFileType): boolean {
 }
 
 /**
- * Get display name for template status
- */
-export function getStatusDisplayName(
-  status: Template["status"]
-): string {
-  const names: Record<Template["status"], string> = {
-    draft: "Draft",
-    active: "Active",
-    archived: "Archived",
-  };
-  return names[status] ?? status;
-}
-
-/**
- * Get badge variant for template status
- */
-export function getStatusBadgeVariant(
-  status: Template["status"]
-): "default" | "secondary" | "outline" {
-  switch (status) {
-    case "active":
-      return "default";
-    case "draft":
-      return "secondary";
-    case "archived":
-      return "outline";
-    default:
-      return "secondary";
-  }
-}
-
-/**
  * Detect file type from File object
  */
 export function detectFileType(file: File): TemplateFileType {

@@ -511,27 +511,43 @@ export default function TemplatesPage() {
 
                     // Show preview if available
                     if (previewUrl) {
-                      return (template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg') ? (
-                        <img
-                          src={previewUrl}
-                          alt={template.title || template.name}
-                          className="w-full h-full object-contain object-center"
-                          style={{ maxWidth: '100%', maxHeight: '100%' }}
-                          onError={() => {
-                            // Handle image load error
-                            setPreviewStates((prev) => ({
-                              ...prev,
-                              [templateId]: { url: null, loading: false, error: true },
-                            }));
-                          }}
-                        />
+                      const isImage = template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg' || 
+                                     template.file_type === 'image/png' || template.file_type === 'image/jpeg' || template.file_type === 'image/jpg';
+                      
+                      return isImage ? (
+                        <div className="w-full h-full flex items-center justify-center bg-white">
+                          <img
+                            src={previewUrl}
+                            alt={template.title || template.name}
+                            className="max-w-full max-h-full w-auto h-auto object-contain"
+                            style={{ 
+                              width: 'auto',
+                              height: 'auto',
+                              maxWidth: '100%',
+                              maxHeight: '100%'
+                            }}
+                            onError={() => {
+                              // Handle image load error
+                              setPreviewStates((prev) => ({
+                                ...prev,
+                                [templateId]: { url: null, loading: false, error: true },
+                              }));
+                            }}
+                          />
+                        </div>
                       ) : (
                         // PDF preview using iframe with fit parameters
-                        <iframe
-                          src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                          className="w-full h-full border-0"
-                          style={{ objectFit: 'contain' }}
-                        />
+                        <div className="w-full h-full flex items-center justify-center bg-white">
+                          <iframe
+                            src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH&zoom=page-fit`}
+                            className="w-full h-full border-0"
+                            style={{ 
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain'
+                            }}
+                          />
+                        </div>
                       );
                     }
 
@@ -608,9 +624,17 @@ export default function TemplatesPage() {
                   {/* File Type Badge */}
                   <div className="absolute top-3 right-3">
                     <Badge variant="secondary" className="text-xs uppercase shadow-sm">
-                      {template.file_type || 'pdf'}
+                      {(() => {
+                        const fileType = template.file_type || template.source_file?.mime_type?.split('/')[1] || 'pdf';
+                        // Normalize file type display
+                        if (fileType === 'jpeg' || fileType === 'jpg') return 'jpg';
+                        if (fileType === 'png') return 'png';
+                        if (fileType === 'pdf') return 'pdf';
+                        return fileType;
+                      })()}
                     </Badge>
                   </div>
+                  
                 </div>
                 
                 {/* Content */}
@@ -672,15 +696,6 @@ export default function TemplatesPage() {
                         {template.certificate_count || 0} certificates issued
                       </p>
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={template.status === 'active' ? "default" : "secondary"}
-                        className="text-xs"
-                      >
-                        {template.status === 'active' ? 'Active' : template.status === 'draft' ? 'Draft' : 'Archived'}
-                      </Badge>
-                    </div>
 
                     {/* Actions */}
                     <div className="flex gap-2 pt-2 border-t">
@@ -738,28 +753,54 @@ export default function TemplatesPage() {
                 </DialogHeader>
                 <div className="mt-4">
                   <div className="w-full bg-muted overflow-hidden rounded-md flex items-center justify-center" style={{ minHeight: '500px', maxHeight: '70vh' }}>
-                    {(previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || previewTemplate.file_type === 'jpeg') && previewUrl ? (
-                      <img
-                        src={previewUrl}
-                        alt={previewTemplate.title || previewTemplate.name}
-                        className="max-w-full max-h-full object-contain object-center"
-                        style={{ width: 'auto', height: 'auto' }}
-                      />
-                    ) : previewUrl ? (
-                      <iframe
-                        src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                        className="w-full h-full border-0"
-                        style={{ minHeight: '500px', maxHeight: '70vh' }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center" style={{ minHeight: '500px' }}>
-                        {previewTemplate.file_type === 'pdf' ? (
-                          <FileType className="h-12 w-12 text-muted-foreground/50" />
-                        ) : (
-                          <FileImage className="h-12 w-12 text-muted-foreground/50" />
-                        )}
-                      </div>
-                    )}
+                    {(() => {
+                      const isImage = previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || 
+                                     previewTemplate.file_type === 'jpeg' || previewTemplate.file_type === 'image/png' || 
+                                     previewTemplate.file_type === 'image/jpeg' || previewTemplate.file_type === 'image/jpg';
+                      
+                      if (isImage && previewUrl) {
+                        return (
+                          <div className="w-full h-full flex items-center justify-center bg-white p-4">
+                            <img
+                              src={previewUrl}
+                              alt={previewTemplate.title || previewTemplate.name}
+                              className="max-w-full max-h-full w-auto h-auto object-contain"
+                              style={{ 
+                                width: 'auto',
+                                height: 'auto',
+                                maxWidth: '100%',
+                                maxHeight: '70vh'
+                              }}
+                            />
+                          </div>
+                        );
+                      } else if (previewUrl) {
+                        return (
+                          <div className="w-full h-full flex items-center justify-center bg-white">
+                            <iframe
+                              src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH&zoom=page-fit`}
+                              className="w-full h-full border-0"
+                              style={{ 
+                                minHeight: '500px', 
+                                maxHeight: '70vh',
+                                width: '100%',
+                                height: '100%'
+                              }}
+                            />
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="w-full h-full flex items-center justify-center" style={{ minHeight: '500px' }}>
+                            {previewTemplate.file_type === 'pdf' ? (
+                              <FileType className="h-12 w-12 text-muted-foreground/50" />
+                            ) : (
+                              <FileImage className="h-12 w-12 text-muted-foreground/50" />
+                            )}
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
               </>
