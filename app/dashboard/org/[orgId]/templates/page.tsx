@@ -511,8 +511,7 @@ export default function TemplatesPage() {
 
                     // Show preview if available
                     if (previewUrl) {
-                      const isImage = template.file_type === 'png' || template.file_type === 'jpg' || template.file_type === 'jpeg' || 
-                                     template.file_type === 'image/png' || template.file_type === 'image/jpeg' || template.file_type === 'image/jpg';
+                      const isImage = ['png', 'jpg', 'jpeg', 'webp', 'image/png', 'image/jpeg', 'image/webp'].includes(template.file_type || '');
                       
                       return isImage ? (
                         <div className="w-full h-full flex items-center justify-center bg-white">
@@ -754,10 +753,8 @@ export default function TemplatesPage() {
                 <div className="mt-4">
                   <div className="w-full bg-muted overflow-hidden rounded-md flex items-center justify-center" style={{ minHeight: '500px', maxHeight: '70vh' }}>
                     {(() => {
-                      const isImage = previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || 
-                                     previewTemplate.file_type === 'jpeg' || previewTemplate.file_type === 'image/png' || 
-                                     previewTemplate.file_type === 'image/jpeg' || previewTemplate.file_type === 'image/jpg';
-                      
+                      const isImage = ['png', 'jpg', 'jpeg', 'webp', 'image/png', 'image/jpeg', 'image/webp'].includes(previewTemplate.file_type || '');
+
                       if (isImage && previewUrl) {
                         return (
                           <div className="w-full h-full flex items-center justify-center bg-white p-4">

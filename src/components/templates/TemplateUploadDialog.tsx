@@ -28,7 +28,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -96,7 +95,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       setCategoryId("");
       setSubcategoryId("");
       setError("");
-      setUploadProgress(0);
     }
   }, [open, uploading]);
 
@@ -121,14 +119,14 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
   };
 
   const handleFileSelected = (selectedFile: File) => {
+    // Valid MIME types that match backend allowlist
+    // Note: image/jpg is not standard - browsers report image/jpeg
     const validTypes = [
       'application/pdf',
       'image/png',
       'image/jpeg',
-      'image/jpg',
-      'application/msword',
+      'image/webp',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-powerpoint',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     ];
 
@@ -141,7 +139,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       }
       setError("");
     } else {
-      setError("Please upload a valid file (PDF, PNG, JPG, DOC, DOCX, PPT, PPTX)");
+      setError("Please upload a valid file (PDF, PNG, JPG, WebP, DOCX, PPTX)");
     }
   };
 
@@ -237,9 +235,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       return;
     }
 
-    // All validations passed - proceed with upload
     setUploading(true);
-    setUploadProgress(0);
     setError("");
     setTitleError(null);
 
@@ -267,7 +263,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       setTitle("");
       setCategoryId("");
       setSubcategoryId("");
-      setUploadProgress(0);
       setTitleError(null);
       
       // Close modal first
@@ -306,8 +301,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       }
       
       setError(errorMessage);
-      setUploadProgress(0);
-      // Keep form data intact for retry
     } finally {
       setUploading(false);
     }
@@ -375,7 +368,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
               <input
                 id="file-upload"
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.pptx"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={uploading}
@@ -419,7 +412,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Supports: PDF, PNG, JPG, DOC, DOCX, PPT, PPTX (Max 10MB)
+                    Supports: PDF, PNG, JPG, WebP, DOCX, PPTX (Max 50MB)
                   </p>
                 </div>
               )}
@@ -596,23 +589,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
             </>
           )}
 
-          {/* Upload Progress / Loading State */}
-          {uploading && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Uploading template...</span>
-                {uploadProgress > 0 && (
-                  <span className="text-muted-foreground">{uploadProgress}%</span>
-                )}
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary transition-all duration-300"
-                  style={{ width: uploadProgress > 0 ? `${uploadProgress}%` : '100%' }}
-                />
-              </div>
-            </div>
-          )}
 
           {/* Error Display with Retry */}
           {error && !uploading && (

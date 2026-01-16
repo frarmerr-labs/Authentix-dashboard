@@ -305,68 +305,65 @@ export async function GET(request: NextRequest) {
     // Normalize and process templates - handle new schema (certificate_templates table)
     // Backend now returns: id, title, category_id, subcategory_id, and should include category/subcategory names via JOINs
     const templatesWithPreviews: Template[] = templates.map((template: any) => {
-      // Backend returns 'id' from certificate_templates table (not template_id)
       const normalizedId = template.id || template.template_id;
-      
-      // Backend returns 'title' from certificate_templates table
       const normalizedTitle = template.title || template.name;
       
-      // Backend returns category_id/subcategory_id (UUIDs) and may include names via JOINs
-      // Check multiple possible locations for category/subcategory names
-      // Fallback to lookup map if backend didn't include names
       const categoryName = 
-        template.category_name ||           // From JOIN with certificate_categories
-        template.category?.name ||          // Nested object
-        template.certificate_category ||     // Legacy field
-        (template.category_id ? categoryNameMap.get(template.category_id) : null); // Fallback lookup
+        template.category_name ||
+        template.category?.name ||
+        template.certificate_category ||
+        (template.category_id ? categoryNameMap.get(template.category_id) : null);
       
       const subcategoryName = 
-        template.subcategory_name ||        // From JOIN with certificate_subcategories
-        template.subcategory?.name ||       // Nested object
-        template.certificate_subcategory ||  // Legacy field
-        (template.subcategory_id ? subcategoryNameMap.get(template.subcategory_id) : null); // Fallback lookup
+        template.subcategory_name ||
+        template.subcategory?.name ||
+        template.certificate_subcategory ||
+        (template.subcategory_id ? subcategoryNameMap.get(template.subcategory_id) : null);
       
-      // Preview fields - backend may return preview_url directly (if include=preview_url)
-      // Or may return preview_bucket/preview_path for client-side URL generation
-      const previewFileId = 
-        template.latest_preview_file_id ||  // From JOIN with certificate_template_versions
-        template.preview_file_id;          // Legacy field
+      // Extract preview file data - check both root level and nested preview_file object
+      const previewFileId =
+        template.latest_preview_file_id ||
+        template.preview_file_id ||
+        template.preview_file?.id;
+
+      const previewBucket =
+        template.preview_bucket ||
+        template.preview_file?.bucket;
+
+      const previewPath =
+        template.preview_path ||
+        template.preview_file?.path;
       
-      const previewBucket = template.preview_bucket;
-      const previewPath = template.preview_path;
-      
-      // Get file_type from source_file.mime_type first (most accurate), then fallback to file_type or path
-      // Backend may send incorrect file_type, so we prioritize source_file.mime_type
-      let fileType: string | undefined;
-      
-      // Priority 1: Check source_file.mime_type (most reliable)
+      // Determine file type from source_file.mime_type or backend file_type
+      // Backend now correctly sets file_type from source_file.mime_type
+      let fileType = template.file_type || 'pdf';
+
+      // Override with source_file.mime_type if available (more reliable)
       if (template.source_file?.mime_type) {
         const mimeType = template.source_file.mime_type.toLowerCase();
-        if (mimeType.includes('application/pdf') || mimeType === 'application/pdf') {
+        if (mimeType === 'application/pdf') {
           fileType = 'pdf';
-        } else if (mimeType.includes('image/png') || mimeType === 'image/png') {
+        } else if (mimeType === 'image/png') {
           fileType = 'png';
-        } else if (mimeType.includes('image/jpeg') || mimeType.includes('image/jpg') || 
-                   mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+        } else if (mimeType === 'image/jpeg') {
           fileType = 'jpg';
+        } else if (mimeType === 'image/webp') {
+          fileType = 'webp';
+        } else if (mimeType.includes('word') || mimeType.includes('document')) {
+          fileType = 'docx';
+        } else if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
+          fileType = 'pptx';
         }
-      }
-      
-      // Priority 2: Check file path extension if mime_type didn't work
-      if (!fileType && template.source_file?.path) {
+      } else if (template.source_file?.path) {
+        // Fallback to path extension if mime_type is missing
         const ext = template.source_file.path.split('.').pop()?.toLowerCase();
         if (ext === 'png') fileType = 'png';
         else if (ext === 'jpg' || ext === 'jpeg') fileType = 'jpg';
+        else if (ext === 'webp') fileType = 'webp';
         else if (ext === 'pdf') fileType = 'pdf';
+        else if (ext === 'docx') fileType = 'docx';
+        else if (ext === 'pptx') fileType = 'pptx';
       }
-      
-      // Priority 3: Fallback to template.file_type (may be incorrect from backend)
-      if (!fileType) {
-        fileType = template.file_type;
-      }
-      
-      // Default to pdf if still not determined
-      fileType = fileType || 'pdf';
       
       // Debug: Log normalized values for all templates (after fileType is determined)
       console.log(`[BFF] Normalized template [${templates.indexOf(template) + 1}/${templates.length}]:`, {

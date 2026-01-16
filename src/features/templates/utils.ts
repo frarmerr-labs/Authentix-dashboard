@@ -74,27 +74,30 @@ export function detectFileType(file: File): TemplateFileType {
 
 /**
  * Validate template file
+ * Note: image/jpg is not a standard MIME type - browsers send image/jpeg
  */
 export function validateTemplateFile(file: File): {
   valid: boolean;
   error?: string;
 } {
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxSize = 50 * 1024 * 1024; // 50MB (matches backend limit)
   const allowedTypes = [
     "application/pdf",
     "image/png",
     "image/jpeg",
-    "image/jpg",
+    "image/webp",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ];
 
   if (file.size > maxSize) {
-    return { valid: false, error: "File size must be less than 10MB" };
+    return { valid: false, error: "File size must be less than 50MB" };
   }
 
   if (!allowedTypes.includes(file.type)) {
     return {
       valid: false,
-      error: "File type must be PDF, PNG, or JPEG",
+      error: "File type must be PDF, PNG, JPEG, WebP, DOCX, or PPTX",
     };
   }
 

@@ -840,14 +840,12 @@ export const api = {
     list: async (params?: {
       page?: number;
       limit?: number;
-      status?: string;
       sort_by?: string;
       sort_order?: "asc" | "desc";
     }): Promise<PaginatedResponse<ImportJob>> => {
       const queryParams = new URLSearchParams();
       if (params?.page) queryParams.set("page", params.page.toString());
       if (params?.limit) queryParams.set("limit", params.limit.toString());
-      if (params?.status) queryParams.set("status", params.status);
       if (params?.sort_by) queryParams.set("sort_by", params.sort_by);
       if (params?.sort_order) queryParams.set("sort_order", params.sort_order);
 

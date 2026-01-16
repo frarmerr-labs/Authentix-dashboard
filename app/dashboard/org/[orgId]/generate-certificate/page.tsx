@@ -77,8 +77,8 @@ export default function GenerateCertificatePage() {
       console.log('[Generate] Templates with signed URLs:', templatesWithSignedUrls.length);
       setSavedTemplates(templatesWithSignedUrls);
 
-      // Load imports
-      const importsResponse = await api.imports.list({ status: 'completed', sort_by: 'created_at', sort_order: 'desc', limit: 10 });
+      // Load imports (remove status filter - backend handles filtering)
+      const importsResponse = await api.imports.list({ sort_by: 'created_at', sort_order: 'desc', limit: 10 });
       setSavedImports(importsResponse.items || []);
     } catch (error) {
       console.error('[Generate] Error loading saved data:', error);
@@ -103,13 +103,27 @@ export default function GenerateCertificatePage() {
   const handleTemplateSelect = async (selectedTemplate: any) => {
     let fileUrl = selectedTemplate.preview_url;
 
-    // Get preview URL from API
+    // Get editor data to access source_file with mime_type
+    let editorData = null;
     if (selectedTemplate.id) {
       try {
-        const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
-        fileUrl = previewUrl;
+        editorData = await api.templates.getEditorData(selectedTemplate.id);
+        // Use source_file URL if available, otherwise get preview URL
+        if (editorData.source_file?.url) {
+          fileUrl = editorData.source_file.url;
+        } else {
+          const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
+          fileUrl = previewUrl;
+        }
       } catch (error) {
-        console.error('Error fetching preview URL:', error);
+        console.error('Error fetching template editor data:', error);
+        // Fallback to preview URL
+        try {
+          const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
+          fileUrl = previewUrl;
+        } catch (previewError) {
+          console.error('Error fetching preview URL:', previewError);
+        }
       }
     }
 
@@ -123,7 +137,13 @@ export default function GenerateCertificatePage() {
             const response = await fetch(fileUrl);
             const blob = await response.blob();
             
-            if (selectedTemplate.file_type === 'pdf' || selectedTemplate.name?.toLowerCase().endsWith('.pdf')) {
+            // Determine file type from editor data or template data
+            const fileType = editorData?.source_file?.file_type || 
+                           selectedTemplate.file_type || 
+                           (selectedTemplate.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
+            const mimeType = editorData?.source_file?.file_type || blob.type;
+            
+            if (fileType === 'pdf' || mimeType === 'application/pdf' || selectedTemplate.name?.toLowerCase().endsWith('.pdf')) {
                 const arrayBuffer = await blob.arrayBuffer();
                 // Dynamic import of pdf-lib for bundle optimization
                 const { PDFDocument } = await getPdfLib();
@@ -170,16 +190,21 @@ export default function GenerateCertificatePage() {
         }
     }
 
+    // Determine file type from editor data or template
+    const fileType = editorData?.source_file?.file_type === 'pdf' || 
+                    editorData?.source_file?.file_type === 'application/pdf' ||
+                    selectedTemplate.file_type === 'pdf' ? 'pdf' : 'image';
+
     setTemplate({
       id: selectedTemplate.id,
-      templateName: selectedTemplate.name,
+      templateName: selectedTemplate.title || selectedTemplate.name,
       fileUrl,
-      fileType: selectedTemplate.file_type === 'pdf' ? 'pdf' : 'image',
+      fileType,
       pdfWidth: pdfWidth || 800,
       pdfHeight: pdfHeight || 600,
-      fields: selectedTemplate.fields || [],
+      fields: editorData?.fields || selectedTemplate.fields || [],
     });
-    setFields(selectedTemplate.fields || []);
+    setFields(editorData?.fields || selectedTemplate.fields || []);
     setCurrentStep('design');
   };
 
@@ -204,11 +229,16 @@ export default function GenerateCertificatePage() {
 
     if (saveTemplate) {
       try {
+        // Validate category/subcategory IDs are provided (not names)
+        if (!categoryName || !subcategoryName) {
+          throw new Error('Category and subcategory IDs are required');
+        }
+        
         // Use backend API to create template
         const templateData = await api.templates.create(file, {
-          title: finalTemplateName, // Backend expects 'title' not 'name'
-          category_id: categoryName || undefined, // Backend expects category_id (UUID) not category name
-          subcategory_id: subcategoryName || undefined, // Backend expects subcategory_id (UUID) not subcategory name
+          title: finalTemplateName,
+          category_id: categoryName, // Should be UUID, not name
+          subcategory_id: subcategoryName, // Should be UUID, not name
         });
 
         // Update saved templates list
