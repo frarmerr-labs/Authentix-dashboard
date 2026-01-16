@@ -206,9 +206,9 @@ export default function GenerateCertificatePage() {
       try {
         // Use backend API to create template
         const templateData = await api.templates.create(file, {
-          name: finalTemplateName,
-          certificate_category: categoryName || undefined,
-          certificate_subcategory: subcategoryName || undefined,
+          title: finalTemplateName, // Backend expects 'title' not 'name'
+          category_id: categoryName || undefined, // Backend expects category_id (UUID) not category name
+          subcategory_id: subcategoryName || undefined, // Backend expects subcategory_id (UUID) not subcategory name
         });
 
         // Update saved templates list

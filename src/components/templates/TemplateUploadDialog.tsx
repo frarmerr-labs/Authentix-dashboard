@@ -15,7 +15,6 @@ import { useCatalogCategories } from "@/lib/hooks/use-catalog-categories";
 import { useCatalogSubcategories } from "@/lib/hooks/use-catalog-subcategories";
 import { IndustrySelectModal } from "./IndustrySelectModal";
 import { useOrg } from "@/lib/org";
-import { useRouter } from "next/navigation";
 
 interface TemplateUploadDialogProps {
   open: boolean;
@@ -36,7 +35,6 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
   const [showIndustryModal, setShowIndustryModal] = useState(false);
   
   const { orgPath } = useOrg();
-  const router = useRouter();
 
   // Use the new catalog categories hook
   const {
@@ -241,15 +239,13 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       setUploadProgress(0);
       setTitleError(null);
       
-      // Call success callback (e.g., refresh templates list)
-      onSuccess();
-      
-      // Close modal
+      // Close modal first
       onOpenChange(false);
       
-      // Redirect to template details/editor page
-      const templateId = result.template?.id || result.id;
-      router.push(orgPath(`/templates/${templateId}/edit`));
+      // Call success callback to refresh templates list (template will appear as a card)
+      onSuccess();
+      
+      // Do NOT redirect - user stays on templates list page and sees the new template card
     } catch (err: any) {
       console.error('Upload error:', err);
       

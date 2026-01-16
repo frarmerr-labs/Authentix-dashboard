@@ -144,10 +144,9 @@ function createSafeHeaders(
     safeHeaders.set(key, value);
   });
 
-  // Ensure content-type is set
-  if (!safeHeaders.has("Content-Type")) {
-    safeHeaders.set("Content-Type", "application/json");
-  }
+  // Only set Content-Type if it was in the original request
+  // Don't add it automatically - let the request specify it if needed
+  // This prevents issues with DELETE requests that have no body
 
   // Add auth header if token exists
   if (accessToken) {
@@ -252,6 +251,12 @@ async function proxyRequest(
     } catch {
       // No body or error reading body
     }
+  }
+
+  // Remove Content-Type header for DELETE requests without body
+  // Fastify throws error if Content-Type is set but body is empty
+  if (method === "DELETE" && (!body || body.byteLength === 0)) {
+    safeHeaders.delete("Content-Type");
   }
 
   // Create abort controller for timeout

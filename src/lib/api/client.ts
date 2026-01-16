@@ -115,8 +115,9 @@ async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
+  // Only add Content-Type header if there's a body
   const headers: HeadersInit = {
-    "Content-Type": "application/json",
+    ...(options.body && { "Content-Type": "application/json" }),
     ...options.headers,
   };
 
@@ -598,10 +599,29 @@ export const api = {
     },
 
     delete: async (id: string) => {
-      const response = await apiRequest(`/templates/${id}`, {
+      // Use fetch directly to avoid any header issues with DELETE
+      const response = await fetch(`${API_BASE_URL}/templates/${id}`, {
         method: "DELETE",
+        credentials: "include",
+        // Explicitly no Content-Type header for DELETE
       });
-      return response.data!;
+
+      const data = (await response.json()) as ApiResponse<unknown>;
+
+      if (!response.ok || !data.success) {
+        const error = data.error;
+        const errorCode = typeof error === "object" ? error?.code ?? "HTTP_ERROR" : "HTTP_ERROR";
+        const errorMessage =
+          typeof error === "object"
+            ? error?.message ?? "Failed to delete template"
+            : typeof error === "string"
+            ? error
+            : "Failed to delete template";
+
+        throw new ApiError(errorCode, errorMessage);
+      }
+
+      return data.data!;
     },
 
     getPreviewUrl: async (id: string) => {

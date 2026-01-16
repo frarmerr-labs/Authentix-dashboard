@@ -90,9 +90,19 @@ export default function TemplatesPage() {
 
   // Load preview URL for a template (with caching)
   const loadPreviewUrl = useCallback(async (template: any): Promise<string | null> => {
+    // Normalize template ID (backend may return template_id or id)
+    const templateId = template.id || template.template_id;
+    if (!templateId) {
+      console.warn('Template missing ID:', template);
+      return null;
+    }
+
+    // Normalize preview file ID (backend may return latest_preview_file_id or preview_file_id)
+    const previewFileId = template.latest_preview_file_id || template.preview_file_id;
+    
     const cacheKey = getPreviewCacheKey(
-      template.id,
-      template.preview_file_id,
+      templateId,
+      previewFileId,
       template.preview_bucket,
       template.preview_path
     );
@@ -110,15 +120,41 @@ export default function TemplatesPage() {
     }
 
     // If preview data exists but no URL, try to fetch it
-    if (template.preview_bucket && template.preview_path) {
+    // Check multiple possible field names for preview data (prioritize latest_preview_file_id from v_templates_list)
+    const hasPreviewData = 
+      template.latest_preview_file_id || // New: from v_templates_list view
+      template.preview_bucket || 
+      template.preview_path || 
+      template.preview_file_id ||
+      template.preview?.bucket ||
+      template.preview?.path ||
+      template.preview?.file_id;
+
+    if (hasPreviewData) {
       try {
-        const url = await api.templates.getPreviewUrl(template.id);
+        const url = await api.templates.getPreviewUrl(templateId);
         if (url) {
           cachePreviewUrl(cacheKey, url);
           return url;
         }
       } catch (err) {
-        console.error(`Error loading preview for template ${template.id}:`, err);
+        console.error(`Error loading preview for template ${templateId}:`, err);
+      }
+    }
+
+    // If no preview data, try to use source file as fallback
+    // This is useful for newly uploaded templates that don't have previews yet
+    if (template.latest_source_file_id || template.source_file?.url || template.source_file?.path) {
+      try {
+        // Try to get preview URL for source file
+        const url = await api.templates.getPreviewUrl(templateId);
+        if (url) {
+          cachePreviewUrl(cacheKey, url);
+          return url;
+        }
+      } catch (err) {
+        // Ignore errors for source file fallback
+        console.debug(`Source file preview not available for template ${templateId}`);
       }
     }
 
@@ -128,19 +164,28 @@ export default function TemplatesPage() {
   // Load preview URLs for all templates
   const loadAllPreviews = useCallback(async (templatesList: any[]) => {
     const previewPromises = templatesList.map(async (template) => {
+      // Normalize template ID (backend may return template_id or id)
+      const templateId = template.id || template.template_id;
+      if (!templateId) {
+        console.warn('Template missing ID in loadAllPreviews:', template);
+        return { templateId: null, url: null };
+      }
+      
       const url = await loadPreviewUrl(template);
-      return { templateId: template.id, url };
+      return { templateId, url };
     });
 
     const results = await Promise.all(previewPromises);
     const newPreviewStates: TemplatePreviewState = {};
 
     results.forEach(({ templateId, url }) => {
-      newPreviewStates[templateId] = {
-        url,
-        loading: false,
-        error: url === null,
-      };
+      if (templateId) {
+        newPreviewStates[templateId] = {
+          url,
+          loading: false,
+          error: url === null,
+        };
+      }
     });
 
     setPreviewStates((prev) => ({ ...prev, ...newPreviewStates }));
@@ -161,6 +206,20 @@ export default function TemplatesPage() {
 
       const result = await response.json();
       const data = result.data?.items || [];
+      
+      // Debug: Log first template to see what we're getting
+      if (data.length > 0) {
+        console.log('[TemplatesPage] First template received:', {
+          id: data[0].id,
+          title: data[0].title,
+          name: data[0].name,
+          category_name: data[0].category_name,
+          subcategory_name: data[0].subcategory_name,
+          category_id: data[0].category_id,
+          subcategory_id: data[0].subcategory_id,
+        });
+      }
+      
       setTemplates(data);
 
       // Load preview URLs in background (non-blocking)
@@ -175,15 +234,22 @@ export default function TemplatesPage() {
 
   // Retry preview generation
   const handleRetryPreview = useCallback(async (template: any) => {
-    // Need version ID to generate preview
-    const versionId = template.version?.id || template.latest_version?.id;
-    if (!versionId || retryingPreviews.has(template.id)) return;
+    // Normalize template ID
+    const templateId = template.id || template.template_id;
+    if (!templateId) {
+      console.warn('Template missing ID in handleRetryPreview:', template);
+      return;
+    }
+    
+    // Need version ID to generate preview (prioritize latest_version_id from v_templates_list)
+    const versionId = template.latest_version_id || template.version?.id || template.latest_version?.id;
+    if (!versionId || retryingPreviews.has(templateId)) return;
 
-    setRetryingPreviews((prev) => new Set(prev).add(template.id));
+    setRetryingPreviews((prev) => new Set(prev).add(templateId));
     setPreviewStates((prev) => ({
       ...prev,
-      [template.id]: { 
-        url: prev[template.id]?.url || null, 
+      [templateId]: { 
+        url: prev[templateId]?.url || null, 
         loading: true, 
         error: false 
       },
@@ -191,45 +257,51 @@ export default function TemplatesPage() {
 
     try {
       // Clear cache for this template
-      clearPreviewCache(template.id);
+      clearPreviewCache(templateId);
 
       // Generate preview
-      await api.templates.generatePreview(template.id, versionId);
+      await api.templates.generatePreview(templateId, versionId);
 
       // Wait a bit then reload preview URL
       setTimeout(async () => {
         const url = await loadPreviewUrl(template);
         setPreviewStates((prev) => ({
           ...prev,
-          [template.id]: { url, loading: false, error: url === null },
+          [templateId]: { url, loading: false, error: url === null },
         }));
         setRetryingPreviews((prev) => {
           const next = new Set(prev);
-          next.delete(template.id);
+          next.delete(templateId);
           return next;
         });
       }, 2000);
     } catch (err: any) {
-      console.error(`Error retrying preview for template ${template.id}:`, err);
+      console.error(`Error retrying preview for template ${templateId}:`, err);
       setPreviewStates((prev) => ({
         ...prev,
-        [template.id]: { 
-          url: prev[template.id]?.url || null, 
+        [templateId]: { 
+          url: prev[templateId]?.url || null, 
           loading: false, 
           error: true 
         },
       }));
       setRetryingPreviews((prev) => {
         const next = new Set(prev);
-        next.delete(template.id);
+        next.delete(templateId);
         return next;
       });
     }
   }, [loadPreviewUrl, retryingPreviews]);
 
   const handleGenerateCertificate = (template: any) => {
+    // Normalize template ID
+    const templateId = template.id || template.template_id;
+    if (!templateId) {
+      console.warn('Template missing ID in handleGenerateCertificate:', template);
+      return;
+    }
     // Navigate to generate certificate page which will auto-select this template
-    router.push(orgPath(`/generate-certificate?template=${template.id}`));
+    router.push(orgPath(`/generate-certificate?template=${templateId}`));
   };
 
   const handleDeleteClick = (template: any) => {
@@ -240,14 +312,25 @@ export default function TemplatesPage() {
   const handleDeleteConfirm = async () => {
     if (!templateToDelete) return;
 
+    // Normalize template ID
+    const templateId = templateToDelete.id || templateToDelete.template_id;
+    if (!templateId) {
+      console.error('Template missing ID in handleDeleteConfirm:', templateToDelete);
+      return;
+    }
+
     setDeleting(true);
     try {
-      await api.templates.delete(templateToDelete.id);
+      await api.templates.delete(templateId);
 
       console.log('[Templates] Template deleted:', templateToDelete.name);
 
-      // Remove from local state
-      setTemplates((prev) => prev.filter((t) => t.id !== templateToDelete.id));
+      // Remove from local state (normalize ID comparison)
+      const deleteId = templateToDelete.id || templateToDelete.template_id;
+      setTemplates((prev) => prev.filter((t) => {
+        const tId = t.id || t.template_id;
+        return tId !== deleteId;
+      }));
 
       setDeleteDialogOpen(false);
       setTemplateToDelete(null);
@@ -327,19 +410,40 @@ export default function TemplatesPage() {
           </Card>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {templates.map((template) => (
+            {templates.map((template) => {
+            // Normalize template ID for key and operations
+            const templateId = template.id || template.template_id;
+            if (!templateId) {
+              console.warn('Template missing ID:', template);
+              return null;
+            }
+            
+            return (
               <Card
-                key={template.id}
+                key={templateId}
                 className="group overflow-hidden hover:shadow-md transition-all duration-300 border border-border bg-card/60 p-0"
               >
                 {/* Preview / Icon - No gaps from top, left, right */}
                 <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                   {(() => {
-                    const previewState = previewStates[template.id];
+                    // Normalize template ID first (before using it)
+                    const templateId = template.id || template.template_id;
+                    const previewState = previewStates[templateId];
                     const previewUrl = previewState?.url || template.preview_url;
                     const isLoading = previewState?.loading || false;
                     const hasError = previewState?.error || false;
-                    const hasPreviewData = template.preview_bucket || template.preview_path || template.preview_file_id;
+                    
+                    // Check multiple possible field names for preview data (prioritize latest_preview_file_id from v_templates_list)
+                    const hasPreviewData = 
+                      template.latest_preview_file_id || // New: from v_templates_list view
+                      template.preview_bucket || 
+                      template.preview_path || 
+                      template.preview_file_id ||
+                      template.preview?.bucket ||
+                      template.preview?.path ||
+                      template.preview?.file_id ||
+                      template.version?.preview_file_id ||
+                      template.latest_version?.preview_file_id;
                     const previewStatus = template.preview_status;
 
                     // Show skeleton while loading
@@ -366,7 +470,7 @@ export default function TemplatesPage() {
                             // Handle image load error
                             setPreviewStates((prev) => ({
                               ...prev,
-                              [template.id]: { url: null, loading: false, error: true },
+                              [templateId]: { url: null, loading: false, error: true },
                             }));
                           }}
                         />
@@ -381,7 +485,7 @@ export default function TemplatesPage() {
 
                     // Show placeholder with retry option if preview data exists but failed
                     if (hasPreviewData && (hasError || previewStatus === "failed")) {
-                      const versionId = template.version?.id || template.latest_version?.id;
+                      const versionId = template.latest_version_id || template.version?.id || template.latest_version?.id;
                       return (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-muted/50 gap-2">
                           {template.file_type === 'pdf' ? (
@@ -429,7 +533,7 @@ export default function TemplatesPage() {
                   })()}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {(previewStates[template.id]?.url || template.preview_url) && (
+                    {(previewStates[templateId]?.url || template.preview_url) && (
                       <Button
                         type="button"
                         variant="secondary"
@@ -438,7 +542,7 @@ export default function TemplatesPage() {
                         onClick={() => {
                           setPreviewTemplate({
                             ...template,
-                            preview_url: previewStates[template.id]?.url || template.preview_url,
+                            preview_url: previewStates[templateId]?.url || template.preview_url,
                           });
                           setPreviewOpen(true);
                         }}
@@ -461,40 +565,54 @@ export default function TemplatesPage() {
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     <div>
-                      <h3 className="font-semibold truncate mb-1">{template.title || template.name}</h3>
+                      <h3 className="font-semibold truncate mb-1">
+                        {template.title || template.name || "Untitled Template"}
+                      </h3>
                       <div className="flex flex-wrap gap-1 mt-1.5">
-                        {template.certificate_category && (() => {
-                          const category = template.certificate_category;
-                          const categoryColors = getColorForText(category);
+                        {/* Check for category name in multiple possible locations (prioritize category_name from backend) */}
+                        {(() => {
+                          const categoryName = 
+                            template.category_name || // New: from v_templates_list view
+                            template.category?.name || 
+                            template.certificate_category || 
+                            null;
+                          if (!categoryName) return null;
+                          const categoryColors = getColorForText(categoryName);
                           return (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-xs border",
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs border",
                                 categoryColors.bg,
                                 categoryColors.text,
                                 categoryColors.border
-                            )}
-                          >
-                              {category}
-                          </Badge>
+                              )}
+                            >
+                              {categoryName}
+                            </Badge>
                           );
                         })()}
-                        {template.certificate_subcategory && (() => {
-                          const subcategory = template.certificate_subcategory;
-                          const subcategoryColors = getColorForText(subcategory);
+                        {/* Check for subcategory name in multiple possible locations (prioritize subcategory_name from backend) */}
+                        {(() => {
+                          const subcategoryName = 
+                            template.subcategory_name || // New: from v_templates_list view
+                            template.subcategory?.name || 
+                            template.certificate_subcategory || 
+                            null;
+                          if (!subcategoryName) return null;
+                          const subcategoryColors = getColorForText(subcategoryName);
                           return (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-xs border",
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs border",
                                 subcategoryColors.bg,
                                 subcategoryColors.text,
                                 subcategoryColors.border
-                            )}
-                          >
-                              {subcategory}
-                          </Badge>
+                              )}
+                            >
+                              {subcategoryName}
+                            </Badge>
                           );
                         })()}
                       </div>
@@ -541,7 +659,8 @@ export default function TemplatesPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>
@@ -557,7 +676,9 @@ export default function TemplatesPage() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-4xl w-full">
           {previewTemplate && (() => {
-            const previewUrl = previewStates[previewTemplate.id]?.url || previewTemplate.preview_url;
+            // Normalize template ID
+            const templateId = previewTemplate.id || previewTemplate.template_id;
+            const previewUrl = templateId ? (previewStates[templateId]?.url || previewTemplate.preview_url) : previewTemplate.preview_url;
             return (
               <>
                 <DialogHeader>
@@ -599,7 +720,7 @@ export default function TemplatesPage() {
           <DialogHeader>
             <DialogTitle>Delete Template</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{templateToDelete?.name}"? This action cannot be undone.
+              Are you sure you want to delete "{templateToDelete?.title || templateToDelete?.name}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
