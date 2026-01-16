@@ -32,6 +32,7 @@ export default function GenerateCertificatePage() {
   const [template, setTemplate] = useState<CertificateTemplate | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
+  const [templateVersionId, setTemplateVersionId] = useState<string | null>(null);
 
   // Fields state
   const [fields, setFields] = useState<CertificateField[]>([]);
@@ -59,15 +60,18 @@ export default function GenerateCertificatePage() {
       const templatesResponse = await api.templates.list({ status: 'active', sort_by: 'created_at', sort_order: 'desc' });
       const templatesData = templatesResponse.items || [];
 
-      // Get preview URLs for templates
+      // Get preview URLs for templates (with graceful error handling)
       const templatesWithSignedUrls = await Promise.all(
         templatesData.map(async (template: any) => {
           if (template.id) {
             try {
               const previewUrl = await api.templates.getPreviewUrl(template.id);
               return { ...template, preview_url: previewUrl };
-            } catch (error) {
-              console.error('[Generate] Error generating preview URL for template:', template.id, error);
+            } catch (error: any) {
+              // Gracefully handle missing preview - template can still be used
+              console.warn('[Generate] Preview not available for template:', template.id, error?.message || error);
+              // Return template without preview_url - it will use source file as fallback
+              return template;
             }
           }
           return template;
@@ -78,8 +82,14 @@ export default function GenerateCertificatePage() {
       setSavedTemplates(templatesWithSignedUrls);
 
       // Load imports (remove status filter - backend handles filtering)
+      try {
       const importsResponse = await api.imports.list({ sort_by: 'created_at', sort_order: 'desc', limit: 10 });
       setSavedImports(importsResponse.items || []);
+      } catch (error) {
+        console.warn('[Generate] Error loading imports:', error);
+        // Continue without imports - user can still proceed
+        setSavedImports([]);
+      }
     } catch (error) {
       console.error('[Generate] Error loading saved data:', error);
     }
@@ -112,17 +122,27 @@ export default function GenerateCertificatePage() {
         if (editorData.source_file?.url) {
           fileUrl = editorData.source_file.url;
         } else {
+          try {
           const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
           fileUrl = previewUrl;
+          } catch (previewError) {
+            console.warn('Preview URL not available, will use source file:', previewError);
+            // Continue - will use source file from editor data
+          }
         }
       } catch (error) {
-        console.error('Error fetching template editor data:', error);
-        // Fallback to preview URL
+        console.warn('Error fetching template editor data:', error);
+        // Fallback to preview URL if available
+        if (selectedTemplate.preview_url) {
+          fileUrl = selectedTemplate.preview_url;
+        } else {
         try {
           const previewUrl = await api.templates.getPreviewUrl(selectedTemplate.id);
           fileUrl = previewUrl;
         } catch (previewError) {
-          console.error('Error fetching preview URL:', previewError);
+            console.warn('Preview URL not available:', previewError);
+            // Continue without preview - user will need to upload or select different template
+          }
         }
       }
     }
@@ -171,17 +191,9 @@ export default function GenerateCertificatePage() {
                  URL.revokeObjectURL(objectUrl);
             }
 
-            // Update template dimensions via API
-            if (pdfWidth && pdfHeight) {
-                try {
-                  await api.templates.update(selectedTemplate.id, {
-                    width: pdfWidth,
-                    height: pdfHeight
-                  });
-                } catch (error) {
-                  console.error('Error updating template dimensions:', error);
-                }
-            }
+            // Note: Dimensions are not stored on template in new schema
+            // They're calculated from the source file when needed
+            // We skip the update to avoid errors
 
         } catch (e) {
             console.error("Failed to extract dimensions", e);
@@ -195,6 +207,31 @@ export default function GenerateCertificatePage() {
                     editorData?.source_file?.file_type === 'application/pdf' ||
                     selectedTemplate.file_type === 'pdf' ? 'pdf' : 'image';
 
+    // Store version ID for autosave
+    if (editorData?.latest_version?.id) {
+      setTemplateVersionId(editorData.latest_version.id);
+    }
+
+    // Map backend fields to frontend format if needed
+    const mappedFields = editorData?.fields?.map((field: any) => ({
+      id: field.id || field.field_key,
+      type: mapBackendTypeToFrontend(field.type),
+      label: field.label,
+      x: field.x,
+      y: field.y,
+      width: field.width || 200,
+      height: field.height || 30,
+      fontSize: (field.style as any)?.fontSize || 16,
+      fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
+      color: (field.style as any)?.color || '#000000',
+      fontWeight: (field.style as any)?.fontWeight || 'normal',
+      fontStyle: (field.style as any)?.fontStyle || 'normal',
+      textAlign: (field.style as any)?.textAlign || 'left',
+      dateFormat: (field.style as any)?.dateFormat,
+      prefix: (field.style as any)?.prefix,
+      suffix: (field.style as any)?.suffix,
+    })) || selectedTemplate.fields || [];
+
     setTemplate({
       id: selectedTemplate.id,
       templateName: selectedTemplate.title || selectedTemplate.name,
@@ -202,9 +239,9 @@ export default function GenerateCertificatePage() {
       fileType,
       pdfWidth: pdfWidth || 800,
       pdfHeight: pdfHeight || 600,
-      fields: editorData?.fields || selectedTemplate.fields || [],
+      fields: mappedFields,
     });
-    setFields(editorData?.fields || selectedTemplate.fields || []);
+    setFields(mappedFields);
     setCurrentStep('design');
   };
 
@@ -244,7 +281,10 @@ export default function GenerateCertificatePage() {
         // Update saved templates list
         setSavedTemplates((prev) => [templateData, ...prev]);
 
-        // Update template with database ID
+        // Update template with database ID and get version ID for autosave
+        if (templateData.version?.id) {
+          setTemplateVersionId(templateData.version.id);
+        }
         setTemplate((prev) => prev ? { ...prev, id: templateData.id } : null);
       } catch (error: any) {
         console.error('Error saving template:', error);
@@ -298,48 +338,222 @@ export default function GenerateCertificatePage() {
     setTemplate(prev => prev ? { ...prev, pdfWidth: width, pdfHeight: height } : null);
   };
 
-  // Autosave template dimensions
+  // Note: Dimensions are not stored on template in new schema
+  // They're calculated from the source file when needed
+  // Removed autosave for dimensions
+
+  // Autosave fields to certificate_template_fields table
   useEffect(() => {
     const templateId = template?.id;
-    if (!templateId) return;
+    const versionId = templateVersionId;
     
-    if (!template.pdfWidth || !template.pdfHeight) return;
+    if (!templateId || !versionId || fields.length === 0) return;
 
     const timeoutId = setTimeout(async () => {
-         try {
-           await api.templates.update(templateId, {
-             width: template.pdfWidth,
-             height: template.pdfHeight,
-           });
-         } catch (e) {
-             console.error('Failed to save dimensions', e);
-         }
-    }, 1000);
+      // Track field_keys to ensure uniqueness
+      const usedFieldKeys = new Set<string>();
+      
+      // Map frontend fields to backend format
+      let fieldsToSave: Array<{
+        field_key: string;
+        label: string;
+        type: string;
+        page_number: number;
+        x: number;
+        y: number;
+        width?: number;
+        height?: number;
+        style?: Record<string, unknown>;
+        required: boolean;
+      }> = [];
 
-    return () => clearTimeout(timeoutId);
-  }, [template?.pdfWidth, template?.pdfHeight, template?.id]);
-
-  // Autosave fields to template
-  useEffect(() => {
-    const templateId = template?.id;
-    if (!templateId || fields.length === 0) return;
-
-    const timeoutId = setTimeout(async () => {
       try {
-        await api.templates.update(templateId, { fields });
-        console.log('Fields auto-saved');
+        fieldsToSave = fields.map((field, index) => {
+          // Generate field_key from field id or label (sanitize to lowercase alphanumeric with underscores)
+          // Must be 2-64 characters, lowercase alphanumeric with underscores only
+          let fieldKey = field.id
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '');
+          
+          // If field_key is empty or too short, use label or generate one
+          if (!fieldKey || fieldKey.length < 2) {
+            const labelBasedKey = (field.label || field.type || `field_${index}`)
+              .toLowerCase()
+              .replace(/[^a-z0-9_]/g, '_')
+              .replace(/_+/g, '_')
+              .replace(/^_|_$/g, '');
+            fieldKey = labelBasedKey.length >= 2 ? labelBasedKey : `field_${String(index).padStart(2, '0')}`;
+          }
+          
+          // Ensure it's at least 2 characters and max 64
+          if (fieldKey.length < 2) {
+            fieldKey = `field_${String(index).padStart(2, '0')}`;
+          }
+          if (fieldKey.length > 64) {
+            fieldKey = fieldKey.substring(0, 64);
+          }
+
+          // Final validation: ensure field_key matches regex: lowercase alphanumeric with underscores only
+          if (!/^[a-z0-9_]+$/.test(fieldKey)) {
+            // Fallback: generate a safe field_key
+            fieldKey = `field_${String(index).padStart(2, '0')}`;
+          }
+
+          // Ensure field_key is unique (backend requires unique field_keys)
+          let uniqueFieldKey = fieldKey;
+          let suffix = 1;
+          while (usedFieldKeys.has(uniqueFieldKey)) {
+            uniqueFieldKey = `${fieldKey}_${suffix}`;
+            suffix++;
+            // Ensure it doesn't exceed 64 characters
+            if (uniqueFieldKey.length > 64) {
+              uniqueFieldKey = `${fieldKey.substring(0, 60)}_${suffix}`;
+            }
+          }
+          usedFieldKeys.add(uniqueFieldKey);
+          fieldKey = uniqueFieldKey;
+
+          // Map frontend type to backend type
+          const backendType = mapFrontendTypeToBackend(field.type);
+
+          // Ensure label is at least 2 characters and max 80 (schema requirement)
+          let label = (field.label || field.type || 'Field').trim();
+          if (label.length < 2) {
+            label = `Field ${index + 1}`;
+          }
+          if (label.length > 80) {
+            label = label.substring(0, 80);
+          }
+
+          // Build style object
+          const style: Record<string, unknown> = {
+            fontSize: field.fontSize || 16,
+            fontFamily: field.fontFamily || 'Helvetica',
+            color: field.color || '#000000',
+            fontWeight: field.fontWeight || 'normal',
+            fontStyle: field.fontStyle || 'normal',
+            textAlign: field.textAlign || 'left',
+          };
+
+          if (field.dateFormat) style.dateFormat = field.dateFormat;
+          if (field.prefix) style.prefix = field.prefix;
+          if (field.suffix) style.suffix = field.suffix;
+
+          // Calculate width and height - ensure they're positive numbers
+          // Provide defaults to ensure fields are always valid
+          const width = field.width && field.width > 0 ? field.width : 200;
+          const height = field.height && field.height > 0 ? field.height : 30;
+
+          const fieldData: {
+            field_key: string;
+            label: string;
+            type: string;
+            page_number: number;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            style?: Record<string, unknown>;
+            required: boolean;
+          } = {
+            field_key: fieldKey,
+            label: label,
+            type: backendType,
+            page_number: 1, // Default to page 1 (can be enhanced later)
+            x: Math.max(0, field.x || 0),
+            y: Math.max(0, field.y || 0),
+            width: width,
+            height: height,
+            required: false,
+          };
+
+          // Include style if it has content
+          if (Object.keys(style).length > 0) {
+            fieldData.style = style;
+          }
+
+          return fieldData;
+        });
+
+        // Filter out any invalid fields before sending
+        fieldsToSave = fieldsToSave.filter(field => {
+          // Ensure field_key is valid
+          if (!field.field_key || field.field_key.length < 2 || field.field_key.length > 64) {
+            console.warn('[Generate] Skipping invalid field (invalid field_key):', field);
+            return false;
+          }
+          // Ensure label is valid
+          if (!field.label || field.label.length < 2 || field.label.length > 80) {
+            console.warn('[Generate] Skipping invalid field (invalid label):', field);
+            return false;
+          }
+          // Ensure type is valid
+          if (!['text', 'date', 'qrcode', 'custom'].includes(field.type)) {
+            console.warn('[Generate] Skipping invalid field (invalid type):', field);
+            return false;
+          }
+          return true;
+        });
+
+        // Don't send if no valid fields
+        if (fieldsToSave.length === 0) {
+          console.log('[Generate] No valid fields to save, skipping autosave');
+          return;
+        }
+
+        // Log the data we're about to send for debugging
+        console.log('[Generate] Attempting to save fields:', {
+          templateId,
+          versionId,
+          fieldsCount: fieldsToSave.length,
+          fieldsPreview: fieldsToSave.slice(0, 2).map(f => ({
+            field_key: f.field_key,
+            label: f.label,
+            type: f.type,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            hasWidth: f.width !== undefined,
+            hasHeight: f.height !== undefined,
+            hasStyle: f.style !== undefined,
+          })),
+        });
+
+        await api.templates.saveFields(templateId, versionId, fieldsToSave);
+        console.log('[Generate] Fields auto-saved to certificate_template_fields', {
+          templateId,
+          versionId,
+          fieldsCount: fieldsToSave.length,
+        });
       } catch (e: unknown) {
-        // Silently handle autosave errors (network issues, etc.)
-        // Only log if it's not a network error (which is expected if backend is down)
-        const isNetworkError = e instanceof Error && 'code' in e && e.code === 'NETWORK_ERROR';
+        // Log error details for debugging
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        const errorCode = e && typeof e === 'object' && 'code' in e ? (e.code as string) : 'UNKNOWN';
+        
+        // Only log if it's not a network error (network errors are expected if backend is down)
+        const isNetworkError = errorCode === 'NETWORK_ERROR';
         if (!isNetworkError) {
-          console.error('Failed to save fields', e);
+          console.warn('[Generate] Failed to autosave fields (non-fatal):', {
+            error: errorMessage,
+            code: errorCode,
+            templateId,
+            versionId,
+            fieldsCount: fieldsToSave.length,
+            fieldsPreview: fieldsToSave.slice(0, 2).map(f => ({
+              field_key: f.field_key,
+              label: f.label,
+              type: f.type,
+            })),
+            fullError: e,
+          });
         }
       }
-    }, 1000);
+    }, 1000); // Debounce: wait 1 second after last change
 
     return () => clearTimeout(timeoutId);
-  }, [fields, template?.id]);
+  }, [fields, template?.id, templateVersionId]);
   
   const handleToggleVisibility = (fieldId: string) => {
     setHiddenFields(prev => {
@@ -627,6 +841,37 @@ export default function GenerateCertificatePage() {
       </div>
     </div>
   );
+}
+
+// Map frontend field type to backend field type
+function mapFrontendTypeToBackend(frontendType: CertificateField['type']): 'text' | 'date' | 'qrcode' | 'custom' {
+  switch (frontendType) {
+    case 'name':
+    case 'course':
+    case 'custom_text':
+      return 'text';
+    case 'start_date':
+    case 'end_date':
+      return 'date';
+    case 'qr_code':
+      return 'qrcode';
+    default:
+      return 'text';
+  }
+}
+
+// Map backend field type to frontend field type
+function mapBackendTypeToFrontend(backendType: string): CertificateField['type'] {
+  switch (backendType) {
+    case 'text':
+      return 'custom_text';
+    case 'date':
+      return 'start_date';
+    case 'qrcode':
+      return 'qr_code';
+    default:
+      return 'custom_text';
+  }
 }
 
 // Auto-map Excel columns to certificate fields

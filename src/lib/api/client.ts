@@ -124,8 +124,11 @@ async function apiRequest<T>(
   const url = `${API_BASE_URL}${endpoint}`;
 
   // Create AbortController for timeout
+  // Certificate generation can take longer, so use extended timeout for that endpoint
+  const isLongRunningOperation = endpoint.includes('/certificates/generate');
+  const timeoutDuration = isLongRunningOperation ? 120000 : 10000; // 2 minutes for generation, 10 seconds for others
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   let response: Response;
   try {
@@ -211,14 +214,22 @@ async function apiRequest<T>(
   }
 
   if (!response.ok || !data.success) {
+    // Extract error details for better logging
+    const errorObj = typeof data.error === 'object' && data.error !== null
+      ? data.error
+      : typeof data.error === 'string'
+      ? { message: data.error }
+      : { message: 'Unknown error' };
+
     console.error(`[API] Request failed for ${endpoint}:`, {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok,
       dataSuccess: data.success,
-      data: JSON.stringify(data, null, 2),
-      error: data.error,
-      errorType: typeof data.error,
+      errorCode: errorObj.code || 'UNKNOWN',
+      errorMessage: errorObj.message || 'Unknown error',
+      errorDetails: 'details' in errorObj ? errorObj.details : {},
+      fullResponse: JSON.stringify(data, null, 2),
     });
 
     // Handle 401 by potentially redirecting to login
@@ -228,16 +239,21 @@ async function apiRequest<T>(
     }
 
     const error = data.error;
-    const errorCode = typeof error === "object" ? error?.code ?? "HTTP_ERROR" : "HTTP_ERROR";
+    const errorCode = typeof error === "object" && error !== null
+      ? (error.code as string) ?? "HTTP_ERROR"
+      : "HTTP_ERROR";
     const errorMessage =
-      typeof error === "object"
-        ? error?.message ?? `HTTP ${response.status}`
+      typeof error === "object" && error !== null
+        ? (error.message as string) ?? `HTTP ${response.status}`
         : typeof error === "string"
         ? error
         : `HTTP ${response.status}: ${response.statusText}`;
+    const errorDetails = typeof error === "object" && error !== null && 'details' in error
+      ? (error.details as Record<string, unknown>)
+      : undefined;
 
     // Preserve status code for 409 (ORG_INDUSTRY_REQUIRED) and other specific errors
-    const apiError = new ApiError(errorCode, errorMessage);
+    const apiError = new ApiError(errorCode, errorMessage, errorDetails);
     // Attach status to error object for checking
     Object.defineProperty(apiError, 'status', {
       value: response.status,
@@ -464,8 +480,8 @@ export const api = {
         page_number: number;
         x: number;
         y: number;
-        width: number;
-        height: number;
+        width?: number;
+        height?: number;
         style?: Record<string, unknown>;
         required?: boolean;
       }>
