@@ -173,6 +173,18 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
     setError("");
     setTitleError(null);
 
+    // Debug: Log current state values
+    console.log('[TemplateUploadDialog] Submit attempt:', {
+      hasFile: !!file,
+      title: title,
+      titleTrimmed: title.trim(),
+      categoryId: categoryId,
+      subcategoryId: subcategoryId,
+      categoriesLoading,
+      subcategoriesLoading,
+      subcategoriesCount: subcategories.length,
+    });
+
     // Validate file
     if (!file) {
       setError("Please select a certificate design file");
@@ -182,6 +194,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
     // Validate title - mandatory with whitespace trimming
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
+      console.warn('[TemplateUploadDialog] Title validation failed:', { title, trimmedTitle });
       setTitleError("Title is required");
       setError("Please fill in all required fields");
       return;
@@ -189,6 +202,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
 
     // Validate category - required
     if (!categoryId) {
+      console.warn('[TemplateUploadDialog] Category validation failed:', { categoryId });
       setError("Please select a category");
       return;
     }
@@ -202,6 +216,10 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       }
       // If subcategories exist but none selected, require selection
       if (subcategories.length > 0) {
+        console.warn('[TemplateUploadDialog] Subcategory validation failed:', { 
+          subcategoryId, 
+          subcategoriesCount: subcategories.length 
+        });
         setError("Please select a subcategory");
         return;
       }
@@ -211,6 +229,10 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
         return;
       }
       // Per requirements, assume both required
+      console.warn('[TemplateUploadDialog] Subcategory validation failed (no subcategories available):', { 
+        subcategoryId,
+        subcategoriesCount: subcategories.length 
+      });
       setError("Please select a subcategory");
       return;
     }
@@ -225,11 +247,20 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       // Create template via API with new endpoint format
       // Backend expects: file, title, category_id, subcategory_id as multipart/form-data
       // Frontend sends ONLY metadata - backend handles all storage paths
+      console.log('[TemplateUploadDialog] Calling API with:', {
+        fileName: file.name,
+        title: trimmedTitle,
+        categoryId: categoryId,
+        subcategoryId: subcategoryId,
+      });
+      
       const result = await api.templates.create(file, {
         title: trimmedTitle, // Always use trimmed title
         category_id: categoryId,
         subcategory_id: subcategoryId,
       });
+      
+      console.log('[TemplateUploadDialog] Upload successful:', result);
 
       // Reset form state after successful upload
       setFile(null);

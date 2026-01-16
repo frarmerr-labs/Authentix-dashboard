@@ -24,7 +24,8 @@ import { AUTH_COOKIES } from "@/lib/api/server";
 const BACKEND_API_URL = process.env.BACKEND_API_URL;
 
 // Request timeout in milliseconds
-const REQUEST_TIMEOUT_MS = 30_000;
+// Longer timeout for file uploads (multipart requests)
+const REQUEST_TIMEOUT_MS = 120_000; // 120 seconds for file uploads
 
 // ============================================================================
 // Security: Allowed Methods
@@ -141,6 +142,12 @@ function createSafeHeaders(
     // Skip cookie header (we handle auth separately)
     if (lowerKey === "cookie") return;
 
+    // For multipart/form-data, preserve Content-Type with boundary
+    if (lowerKey === "content-type" && value.includes("multipart/form-data")) {
+      safeHeaders.set(key, value);
+      return;
+    }
+
     safeHeaders.set(key, value);
   });
 
@@ -222,6 +229,10 @@ async function proxyRequest(
   const refreshToken = cookieStore.get(AUTH_COOKIES.REFRESH_TOKEN)?.value ?? null;
   const expiresAt = cookieStore.get(AUTH_COOKIES.EXPIRES_AT)?.value ?? null;
 
+  // Check if this is a multipart/form-data request (file upload)
+  const contentType = request.headers.get("content-type") || "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
   // Create safe headers
   const safeHeaders = createSafeHeaders(request.headers, accessToken);
 
@@ -244,18 +255,45 @@ async function proxyRequest(
   }
 
   // Get request body for non-GET requests
-  let body: ArrayBuffer | null = null;
+  // For multipart/form-data, we need to preserve the boundary and stream the body
+  let body: ArrayBuffer | ReadableStream<Uint8Array> | null = null;
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    try {
-      body = await request.arrayBuffer();
-    } catch {
-      // No body or error reading body
+    if (isMultipart) {
+      // For multipart/form-data, we need to read the body and forward it
+      // Reading as arrayBuffer preserves the multipart structure with boundary
+      try {
+        body = await request.arrayBuffer();
+        // Ensure Content-Type header is preserved with boundary
+        if (contentType) {
+          safeHeaders.set("Content-Type", contentType);
+        }
+        console.log('[Proxy] Forwarding multipart/form-data request:', {
+          method,
+          path: pathSegments,
+          contentType,
+          bodySize: body.byteLength,
+        });
+      } catch (error) {
+        console.error('[Proxy] Error reading multipart body:', error);
+        return errorResponse(
+          "BAD_REQUEST",
+          "Failed to read request body",
+          400
+        );
+      }
+    } else {
+      // For other content types, read as ArrayBuffer
+      try {
+        body = await request.arrayBuffer();
+      } catch {
+        // No body or error reading body
+      }
     }
   }
 
   // Remove Content-Type header for DELETE requests without body
   // Fastify throws error if Content-Type is set but body is empty
-  if (method === "DELETE" && (!body || body.byteLength === 0)) {
+  if (method === "DELETE" && (!body || (body instanceof ArrayBuffer && body.byteLength === 0))) {
     safeHeaders.delete("Content-Type");
   }
 
@@ -264,32 +302,81 @@ async function proxyRequest(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    // Log request details for debugging
+    if (isMultipart) {
+      console.log('[Proxy] Sending multipart request to backend:', {
+        url: backendUrl,
+        method,
+        hasBody: !!body,
+        contentType: safeHeaders.get("content-type"),
+        headers: Object.fromEntries(safeHeaders.entries()),
+      });
+    }
+
     const response = await fetch(backendUrl, {
       method,
       headers: safeHeaders,
-      body: body,
+      body: body as BodyInit,
       signal: controller.signal,
       // Don't follow redirects - let backend handle them
       redirect: "manual",
       // Forward cookies to backend (in addition to Cookie header)
       credentials: "include",
     });
+    
+    if (isMultipart) {
+      console.log('[Proxy] Backend response for multipart request:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get("content-type"),
+        ok: response.ok,
+      });
+    }
 
     clearTimeout(timeoutId);
 
     // Get response data
-    const contentType = response.headers.get("content-type");
+    const responseContentType = response.headers.get("content-type");
     let data: unknown;
 
-    if (contentType?.includes("application/json")) {
-      data = await response.json();
+    if (responseContentType?.includes("application/json")) {
+      try {
+        data = await response.json();
+        
+        // Log backend errors for debugging (especially for multipart requests)
+        if (!response.ok) {
+          console.error('[Proxy] Backend error response:', {
+            status: response.status,
+            statusText: response.statusText,
+            isMultipart,
+            path: pathSegments,
+            errorData: data,
+            errorMessage: typeof data === 'object' && data !== null && 'error' in data
+              ? (typeof (data as any).error === 'object' 
+                  ? (data as any).error.message 
+                  : (data as any).error)
+              : 'Unknown error',
+          });
+        }
+      } catch (parseError) {
+        console.error('[Proxy] Failed to parse backend JSON response:', {
+          status: response.status,
+          parseError: parseError instanceof Error ? parseError.message : String(parseError),
+        });
+        // Return error response
+        return errorResponse(
+          "PARSE_ERROR",
+          "Backend returned invalid response",
+          response.status
+        );
+      }
     } else {
       // For non-JSON responses (e.g., file downloads), stream through
       const responseBody = await response.arrayBuffer();
       return new NextResponse(responseBody, {
         status: response.status,
         headers: {
-          "Content-Type": contentType || "application/octet-stream",
+          "Content-Type": responseContentType || "application/octet-stream",
         },
       });
     }
@@ -308,7 +395,15 @@ async function proxyRequest(
     }
 
     // Log error server-side only (don't expose to client)
-    console.error("[Proxy] Error:", error instanceof Error ? error.message : "Unknown error");
+    console.error("[Proxy] Error:", {
+      error,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      method,
+      path: pathSegments,
+      isMultipart,
+    });
 
     // Return sanitized error
     return errorResponse(

@@ -531,20 +531,92 @@ export const api = {
         file_type: string;
       };
     }> => {
+      // Validate required fields before creating FormData
+      if (!params.title || !params.title.trim()) {
+        throw new ApiError("VALIDATION_ERROR", "Title is required");
+      }
+      if (!params.category_id) {
+        throw new ApiError("VALIDATION_ERROR", "Category is required");
+      }
+      if (!params.subcategory_id) {
+        throw new ApiError("VALIDATION_ERROR", "Subcategory is required");
+      }
+
       // Send only file blob and metadata - backend handles all storage logic
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("title", params.title);
+      formData.append("title", params.title.trim()); // Ensure trimmed
       formData.append("category_id", params.category_id);
       formData.append("subcategory_id", params.subcategory_id);
 
-      const response = await fetch(`${API_BASE_URL}/templates`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
+      // Debug: Log what we're sending
+      console.log('[API] Creating template with FormData:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        title: params.title.trim(),
+        titleLength: params.title.trim().length,
+        category_id: params.category_id,
+        subcategory_id: params.subcategory_id,
+        formDataKeys: Array.from(formData.keys()),
+        url: `${API_BASE_URL}/templates`,
       });
 
-      const data = (await response.json()) as ApiResponse<{
+      // Verify FormData values (can't directly read, but can check what we set)
+      console.log('[API] FormData values set:', {
+        hasFile: !!file,
+        titleValue: params.title.trim(),
+        categoryIdValue: params.category_id,
+        subcategoryIdValue: params.subcategory_id,
+      });
+
+      // Create AbortController with longer timeout for file uploads (120 seconds)
+      const uploadController = new AbortController();
+      const uploadTimeoutId = setTimeout(() => {
+        console.warn('[API] Upload request taking longer than expected, aborting after 120 seconds');
+        uploadController.abort();
+      }, 120000); // 120 seconds for file uploads
+
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/templates`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+          signal: uploadController.signal,
+          // Don't set Content-Type header - browser will set it with boundary for multipart/form-data
+          // The browser automatically sets: Content-Type: multipart/form-data; boundary=----WebKitFormBoundary...
+        });
+        clearTimeout(uploadTimeoutId);
+      } catch (error) {
+        clearTimeout(uploadTimeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.error('[API] Upload request timed out after 120 seconds');
+          throw new ApiError(
+            "TIMEOUT",
+            "Upload is taking too long. The file might be too large or the server is slow. Please try again with a smaller file.",
+            { fileName: file.name, fileSize: file.size }
+          );
+        }
+        const errorMessage = error instanceof Error ? error.message : "Network error";
+        console.error('[API] Network error during upload:', errorMessage);
+        throw new ApiError(
+          "NETWORK_ERROR",
+          `Failed to upload file: ${errorMessage}`,
+          { fileName: file.name }
+        );
+      }
+      
+      const responseContentType = response.headers.get("content-type");
+      console.log('[API] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: responseContentType,
+        ok: response.ok,
+      });
+
+      // Check if response is JSON
+      let data: ApiResponse<{
         id: string;
         title: string;
         category_id: string;
@@ -564,15 +636,94 @@ export const api = {
           file_type: string;
         };
       }>;
-      if (!response.ok || !data.success) {
-        const errorMsg =
-          typeof data.error === "object"
-            ? data.error?.message ?? "Failed to create template"
-            : typeof data.error === "string"
-            ? data.error
-            : "Failed to create template";
+
+      try {
+        if (responseContentType?.includes("application/json")) {
+          data = (await response.json()) as ApiResponse<{
+            id: string;
+            title: string;
+            category_id: string;
+            subcategory_id: string;
+            template?: {
+              id: string;
+              title: string;
+              status: string;
+            };
+            version?: {
+              id: string;
+              version_number: number;
+            };
+            source_file?: {
+              id: string;
+              file_name: string;
+              file_type: string;
+            };
+          }>;
+        } else {
+          // Try to read as text to see what we got
+          const text = await response.text();
+          console.error('[API] Non-JSON response from backend:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: responseContentType,
+            responseText: text.substring(0, 1000),
+          });
+          throw new ApiError(
+            "INVALID_RESPONSE",
+            `Backend returned non-JSON response: ${responseContentType}`,
+            response.status
+          );
+        }
+      } catch (parseError) {
+        if (parseError instanceof ApiError) throw parseError;
+        console.error('[API] Failed to parse response:', {
+          parseError: parseError instanceof Error ? parseError.message : String(parseError),
+          status: response.status,
+          statusText: response.statusText,
+          contentType: responseContentType,
+        });
         throw new ApiError(
-          typeof data.error === "object" ? data.error?.code ?? "HTTP_ERROR" : "HTTP_ERROR",
+          "PARSE_ERROR",
+          `Failed to parse backend response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
+          response.status
+        );
+      }
+
+      if (!response.ok || !data.success) {
+        // Extract error message more carefully
+        let errorMsg = "Failed to create template";
+        let errorCode = "HTTP_ERROR";
+        
+        if (data.error) {
+          if (typeof data.error === "object") {
+            errorMsg = data.error.message || errorMsg;
+            errorCode = data.error.code || errorCode;
+          } else if (typeof data.error === "string") {
+            errorMsg = data.error;
+          }
+        }
+        
+        console.error('[API] Template creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          contentType: responseContentType,
+          error: data.error,
+          errorMsg,
+          errorCode,
+          fullResponse: JSON.stringify(data, null, 2),
+          sentData: {
+            title: params.title.trim(),
+            titleLength: params.title.trim().length,
+            category_id: params.category_id,
+            subcategory_id: params.subcategory_id,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+          },
+        });
+        
+        throw new ApiError(
+          errorCode,
           errorMsg
         );
       }

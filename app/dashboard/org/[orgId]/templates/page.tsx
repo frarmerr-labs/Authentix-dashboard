@@ -201,10 +201,58 @@ export default function TemplatesPage() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to fetch templates");
+        // Try to get error details from response
+        let errorMessage = `Failed to fetch templates (${response.status} ${response.statusText})`;
+        let errorDetails: any = null;
+        
+        try {
+          // Try to read response as text first to see what we got
+          const responseText = await response.text();
+          console.error('[TemplatesPage] Response text:', responseText.substring(0, 500));
+          
+          // Try to parse as JSON
+          try {
+            const errorData = JSON.parse(responseText);
+            errorDetails = errorData;
+            
+            if (errorData.error) {
+              errorMessage = typeof errorData.error === 'string' 
+                ? errorData.error 
+                : errorData.error.message || errorMessage;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+          } catch (parseError) {
+            // Not JSON, use the text as error message
+            errorMessage = responseText || errorMessage;
+          }
+        } catch (readError) {
+          // Can't read response body, use status
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        
+        console.error('[TemplatesPage] Fetch error:', {
+          status: response.status,
+          statusText: response.statusText,
+          statusCode: response.status,
+          errorMessage,
+          errorDetails,
+          url: response.url,
+        });
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
+      
+      // Check if response indicates an error
+      if (!result.success && result.error) {
+        const errorMessage = typeof result.error === 'string' 
+          ? result.error 
+          : result.error.message || 'Failed to fetch templates';
+        console.error('[TemplatesPage] API error:', result.error);
+        throw new Error(errorMessage);
+      }
+      
       const data = result.data?.items || [];
       
       // Debug: Log first template to see what we're getting
@@ -226,7 +274,9 @@ export default function TemplatesPage() {
       loadAllPreviews(data);
     } catch (error: unknown) {
       console.error("Error loading templates:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to load templates";
       setTemplates([]);
+      // You might want to show an error toast/alert here
     } finally {
       setLoading(false);
     }
@@ -465,7 +515,8 @@ export default function TemplatesPage() {
                         <img
                           src={previewUrl}
                           alt={template.title || template.name}
-                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-contain object-center"
+                          style={{ maxWidth: '100%', maxHeight: '100%' }}
                           onError={() => {
                             // Handle image load error
                             setPreviewStates((prev) => ({
@@ -475,10 +526,11 @@ export default function TemplatesPage() {
                           }}
                         />
                       ) : (
-                        // PDF preview using iframe so the browser renders first page
+                        // PDF preview using iframe with fit parameters
                         <iframe
-                          src={previewUrl}
+                          src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                           className="w-full h-full border-0"
+                          style={{ objectFit: 'contain' }}
                         />
                       );
                     }
@@ -685,20 +737,22 @@ export default function TemplatesPage() {
                   <DialogTitle>{previewTemplate.title || previewTemplate.name}</DialogTitle>
                 </DialogHeader>
                 <div className="mt-4">
-                  <div className="w-full aspect-[4/3] bg-muted overflow-hidden rounded-md">
+                  <div className="w-full bg-muted overflow-hidden rounded-md flex items-center justify-center" style={{ minHeight: '500px', maxHeight: '70vh' }}>
                     {(previewTemplate.file_type === 'png' || previewTemplate.file_type === 'jpg' || previewTemplate.file_type === 'jpeg') && previewUrl ? (
                       <img
                         src={previewUrl}
                         alt={previewTemplate.title || previewTemplate.name}
-                        className="w-full h-full object-contain"
+                        className="max-w-full max-h-full object-contain object-center"
+                        style={{ width: 'auto', height: 'auto' }}
                       />
                     ) : previewUrl ? (
                       <iframe
-                        src={previewUrl}
+                        src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                         className="w-full h-full border-0"
+                        style={{ minHeight: '500px', maxHeight: '70vh' }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-full h-full flex items-center justify-center" style={{ minHeight: '500px' }}>
                         {previewTemplate.file_type === 'pdf' ? (
                           <FileType className="h-12 w-12 text-muted-foreground/50" />
                         ) : (

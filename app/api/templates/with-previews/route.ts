@@ -151,9 +151,39 @@ export async function GET(request: NextRequest) {
 
     // Fetch templates list with preview URLs included
     // Backend supports include=preview_url query param to batch generate signed URLs
-    const templatesResponse = await serverApiRequest<TemplateListResponse>(
-      `/templates?sort_by=${sortBy}&sort_order=${sortOrder}&page=${page}&limit=${limit}&include=preview_url`
-    );
+    let templatesResponse;
+    try {
+      const backendUrl = `/templates?sort_by=${sortBy}&sort_order=${sortOrder}&page=${page}&limit=${limit}&include=preview_url`;
+      console.log('[BFF] Fetching templates from backend:', backendUrl);
+      
+      templatesResponse = await serverApiRequest<TemplateListResponse>(backendUrl);
+      
+      console.log('[BFF] Backend response received:', {
+        hasData: !!templatesResponse.data,
+        itemsCount: templatesResponse.data?.items?.length || 0,
+      });
+    } catch (error) {
+      console.error('[BFF] Error fetching templates from backend:', {
+        error,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        isServerApiError: error instanceof ServerApiError,
+        serverApiErrorCode: error instanceof ServerApiError ? error.code : undefined,
+        serverApiErrorStatus: error instanceof ServerApiError ? error.status : undefined,
+      });
+      
+      // If backend request fails, throw ServerApiError so it's handled below
+      if (error instanceof ServerApiError) {
+        throw error;
+      }
+      // Wrap unknown errors
+      throw new ServerApiError(
+        'BACKEND_ERROR',
+        error instanceof Error ? error.message : 'Failed to fetch templates from backend',
+        502
+      );
+    }
 
     if (!templatesResponse.data) {
       return NextResponse.json({
@@ -351,6 +381,13 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof ServerApiError) {
+      console.error("[BFF] ServerApiError caught:", {
+        code: error.code,
+        message: error.message,
+        status: error.status,
+        details: error.details,
+        stack: error.stack,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -360,11 +397,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.error("[BFF] Templates with previews error:", error);
+    console.error("[BFF] Unexpected error in templates with previews:", {
+      error,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       {
         success: false,
-        error: { code: "INTERNAL_ERROR", message: "Failed to fetch templates" },
+        error: { 
+          code: "INTERNAL_ERROR", 
+          message: error instanceof Error ? error.message : "Failed to fetch templates" 
+        },
       },
       { status: 500 }
     );
