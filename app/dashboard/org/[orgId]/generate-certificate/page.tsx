@@ -567,11 +567,16 @@ export default function GenerateCertificatePage() {
     });
   };
 
-  const handleDataImport = (data: ImportedData) => {
+  const handleDataImport = (data: ImportedData | null) => {
     setImportedData(data);
-    const autoMappings = autoMapColumns(fields, data.headers);
-    setFieldMappings(autoMappings);
-    setCurrentStep('export');
+    if (data) {
+      const autoMappings = autoMapColumns(fields, data.headers);
+      setFieldMappings(autoMappings);
+      setCurrentStep('export');
+    } else {
+      // Clear mappings when data is cleared
+      setFieldMappings([]);
+    }
   };
 
   const handleLoadImport = async (importId: string) => {

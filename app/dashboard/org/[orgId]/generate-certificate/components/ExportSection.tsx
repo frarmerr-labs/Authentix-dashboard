@@ -17,6 +17,29 @@ interface ExportSectionProps {
   fieldMappings: FieldMapping[];
 }
 
+/**
+ * Get the output format description based on template type
+ */
+function getExportFormatDescription(template: CertificateTemplate | null): string {
+  if (!template) return 'Individual Files (ZIP)';
+
+  // If the template is a PDF, output as PDF
+  // If the template is an image (PNG, JPEG, WebP), output as the same image format
+  if (template.fileType === 'pdf') {
+    return 'Individual PDFs (ZIP)';
+  }
+
+  // For images, determine the format from the file URL or type
+  const fileUrl = template.fileUrl?.toLowerCase() || '';
+  if (fileUrl.endsWith('.png')) {
+    return 'Individual PNG Images (ZIP)';
+  } else if (fileUrl.endsWith('.webp')) {
+    return 'Individual WebP Images (ZIP)';
+  } else {
+    return 'Individual JPEG Images (ZIP)';
+  }
+}
+
 export function ExportSection({ template, fields, importedData, fieldMappings }: ExportSectionProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -135,7 +158,7 @@ export function ExportSection({ template, fields, importedData, fieldMappings }:
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Export Format:</span>
-            <span className="font-medium">Individual PDFs (ZIP)</span>
+            <span className="font-medium">{getExportFormatDescription(template)}</span>
           </div>
         </div>
       </Card>

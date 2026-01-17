@@ -16,7 +16,7 @@ interface DataSelectorProps {
   savedImports: any[];
   importedData: ImportedData | null;
   fieldMappings: FieldMapping[];
-  onDataImport: (data: ImportedData) => void;
+  onDataImport: (data: ImportedData | null) => void;
   onMappingChange: (mappings: FieldMapping[]) => void;
   onLoadImport?: (importId: string) => Promise<void>;
 }
@@ -279,7 +279,7 @@ export function DataSelector({
               </div>
               <Button variant="outline" size="sm" onClick={() => {
                 setShowUpload(true);
-                onDataImport(null as any);
+                onDataImport(null);
               }}>
                 Change File
               </Button>
