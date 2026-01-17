@@ -68,15 +68,15 @@ export function useCatalogCategories(): UseCatalogCategoriesResult {
         // Standard structure: { groups: [...] }
         console.log('[useCatalogCategories] Result has groups property');
         groupsToSet = result.groups;
-      } else if (result?.data?.groups && Array.isArray(result.data.groups)) {
+      } else if ((result as any)?.data?.groups && Array.isArray((result as any).data.groups)) {
         // Nested structure: { data: { groups: [...] } }
         console.log('[useCatalogCategories] Result has nested data.groups');
-        groupsToSet = result.data.groups;
+        groupsToSet = (result as any).data.groups;
       } else {
         console.warn('[useCatalogCategories] No groups found in response', {
           hasResult: !!result,
           hasGroups: !!result?.groups,
-          hasDataGroups: !!result?.data?.groups,
+          hasDataGroups: !!(result as any)?.data?.groups,
           isArray: Array.isArray(result),
           isGroupsArray: Array.isArray(result?.groups),
           resultStructure: JSON.stringify(result, null, 2),
@@ -167,7 +167,7 @@ export function useCatalogCategories(): UseCatalogCategoriesResult {
       loadCategories();
     }
 
-    return unsubscribe;
+    return () => { unsubscribe(); };
   }, [loadCategories]);
 
   return {

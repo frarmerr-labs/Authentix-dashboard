@@ -38,7 +38,13 @@ export async function createTemplate(
   file: File,
   metadata: CreateTemplateMetadata
 ): Promise<Template> {
-  return api.templates.create(file, metadata) as Promise<Template>;
+  // Map CreateTemplateMetadata to API expected format
+  const apiParams = {
+    title: metadata.name,
+    category_id: metadata.certificate_category || '',
+    subcategory_id: metadata.certificate_subcategory || '',
+  };
+  return api.templates.create(file, apiParams) as unknown as Promise<Template>;
 }
 
 /**

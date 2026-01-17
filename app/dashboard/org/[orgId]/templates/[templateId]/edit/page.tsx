@@ -276,6 +276,11 @@ export default function TemplateEditorPage() {
         const updatedFields = [...currentFields];
         const field = updatedFields[index];
 
+        if (!field) {
+          console.error('Field not found at index', index);
+          return currentFields;
+        }
+
         // Check field_key uniqueness if it's being changed
         if (updates.field_key && updates.field_key !== field.field_key) {
           if (usedFieldKeysRef.current.has(updates.field_key)) {
@@ -296,7 +301,10 @@ export default function TemplateEditorPage() {
           debounceTimerRef.current = setTimeout(() => {
             setFields((prevFields) => {
               const finalFields = [...prevFields];
-              finalFields[index] = { ...finalFields[index], ...updates };
+              const existingField = finalFields[index];
+              if (existingField) {
+                finalFields[index] = { ...existingField, ...updates };
+              }
               return finalFields;
             });
             setError(null);
@@ -319,6 +327,7 @@ export default function TemplateEditorPage() {
       e.stopPropagation();
       setSelectedFieldIndex(index);
       const field = fields[index];
+      if (!field) return;
       setDragging({
         index,
         startX: e.clientX - field.x,
@@ -338,11 +347,14 @@ export default function TemplateEditorPage() {
       // Use immediate update for dragging for smooth UX
       setFields((currentFields) => {
         const updatedFields = [...currentFields];
-        updatedFields[dragging.index] = {
-          ...updatedFields[dragging.index],
-          x: Math.max(0, newX),
-          y: Math.max(0, newY),
-        };
+        const existingField = updatedFields[dragging.index];
+        if (existingField) {
+          updatedFields[dragging.index] = {
+            ...existingField,
+            x: Math.max(0, newX),
+            y: Math.max(0, newY),
+          };
+        }
         return updatedFields;
       });
     };
@@ -373,7 +385,9 @@ export default function TemplateEditorPage() {
   const handleDeleteField = useCallback(
     (index: number) => {
       const field = fields[index];
-      usedFieldKeysRef.current.delete(field.field_key);
+      if (field) {
+        usedFieldKeysRef.current.delete(field.field_key);
+      }
       setFields(fields.filter((_, i) => i !== index));
     },
     [fields]

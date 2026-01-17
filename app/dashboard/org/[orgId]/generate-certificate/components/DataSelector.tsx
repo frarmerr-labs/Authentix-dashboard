@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDropzone } from 'react-dropzone';
 import { CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
-import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard } from 'lucide-react';
 import { getXlsx } from '@/lib/utils/dynamic-imports';
+import { DataPreview } from './DataPreview';
+import { ManualDataEntry } from './ManualDataEntry';
 
 interface DataSelectorProps {
   fields: CertificateField[];
@@ -19,6 +21,7 @@ interface DataSelectorProps {
   onDataImport: (data: ImportedData | null) => void;
   onMappingChange: (mappings: FieldMapping[]) => void;
   onLoadImport?: (importId: string) => Promise<void>;
+  onContinueToGenerate?: () => void;
 }
 
 export function DataSelector({
@@ -29,9 +32,11 @@ export function DataSelector({
   onDataImport,
   onMappingChange,
   onLoadImport,
+  onContinueToGenerate,
 }: DataSelectorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUpload, setShowUpload] = useState(!importedData);
+  const [entryMode, setEntryMode] = useState<'upload' | 'manual'>('upload');
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -138,6 +143,24 @@ export function DataSelector({
     return fieldMappings.find((m) => m.fieldId === fieldId)?.columnName;
   };
 
+  // Handle manual data entry submission
+  const handleManualDataSubmit = (data: ImportedData) => {
+    onDataImport(data);
+    setShowUpload(false);
+    // Auto-map columns for manual entry
+    const autoMappings = fields
+      .filter((f) => f.type !== 'qr_code' && f.type !== 'custom_text')
+      .map((field) => {
+        const matchingHeader = data.headers.find((h) =>
+          h.toLowerCase().includes(field.label.toLowerCase()) ||
+          field.label.toLowerCase().includes(h.toLowerCase())
+        );
+        return matchingHeader ? { fieldId: field.id, columnName: matchingHeader } : null;
+      })
+      .filter(Boolean) as { fieldId: string; columnName: string }[];
+    onMappingChange(autoMappings);
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header */}
@@ -219,101 +242,94 @@ export function DataSelector({
 
       {/* Upload New Data */}
       {showUpload ? (
-        <Card className="border-2 border-dashed">
-          <div
-            {...getRootProps()}
-            className={`
-              p-12 text-center cursor-pointer transition-all
-              ${isDragActive ? 'bg-primary/5' : 'hover:bg-muted/50'}
-            `}
-          >
-            <input {...getInputProps()} />
-
-            <div className="flex flex-col items-center gap-4">
-              {isProcessing ? (
-                <>
-                  <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm text-muted-foreground">Processing file...</p>
-                </>
-              ) : isDragActive ? (
-                <>
-                  <FileSpreadsheet className="w-16 h-16 text-primary" />
-                  <p className="text-lg font-medium">Drop your file here</p>
-                </>
-              ) : (
-                <>
-                  <div className="p-4 rounded-full bg-gradient-to-br from-primary/10 to-primary/20">
-                    <Upload className="w-12 h-12 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-medium mb-1">Upload Excel or CSV File</p>
-                    <p className="text-sm text-muted-foreground">
-                      Drag & drop or click to browse • .xlsx, .xls, .csv
-                    </p>
-                  </div>
-                  <Button variant="outline">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Choose File
-                  </Button>
-                </>
-              )}
-            </div>
+        <div className="space-y-6">
+          {/* Mode Toggle */}
+          <div className="flex items-center justify-center gap-2 p-1 bg-muted rounded-lg w-fit mx-auto">
+            <Button
+              variant={entryMode === 'upload' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setEntryMode('upload')}
+              className="gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Upload File
+            </Button>
+            <Button
+              variant={entryMode === 'manual' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setEntryMode('manual')}
+              className="gap-2"
+            >
+              <Keyboard className="w-4 h-4" />
+              Manual Entry
+            </Button>
           </div>
-        </Card>
+
+          {entryMode === 'upload' ? (
+            <Card className="border-2 border-dashed">
+              <div
+                {...getRootProps()}
+                className={`
+                  p-12 text-center cursor-pointer transition-all
+                  ${isDragActive ? 'bg-primary/5' : 'hover:bg-muted/50'}
+                `}
+              >
+                <input {...getInputProps()} />
+
+                <div className="flex flex-col items-center gap-4">
+                  {isProcessing ? (
+                    <>
+                      <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-muted-foreground">Processing file...</p>
+                    </>
+                  ) : isDragActive ? (
+                    <>
+                      <FileSpreadsheet className="w-16 h-16 text-primary" />
+                      <p className="text-lg font-medium">Drop your file here</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-4 rounded-full bg-gradient-to-br from-primary/10 to-primary/20">
+                        <Upload className="w-12 h-12 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-lg font-medium mb-1">Upload Excel or CSV File</p>
+                        <p className="text-sm text-muted-foreground">
+                          Drag & drop or click to browse • .xlsx, .xls, .csv
+                        </p>
+                      </div>
+                      <Button variant="outline">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Choose File
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <ManualDataEntry fields={fields} onDataSubmit={handleManualDataSubmit} />
+          )}
+        </div>
       ) : (
         // Show imported data with mapping
         <div className="space-y-6">
-          {/* Data Preview */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900">
-                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold">{importedData?.fileName}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {importedData?.rowCount} recipient{importedData?.rowCount !== 1 ? 's' : ''} • {importedData?.headers.length} column{importedData?.headers.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
+          {/* Full Data Preview */}
+          {importedData && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Data Preview</h3>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setShowUpload(true);
+                  onDataImport(null);
+                }}>
+                  <Edit2 className="w-4 h-4 mr-2" />
+                  Change File
+                </Button>
               </div>
-              <Button variant="outline" size="sm" onClick={() => {
-                setShowUpload(true);
-                onDataImport(null);
-              }}>
-                Change File
-              </Button>
+              <DataPreview data={importedData} maxHeight="350px" />
             </div>
-
-            {/* Data Table Preview */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-muted p-2 text-xs font-medium">Data Preview (first 3 rows)</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      {importedData?.headers.map((header) => (
-                        <th key={header} className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importedData?.rows.slice(0, 3).map((row, idx) => (
-                      <tr key={idx} className="border-t">
-                        {importedData.headers.map((header) => (
-                          <td key={header} className="px-3 py-2 whitespace-nowrap">
-                            {row[header]?.toString() || '-'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </Card>
+          )}
 
           {/* Column Mapping */}
           <Card className="p-6">
@@ -375,6 +391,20 @@ export function DataSelector({
               </div>
             </div>
           </Card>
+
+          {/* Continue to Generate Button */}
+          {onContinueToGenerate && fieldMappings.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                size="lg"
+                onClick={onContinueToGenerate}
+                className="gap-2"
+              >
+                Continue to Generate
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

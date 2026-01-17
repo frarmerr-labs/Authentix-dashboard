@@ -165,7 +165,6 @@ export default async function OrgDashboardLayout({
     hasUser: !!session?.user,
     userId: session?.user?.id,
     userEmail: session?.user?.email,
-    emailVerified: session?.user?.email_verified,
     sessionData: session,
   }, null, 2));
 
@@ -184,7 +183,7 @@ export default async function OrgDashboardLayout({
         fullResponse: meResult,
       }, null, 2));
       
-      me = meResult.data;
+      me = meResult.data ?? null;
     } catch (error) {
       // If /auth/me fails, we'll check email_verified from session if available
       console.warn("[DashboardLayout] /auth/me check failed, using session data:", error);
@@ -197,11 +196,10 @@ export default async function OrgDashboardLayout({
   }
 
   // Check email verification status
-  // Priority: 1) /auth/me response, 2) session.user.email_verified, 3) assume true if valid session
+  // Priority: 1) /auth/me response, 2) assume true if valid session
   // (Step-1 auth typically only issues sessions after email verification)
-  const emailVerified = 
-    me?.user?.email_verified ?? 
-    session.user?.email_verified ?? 
+  const emailVerified =
+    me?.user?.email_verified ??
     (session.valid ? true : false);
   
   if (!emailVerified) {

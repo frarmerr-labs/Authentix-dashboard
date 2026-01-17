@@ -6,14 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDropzone } from 'react-dropzone';
-import { FileText, Image as ImageIcon, Upload, Plus, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Image as ImageIcon, Upload, Plus, Check, ChevronLeft, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
 import { getPdfLib } from '@/lib/utils/dynamic-imports';
 import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
-import { useCertificateCategories } from '@/lib/hooks/use-certificate-categories';
+import { useCatalogCategories } from '@/lib/hooks/use-catalog-categories';
+import { useCatalogSubcategories } from '@/lib/hooks/use-catalog-subcategories';
+import { IndustrySelectModal } from '@/components/templates/IndustrySelectModal';
+import { RecentUsedTemplates } from './RecentUsedTemplates';
+import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 
 const PDFThumbnail = dynamic(() => import('./PDFThumbnail'), { 
   ssr: false,
@@ -24,42 +29,113 @@ const PDFThumbnail = dynamic(() => import('./PDFThumbnail'), {
   )
 });
 
+interface RecentTemplate {
+  template_id: string;
+  template_title: string;
+  template_version_id: string | null;
+  preview_url: string | null;
+  category_name: string | null;
+  subcategory_name: string | null;
+  fields: Array<{
+    id: string;
+    field_key: string;
+    label: string;
+    type: string;
+    page_number: number;
+    x: number;
+    y: number;
+    width: number | null;
+    height: number | null;
+    style: Record<string, unknown> | null;
+  }>;
+}
+
 interface TemplateSelectorProps {
   savedTemplates: any[];
   onSelectTemplate: (template: any) => void;
-  onNewUpload: (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryName?: string, subcategoryName?: string) => void;
+  onNewUpload: (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => void;
+  recentGenerated?: RecentGeneratedTemplate[];
+  inProgress?: InProgressTemplate[];
+  recentLoading?: boolean;
+  onSelectRecentTemplate?: (template: RecentTemplate, loadFields: boolean) => void;
 }
 
-export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload }: TemplateSelectorProps) {
+export function TemplateSelector({
+  savedTemplates,
+  onSelectTemplate,
+  onNewUpload,
+  recentGenerated = [],
+  inProgress = [],
+  recentLoading = false,
+  onSelectRecentTemplate,
+}: TemplateSelectorProps) {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [templateName, setTemplateName] = useState('');
-  const [categoryName, setCategoryName] = useState('');
-  const [subcategoryName, setSubcategoryName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [subcategoryId, setSubcategoryId] = useState('');
   const [saveTemplate, setSaveTemplate] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [showIndustryModal, setShowIndustryModal] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Use the shared hook for DB-driven category logic
+  // Use the catalog categories hook (same as TemplateUploadDialog)
   const {
-    categories,
+    groups,
     loading: categoriesLoading,
     error: categoriesError,
-    getSubcategories,
-    requiresSubcategory,
-  } = useCertificateCategories();
+    requiresIndustry,
+    reload: reloadCategories,
+  } = useCatalogCategories();
 
-  // Get subcategories for selected category
-  const subcategories = categoryName ? getSubcategories(categoryName) : [];
-  const showSubcategory = categoryName && requiresSubcategory(categoryName);
+  // Fetch subcategories when category is selected
+  const {
+    subcategories,
+    loading: subcategoriesLoading,
+    error: subcategoriesError,
+    reload: reloadSubcategories,
+  } = useCatalogSubcategories(categoryId);
 
   // Reset subcategory when category changes
   useEffect(() => {
-    if (!showSubcategory) {
-      setSubcategoryName('');
+    setSubcategoryId('');
+  }, [categoryId]);
+
+  // Reload categories when modal opens (if not already loading)
+  useEffect(() => {
+    if (showUploadDialog && !categoriesLoading && groups.length === 0) {
+      reloadCategories();
     }
-  }, [showSubcategory]);
+  }, [showUploadDialog, categoriesLoading, groups.length, reloadCategories]);
+
+  // Handle industry requirement - show modal when 409 is detected
+  useEffect(() => {
+    if (requiresIndustry && showUploadDialog && !showIndustryModal) {
+      setShowIndustryModal(true);
+    }
+  }, [requiresIndustry, showUploadDialog, showIndustryModal]);
+
+  // Reset form when modal closes (only after successful upload or explicit close)
+  // Keep form data if user closes during upload or on error for retry
+  useEffect(() => {
+    if (!showUploadDialog && !isProcessing) {
+      // Reset only if modal is closed and not uploading
+      // This allows user to retry without losing data
+      setUploadFile(null);
+      setTemplateName('');
+      setCategoryId('');
+      setSubcategoryId('');
+      setError('');
+    }
+  }, [showUploadDialog, isProcessing]);
+
+  const handleIndustrySelected = async () => {
+    // Reload categories after industry is set
+    await reloadCategories();
+    setShowIndustryModal(false);
+  };
 
   // Generate consistent color for category/subcategory badges
   const getColorForText = (text: string): { bg: string; text: string; border: string } => {
@@ -113,7 +189,36 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
   const handleUpload = async () => {
     if (!uploadFile) return;
 
+    // Clear previous errors
+    setError('');
+
+    // Validate required fields
+    if (!templateName.trim()) {
+      setError('Template name is required');
+      return;
+    }
+
+    if (!categoryId) {
+      setError('Please select a category');
+      return;
+    }
+
+    if (!subcategoryId) {
+      if (subcategoriesLoading) {
+        setError('Please wait for subcategories to load');
+        return;
+      }
+      if (subcategories.length > 0) {
+        setError('Please select a subcategory');
+        return;
+      }
+      // If no subcategories available, still require selection per schema
+      setError('Please select a subcategory');
+      return;
+    }
+
     setIsProcessing(true);
+    setError('');
 
     try {
       const fileType = uploadFile.type;
@@ -150,19 +255,30 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
         });
       }
 
-      onNewUpload(uploadFile, width, height, saveTemplate, templateName, categoryName, subcategoryName);
+      onNewUpload(uploadFile, width, height, saveTemplate, templateName.trim(), categoryId, subcategoryId);
       setShowUploadDialog(false);
       setUploadFile(null);
       setTemplateName('');
-      setCategoryName('');
-      setSubcategoryName('');
-    } catch (error) {
+      setCategoryId('');
+      setSubcategoryId('');
+      setError('');
+    } catch (error: any) {
       console.error('Error processing file:', error);
-      alert('Failed to process file');
+      setError(error.message || 'Failed to process file. Please try again.');
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // Handler for recent template selection
+  const handleRecentSelect = (template: RecentTemplate, loadFields: boolean) => {
+    if (onSelectRecentTemplate) {
+      onSelectRecentTemplate(template, loadFields);
+    }
+  };
+
+  // Check if we should show recent templates section
+  const hasRecentTemplates = recentGenerated.length > 0 || inProgress.length > 0 || recentLoading;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -175,6 +291,27 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
           Select from your saved templates or upload a new one
         </p>
       </div>
+
+      {/* Recent Used Templates Section */}
+      {hasRecentTemplates && (
+        <RecentUsedTemplates
+          recentGenerated={recentGenerated}
+          inProgress={inProgress}
+          loading={recentLoading}
+          onSelectTemplate={handleRecentSelect}
+        />
+      )}
+
+      {/* Saved Templates Section Header */}
+      {savedTemplates.length > 0 && (
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-muted-foreground">Saved Templates</h3>
+          <Badge variant="secondary" className="text-xs">
+            {savedTemplates.length} template{savedTemplates.length !== 1 ? 's' : ''}
+          </Badge>
+        </div>
+      )}
 
       {/* Templates Carousel */}
       <div className="relative group/carousel px-12">
@@ -294,155 +431,287 @@ export function TemplateSelector({ savedTemplates, onSelectTemplate, onNewUpload
 
       {/* Upload New Template - Positioned Below */}
       <div className="flex justify-center mt-4">
-        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-          <DialogTrigger asChild>
-            <Button variant="outline" className="h-auto py-6 px-8 flex flex-col gap-2 border-2 border-dashed hover:border-primary/50 hover:bg-muted/30 group">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Plus className="w-5 h-5 text-primary" />
-              </div>
-              <div className="text-center">
-                <span className="font-semibold block text-base">Upload New Template</span>
-                <span className="text-xs text-muted-foreground font-normal">PDF, JPEG, or PNG</span>
-              </div>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Upload Certificate Template</DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-6 py-4">
-              {/* File Upload */}
-              <div
-                {...getRootProps()}
-                className={`
-                  border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all
-                  ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50'}
-                `}
-              >
-                <input {...getInputProps()} />
-                <div className="flex flex-col items-center gap-4">
-                  {uploadFile ? (
-                    <>
-                      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                        <FileCheck className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <p className="text-base font-medium">{uploadFile.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                        <Upload className="w-8 h-8 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-base font-medium">Click to upload or drag and drop</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          PDF, JPEG, or PNG (Max 10MB)
-                        </p>
-                      </div>
-                    </>
-                  )}
+        <>
+          <IndustrySelectModal
+            open={showIndustryModal}
+            onOpenChange={setShowIndustryModal}
+            onIndustrySelected={handleIndustrySelected}
+          />
+          <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-auto py-6 px-8 flex flex-col gap-2 border-2 border-dashed hover:border-primary/50 hover:bg-muted/30 group">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Plus className="w-5 h-5 text-primary" />
                 </div>
-              </div>
+                <div className="text-center">
+                  <span className="font-semibold block text-base">Upload New Template</span>
+                  <span className="text-xs text-muted-foreground font-normal">PDF, JPEG, or PNG</span>
+                </div>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Upload Certificate Template</DialogTitle>
+              </DialogHeader>
 
-              {/* Template Info */}
-              {uploadFile && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                  {/* Template Name - Full Width */}
-                  <div className="space-y-2">
-                    <Label htmlFor="templateName">
-                      Template Name <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="templateName"
-                      value={templateName}
-                      onChange={(e) => setTemplateName(e.target.value)}
-                      placeholder="e.g., Completion Certificate"
-                      required
-                    />
-                  </div>
-
-                  {/* Category Dropdown - Full Width */}
-                  <div className="space-y-2">
-                    <Label htmlFor="category">
-                      Category <span className="text-destructive">*</span>
-                    </Label>
-                    <Select
-                      value={categoryName}
-                      onValueChange={setCategoryName}
-                      disabled={categoriesLoading}
+              {categoriesError && !requiresIndustry && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>{categoriesError}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => reloadCategories()}
+                      className="ml-4"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      Retry
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
 
-                  {/* Subcategory Dropdown - Only shown if category requires it */}
-                  {showSubcategory && (
+              <div className="space-y-6 py-4">
+                {/* File Upload */}
+                <div
+                  {...getRootProps()}
+                  className={`
+                    border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all
+                    ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50'}
+                  `}
+                >
+                  <input {...getInputProps()} />
+                  <div className="flex flex-col items-center gap-4">
+                    {uploadFile ? (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                          <FileCheck className="w-8 h-8" />
+                        </div>
+                        <div>
+                          <p className="text-base font-medium">{uploadFile.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                          <Upload className="w-8 h-8 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-base font-medium">Click to upload or drag and drop</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            PDF, JPEG, or PNG (Max 10MB)
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Template Info */}
+                {uploadFile && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                    {/* Template Name - Full Width */}
                     <div className="space-y-2">
-                      <Label htmlFor="subcategory">
-                        Subcategory <span className="text-destructive">*</span>
+                      <Label htmlFor="templateName">
+                        Template Name <span className="text-destructive">*</span>
                       </Label>
-                      <Select value={subcategoryName} onValueChange={setSubcategoryName}>
+                      <Input
+                        id="templateName"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="e.g., Completion Certificate"
+                        required
+                        disabled={isProcessing}
+                      />
+                    </div>
+
+                    {/* Category Dropdown - Full Width with Grouping */}
+                    <div className="space-y-2">
+                      <Label htmlFor="category">
+                        Category <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={categoryId}
+                        onValueChange={setCategoryId}
+                        disabled={isProcessing || categoriesLoading}
+                      >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select subcategory" />
+                          <SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {subcategories.map((subcat) => (
-                            <SelectItem key={subcat} value={subcat}>
-                              {subcat}
-                            </SelectItem>
-                          ))}
+                          {categoriesLoading ? (
+                            <div className="p-4 space-y-2">
+                              {[1, 2, 3].map((i) => (
+                                <div key={i} className="h-8 bg-muted animate-pulse rounded" />
+                              ))}
+                            </div>
+                          ) : categoriesError ? (
+                            <div className="p-4 space-y-3">
+                              <div className="text-sm text-destructive text-center">
+                                {categoriesError}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => reloadCategories()}
+                                className="w-full"
+                              >
+                                Retry
+                              </Button>
+                            </div>
+                          ) : groups.length === 0 ? (
+                            <div className="p-4 text-sm text-muted-foreground text-center">
+                              No categories available
+                            </div>
+                          ) : (
+                            groups.map((group, groupIndex) => (
+                              <div key={group.group_key}>
+                                {/* Group divider label */}
+                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase sticky top-0 bg-background z-10">
+                                  {group.label}
+                                </div>
+                                {/* Group items */}
+                                {group.items.map((item) => (
+                                  <SelectItem key={item.id} value={item.id} className="pl-4">
+                                    {item.name}
+                                  </SelectItem>
+                                ))}
+                                {/* Separator between groups (not after last group) */}
+                                {groupIndex < groups.length - 1 && (
+                                  <SelectSeparator />
+                                )}
+                              </div>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
-                  )}
 
-                  {/* Save to Templates Toggle */}
-                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-                    <div className="space-y-0.5">
-                      <Label className="text-base">Save to Templates</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Save this template for future use in the templates library
-                      </p>
+                    {/* Subcategory Dropdown - Only shown when category is selected */}
+                    {categoryId && (
+                      <div className="space-y-2">
+                        <Label htmlFor="subcategory">
+                          Subcategory <span className="text-destructive">*</span>
+                        </Label>
+                        <Select
+                          value={subcategoryId}
+                          onValueChange={setSubcategoryId}
+                          disabled={isProcessing || subcategoriesLoading}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                subcategoriesLoading
+                                  ? "Loading subcategories..."
+                                  : subcategories.length === 0
+                                  ? "No subcategories available"
+                                  : "Select subcategory"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {subcategoriesLoading ? (
+                              <div className="p-4 space-y-2">
+                                {[1, 2, 3].map((i) => (
+                                  <div key={i} className="h-8 bg-muted animate-pulse rounded" />
+                                ))}
+                              </div>
+                            ) : subcategoriesError ? (
+                              <div className="p-4 space-y-3">
+                                <div className="text-sm text-destructive">
+                                  {subcategoriesError}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    reloadSubcategories();
+                                  }}
+                                  className="w-full"
+                                >
+                                  Retry
+                                </Button>
+                              </div>
+                            ) : subcategories.length === 0 ? (
+                              <div className="p-4 text-sm text-muted-foreground text-center">
+                                No subcategories available for this category
+                              </div>
+                            ) : (
+                              subcategories.map((subcat) => (
+                                <SelectItem key={subcat.id} value={subcat.id}>
+                                  {subcat.name}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Save to Templates Toggle */}
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+                      <div className="space-y-0.5">
+                        <Label className="text-base">Save to Templates</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Save this template for future use in the templates library
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSaveTemplate(!saveTemplate)}
+                        disabled={isProcessing}
+                        className={`
+                          w-11 h-6 rounded-full transition-colors relative
+                          ${saveTemplate ? 'bg-primary' : 'bg-muted-foreground/30'}
+                          ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                        `}
+                      >
+                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${saveTemplate ? 'translate-x-5' : ''}`} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setSaveTemplate(!saveTemplate)}
-                      className={`
-                        w-11 h-6 rounded-full transition-colors relative
-                        ${saveTemplate ? 'bg-primary' : 'bg-muted-foreground/30'}
-                      `}
-                    >
-                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${saveTemplate ? 'translate-x-5' : ''}`} />
-                    </button>
-                  </div>
 
-                  <Button
-                    onClick={handleUpload}
-                    disabled={isProcessing || !templateName || !categoryName || Boolean(showSubcategory && !subcategoryName)}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {isProcessing ? 'Processing template...' : 'Start Designing'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+                    {/* Error Display */}
+                    {error && !isProcessing && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    <Button
+                      onClick={handleUpload}
+                      disabled={
+                        isProcessing ||
+                        !templateName.trim() ||
+                        !categoryId ||
+                        !subcategoryId ||
+                        categoriesLoading ||
+                        subcategoriesLoading
+                      }
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processing template...
+                        </>
+                      ) : (
+                        'Start Designing'
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
       </div>
     </div>
   );

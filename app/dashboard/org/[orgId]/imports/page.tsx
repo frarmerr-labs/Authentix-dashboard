@@ -60,7 +60,7 @@ export default function ImportsPage() {
 
   const loadTemplates = async () => {
     try {
-      const response = await api.templates.list({ status: 'active', sort_by: 'name', sort_order: 'asc' });
+      const response = await api.templates.list({ sort_by: 'name', sort_order: 'asc' });
       setTemplates(response.items.map((t: any) => ({ id: t.id, name: t.name })) || []);
     } catch (err) {
       console.error('Error loading templates:', err);

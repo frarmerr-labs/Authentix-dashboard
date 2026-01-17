@@ -58,6 +58,42 @@ export interface ImportJob {
   updated_at: string;
 }
 
+export interface TemplateField {
+  id: string;
+  field_key: string;
+  label: string;
+  type: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number | null;
+  height: number | null;
+  style: Record<string, unknown> | null;
+}
+
+export interface RecentGeneratedTemplate {
+  template_id: string;
+  template_title: string;
+  template_version_id: string | null;
+  preview_url: string | null;
+  last_generated_at: string;
+  certificates_count: number;
+  category_name: string | null;
+  subcategory_name: string | null;
+  fields: TemplateField[];
+}
+
+export interface InProgressTemplate {
+  template_id: string;
+  template_title: string;
+  template_version_id: string | null;
+  preview_url: string | null;
+  last_modified_at: string;
+  category_name: string | null;
+  subcategory_name: string | null;
+  fields: TemplateField[];
+}
+
 /**
  * Custom error class for API errors
  */
@@ -226,7 +262,7 @@ async function apiRequest<T>(
       statusText: response.statusText,
       ok: response.ok,
       dataSuccess: data.success,
-      errorCode: errorObj.code || 'UNKNOWN',
+      errorCode: 'code' in errorObj ? errorObj.code : 'UNKNOWN',
       errorMessage: errorObj.message || 'Unknown error',
       errorDetails: 'details' in errorObj ? errorObj.details : {},
       fullResponse: JSON.stringify(data, null, 2),
@@ -685,7 +721,7 @@ export const api = {
           throw new ApiError(
             "INVALID_RESPONSE",
             `Backend returned non-JSON response: ${responseContentType}`,
-            response.status
+            { status: response.status }
           );
         }
       } catch (parseError) {
@@ -699,7 +735,7 @@ export const api = {
         throw new ApiError(
           "PARSE_ERROR",
           `Failed to parse backend response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
-          response.status
+          { status: response.status }
         );
       }
 
@@ -816,12 +852,51 @@ export const api = {
       }>("/templates/categories");
       return response.data!;
     },
+
+    /**
+     * Get recent template usage for the current user
+     * Returns recently generated templates and in-progress designs
+     */
+    getRecentUsage: async (limit?: number) => {
+      const queryParams = limit ? `?limit=${limit}` : '';
+      const response = await apiRequest<{
+        recent_generated: RecentGeneratedTemplate[];
+        in_progress: InProgressTemplate[];
+      }>(`/templates/recent-usage${queryParams}`);
+      return response.data!;
+    },
+
+    /**
+     * Save in-progress design for a template
+     * Called when user is designing fields but hasn't generated yet
+     */
+    saveProgress: async (
+      templateId: string,
+      fieldSnapshot: Array<Record<string, unknown>>,
+      templateVersionId?: string
+    ) => {
+      const response = await apiRequest<{ id: string; saved: boolean }>(
+        `/templates/${templateId}/save-progress`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            template_version_id: templateVersionId,
+            field_snapshot: fieldSnapshot,
+          }),
+        }
+      );
+      return response.data!;
+    },
   },
 
   /**
    * Certificates API
    */
   certificates: {
+    /**
+     * Generate certificates
+     * Supports expiry options, custom issue date, and returns individual certificate details
+     */
     generate: async (params: {
       template_id: string;
       data: Array<Record<string, unknown>>;
@@ -829,22 +904,63 @@ export const api = {
       options?: {
         includeQR?: boolean;
         fileName?: string;
+        // Expiry options
+        expiry_type?: 'day' | 'week' | 'month' | 'year' | '5_years' | 'never' | 'custom';
+        custom_expiry_date?: string; // ISO date string, required if expiry_type = 'custom'
+        // Issue date option
+        issue_date?: string; // ISO date string, defaults to NOW()
       };
     }): Promise<{
       job_id?: string;
+      status: 'completed' | 'pending' | 'processing' | 'failed';
       download_url?: string;
-      zip_url?: string;
-      status?: string;
+      zip_download_url?: string;
+      total_certificates: number;
+      certificates: Array<{
+        id: string;
+        certificate_number: string;
+        recipient_name: string;
+        recipient_email: string | null;
+        recipient_phone: string | null;
+        issued_at: string;
+        expires_at: string | null;
+        download_url: string | null;
+        preview_url: string | null;
+      }>;
+      error?: string;
     }> => {
       const response = await apiRequest<{
         job_id?: string;
+        status: 'completed' | 'pending' | 'processing' | 'failed';
         download_url?: string;
-        zip_url?: string;
-        status?: string;
+        zip_download_url?: string;
+        total_certificates: number;
+        certificates: Array<{
+          id: string;
+          certificate_number: string;
+          recipient_name: string;
+          recipient_email: string | null;
+          recipient_phone: string | null;
+          issued_at: string;
+          expires_at: string | null;
+          download_url: string | null;
+          preview_url: string | null;
+        }>;
+        error?: string;
       }>("/certificates/generate", {
         method: "POST",
         body: JSON.stringify(params),
       });
+      return response.data!;
+    },
+
+    /**
+     * Get individual certificate download URL
+     */
+    getDownloadUrl: async (certificateId: string): Promise<{ url: string }> => {
+      const response = await apiRequest<{ url: string }>(
+        `/certificates/${certificateId}/download`
+      );
       return response.data!;
     },
   },

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import { api } from '@/lib/api/client';
+import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 import { getPdfLib, getXlsx } from '@/lib/utils/dynamic-imports';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,11 @@ export default function GenerateCertificatePage() {
   const [savedImports, setSavedImports] = useState<any[]>([]);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
 
+  // Recent templates state
+  const [recentGenerated, setRecentGenerated] = useState<RecentGeneratedTemplate[]>([]);
+  const [inProgressTemplates, setInProgressTemplates] = useState<InProgressTemplate[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+
   // UI state
   const [canvasScale, setCanvasScale] = useState(0.5);
   const [currentStep, setCurrentStep] = useState<'template' | 'design' | 'data' | 'export'>('template');
@@ -56,8 +62,15 @@ export default function GenerateCertificatePage() {
 
   const loadSavedData = async () => {
     try {
-      // Load templates
-      const templatesResponse = await api.templates.list({ status: 'active', sort_by: 'created_at', sort_order: 'desc' });
+      // Load templates and recent usage in parallel
+      const [templatesResponse, recentUsageResponse] = await Promise.all([
+        api.templates.list({ sort_by: 'created_at', sort_order: 'desc' }),
+        api.templates.getRecentUsage(10).catch((error) => {
+          console.warn('[Generate] Error loading recent usage:', error);
+          return { recent_generated: [], in_progress: [] };
+        }),
+      ]);
+
       const templatesData = templatesResponse.items || [];
 
       // Get preview URLs for templates (with graceful error handling)
@@ -81,6 +94,15 @@ export default function GenerateCertificatePage() {
       console.log('[Generate] Templates with signed URLs:', templatesWithSignedUrls.length);
       setSavedTemplates(templatesWithSignedUrls);
 
+      // Set recent usage data
+      setRecentGenerated(recentUsageResponse.recent_generated || []);
+      setInProgressTemplates(recentUsageResponse.in_progress || []);
+      setRecentLoading(false);
+      console.log('[Generate] Recent usage loaded:', {
+        generated: recentUsageResponse.recent_generated?.length || 0,
+        inProgress: recentUsageResponse.in_progress?.length || 0,
+      });
+
       // Load imports (remove status filter - backend handles filtering)
       try {
       const importsResponse = await api.imports.list({ sort_by: 'created_at', sort_order: 'desc', limit: 10 });
@@ -92,6 +114,7 @@ export default function GenerateCertificatePage() {
       }
     } catch (error) {
       console.error('[Generate] Error loading saved data:', error);
+      setRecentLoading(false);
     }
   };
 
@@ -108,6 +131,54 @@ export default function GenerateCertificatePage() {
       }
     }
   }, [templateIdFromUrl, savedTemplates, template]);
+
+  // Handler for selecting a recent template (with or without loading fields)
+  const handleRecentTemplateSelect = async (recentTemplate: any, loadFields: boolean) => {
+    // Find the corresponding saved template
+    let templateToSelect = savedTemplates.find((t) => t.id === recentTemplate.template_id);
+
+    // If not found in saved templates, create a minimal template object from recent data
+    if (!templateToSelect) {
+      templateToSelect = {
+        id: recentTemplate.template_id,
+        name: recentTemplate.template_title,
+        preview_url: recentTemplate.preview_url,
+        category_name: recentTemplate.category_name,
+        subcategory_name: recentTemplate.subcategory_name,
+      };
+    }
+
+    // Load the template
+    await handleTemplateSelect(templateToSelect);
+
+    // If loadFields is true and we have fields from recent usage, use them
+    if (loadFields && recentTemplate.fields && recentTemplate.fields.length > 0) {
+      const mappedFields = recentTemplate.fields.map((field: any) => ({
+        id: field.id || field.field_key,
+        type: mapBackendTypeToFrontend(field.type),
+        label: field.label,
+        x: field.x,
+        y: field.y,
+        width: field.width || 200,
+        height: field.height || 30,
+        fontSize: (field.style as any)?.fontSize || 16,
+        fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
+        color: (field.style as any)?.color || '#000000',
+        fontWeight: (field.style as any)?.fontWeight || 'normal',
+        fontStyle: (field.style as any)?.fontStyle || 'normal',
+        textAlign: (field.style as any)?.textAlign || 'left',
+        dateFormat: (field.style as any)?.dateFormat,
+        prefix: (field.style as any)?.prefix,
+        suffix: (field.style as any)?.suffix,
+      }));
+      setFields(mappedFields);
+    }
+
+    // If it's in-progress, set the version ID
+    if (recentTemplate.template_version_id) {
+      setTemplateVersionId(recentTemplate.template_version_id);
+    }
+  };
 
   // Handlers
   const handleTemplateSelect = async (selectedTemplate: any) => {
@@ -208,8 +279,8 @@ export default function GenerateCertificatePage() {
                     selectedTemplate.file_type === 'pdf' ? 'pdf' : 'image';
 
     // Store version ID for autosave
-    if (editorData?.latest_version?.id) {
-      setTemplateVersionId(editorData.latest_version.id);
+    if (editorData?.version?.id) {
+      setTemplateVersionId(editorData.version.id);
     }
 
     // Map backend fields to frontend format if needed
@@ -245,7 +316,7 @@ export default function GenerateCertificatePage() {
     setCurrentStep('design');
   };
 
-  const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryName?: string, subcategoryName?: string) => {
+  const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => {
     const fileType: 'pdf' | 'image' = file.type === 'application/pdf' ? 'pdf' : 'image';
     const finalTemplateName = templateName || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
 
@@ -266,16 +337,16 @@ export default function GenerateCertificatePage() {
 
     if (saveTemplate) {
       try {
-        // Validate category/subcategory IDs are provided (not names)
-        if (!categoryName || !subcategoryName) {
+        // Validate category/subcategory IDs are provided
+        if (!categoryId || !subcategoryId) {
           throw new Error('Category and subcategory IDs are required');
         }
         
-        // Use backend API to create template
+        // Use backend API to create template (same as TemplateUploadDialog)
         const templateData = await api.templates.create(file, {
-          title: finalTemplateName,
-          category_id: categoryName, // Should be UUID, not name
-          subcategory_id: subcategoryName, // Should be UUID, not name
+          title: finalTemplateName.trim(),
+          category_id: categoryId,
+          subcategory_id: subcategoryId,
         });
 
         // Update saved templates list
@@ -572,10 +643,16 @@ export default function GenerateCertificatePage() {
     if (data) {
       const autoMappings = autoMapColumns(fields, data.headers);
       setFieldMappings(autoMappings);
-      setCurrentStep('export');
+      // Don't auto-navigate - let user click Continue button
     } else {
       // Clear mappings when data is cleared
       setFieldMappings([]);
+    }
+  };
+
+  const handleContinueToGenerate = () => {
+    if (importedData && fieldMappings.length > 0) {
+      setCurrentStep('export');
     }
   };
 
@@ -729,6 +806,10 @@ export default function GenerateCertificatePage() {
               savedTemplates={savedTemplates}
               onSelectTemplate={handleTemplateSelect}
               onNewUpload={handleNewTemplateUpload}
+              recentGenerated={recentGenerated}
+              inProgress={inProgressTemplates}
+              recentLoading={recentLoading}
+              onSelectRecentTemplate={handleRecentTemplateSelect}
             />
           </div>
         )}
@@ -829,6 +910,7 @@ export default function GenerateCertificatePage() {
               onDataImport={handleDataImport}
               onMappingChange={setFieldMappings}
               onLoadImport={handleLoadImport}
+              onContinueToGenerate={handleContinueToGenerate}
             />
           </div>
         )}
