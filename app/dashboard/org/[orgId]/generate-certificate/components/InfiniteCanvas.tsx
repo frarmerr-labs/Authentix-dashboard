@@ -581,6 +581,8 @@ export function InfiniteCanvas({
           onViewportChange={(x, y) => {
             setPan({ x: -x * scale, y: -y * scale });
           }}
+          templateUrl={fileUrl}
+          templateType={fileType}
         />
       )}
 

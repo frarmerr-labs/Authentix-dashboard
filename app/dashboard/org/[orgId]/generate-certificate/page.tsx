@@ -188,6 +188,13 @@ export default function GenerateCertificatePage() {
 
   // Handlers
   const handleTemplateSelect = async (selectedTemplate: any) => {
+    // Reset state for new template to prevent stale data
+    setTotalPages(1);
+    setCurrentPage(0);
+    setFields([]);
+    setSelectedFieldId(null);
+    setTemplateVersionId(null);
+
     let fileUrl = selectedTemplate.preview_url;
 
     // Get editor data to access source_file with mime_type
@@ -260,6 +267,9 @@ export default function GenerateCertificatePage() {
                 setTotalPages(pageCount);
                 setCurrentPage(0); // Reset to first page
             } else {
+                // Reset to single page for image templates
+                setTotalPages(1);
+                setCurrentPage(0);
                  const img = new Image();
                  const objectUrl = URL.createObjectURL(blob);
                  await new Promise((resolve, reject) => {

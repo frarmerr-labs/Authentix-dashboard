@@ -13,6 +13,8 @@ interface CanvasMinimapProps {
   viewportHeight: number;
   fields: CertificateField[];
   onViewportChange: (x: number, y: number) => void;
+  templateUrl?: string;
+  templateType?: 'pdf' | 'image';
 }
 
 const MINIMAP_WIDTH = 150;
@@ -26,6 +28,8 @@ export function CanvasMinimap({
   viewportHeight,
   fields,
   onViewportChange,
+  templateUrl,
+  templateType,
 }: CanvasMinimapProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -113,8 +117,17 @@ export function CanvasMinimap({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Template Background (simplified) */}
-        <div className="absolute inset-0 bg-gradient-to-br from-muted/20 to-muted/40" />
+        {/* Template Background */}
+        {templateUrl && templateType === 'image' ? (
+          <img
+            src={templateUrl}
+            alt="Template preview"
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            draggable={false}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-muted/30 to-muted/50" />
+        )}
 
         {/* Fields (as dots/rectangles) */}
         {fields.map((field) => (
