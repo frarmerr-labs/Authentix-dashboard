@@ -50,6 +50,7 @@ export function CertificateCanvas({
 
   /* Template Resize State */
   const [isResizingTemplate, setIsResizingTemplate] = useState(false);
+  const resizeCorner = useRef<'nw' | 'ne' | 'sw' | 'se' | null>(null);
   const templateResizeStart = useRef({ x: 0, y: 0 });
   const initialTemplateDims = useRef({ w: 0, h: 0 });
 
@@ -67,21 +68,46 @@ export function CertificateCanvas({
         });
       }
       
-      // Template Resize
-      if (isResizingTemplate && onTemplateResize) {
+      // Template Resize from any corner
+      if (isResizingTemplate && onTemplateResize && resizeCorner.current) {
         const deltaX = (e.clientX - templateResizeStart.current.x) / scale; 
         const deltaY = (e.clientY - templateResizeStart.current.y) / scale;
         
-        onTemplateResize(
-            Math.max(100, initialTemplateDims.current.w + deltaX),
-            Math.max(100, initialTemplateDims.current.h + deltaY)
-        );
+        let newWidth = initialTemplateDims.current.w;
+        let newHeight = initialTemplateDims.current.h;
+        
+        // Calculate new dimensions based on corner
+        switch (resizeCorner.current) {
+          case 'se': // Bottom-right: increase width and height
+            newWidth = initialTemplateDims.current.w + deltaX;
+            newHeight = initialTemplateDims.current.h + deltaY;
+            break;
+          case 'sw': // Bottom-left: decrease width, increase height
+            newWidth = initialTemplateDims.current.w - deltaX;
+            newHeight = initialTemplateDims.current.h + deltaY;
+            break;
+          case 'ne': // Top-right: increase width, decrease height
+            newWidth = initialTemplateDims.current.w + deltaX;
+            newHeight = initialTemplateDims.current.h - deltaY;
+            break;
+          case 'nw': // Top-left: decrease width and height
+            newWidth = initialTemplateDims.current.w - deltaX;
+            newHeight = initialTemplateDims.current.h - deltaY;
+            break;
+        }
+        
+        // Ensure minimum size
+        newWidth = Math.max(100, newWidth);
+        newHeight = Math.max(100, newHeight);
+        
+        onTemplateResize(newWidth, newHeight);
       }
     };
     
     const handleGlobalUp = () => {
         setIsDraggingToolbar(false);
         setIsResizingTemplate(false);
+        resizeCorner.current = null;
     };
 
     if (isDraggingToolbar || isResizingTemplate) {
@@ -105,10 +131,11 @@ export function CertificateCanvas({
     };
   };
 
-  const handleTemplateResizeStart = (e: React.MouseEvent) => {
+  const handleTemplateResizeStart = (e: React.MouseEvent, corner: 'nw' | 'ne' | 'sw' | 'se') => {
      e.stopPropagation();
      e.preventDefault(); 
      setIsResizingTemplate(true);
+     resizeCorner.current = corner;
      templateResizeStart.current = { x: e.clientX, y: e.clientY };
      initialTemplateDims.current = { w: pdfWidth, h: pdfHeight };
   };
@@ -178,10 +205,16 @@ export function CertificateCanvas({
     }
   };
 
-  // Mouse Drag Handlers for Panning
+  // Mouse Drag Handlers for Panning - allow left click on empty canvas area
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Middle click or Space+Left click starts panning
-    if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
+    // Don't start panning if clicking on a field or control element
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-field]') || target.closest('button') || target.closest('[data-resize-handle]')) {
+      return;
+    }
+    
+    // Allow panning with left mouse button on empty canvas, or middle button, or space+left
+    if (e.button === 1 || (e.button === 0 && (isSpacePressed || true))) {
       e.preventDefault();
       setIsPanning(true);
     }
@@ -224,7 +257,7 @@ export function CertificateCanvas({
 
   return (
     <div 
-        className="relative w-full h-full bg-muted/20 overflow-hidden flex items-center justify-center select-none"
+        className="relative w-full h-full bg-background overflow-hidden flex items-center justify-center select-none"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -235,7 +268,7 @@ export function CertificateCanvas({
     >
       {/* Zoom Controls - Draggable */}
       <div 
-        className="absolute top-4 right-4 z-50 flex gap-2 bg-background/90 backdrop-blur shadow-sm p-1.5 rounded-lg border cursor-move"
+        className="absolute top-4 right-4 z-50 flex gap-2 bg-background/90 backdrop-blur shadow-sm p-1.5 rounded-lg cursor-move"
         style={{ transform: `translate(${toolbarPos.x}px, ${toolbarPos.y}px)` }}
         onMouseDown={handleToolbarMouseDown}
       >
@@ -259,21 +292,14 @@ export function CertificateCanvas({
 
       {/* Infinite Canvas Content Wrapper */}
       <div 
-        className="relative shadow-xl transition-transform duration-75 ease-out bg-white origin-center will-change-transform"
+        className="relative origin-center border border-gray-300"
         style={{ 
           width: canvasWidth, 
           height: canvasWidth * (pdfHeight / pdfWidth),
-          transform: `translate(${pan.x}px, ${pan.y}px)`, // Scale is handled by width/height in this legacy logic, let's switch to transform scale?
-          // User asked for resize corners. Using width/height logic is easier for that.
-          // BUT for 'infinite canvas' usually scale transform is better for performance.
-          // However, DraggableField uses `scale` prop to adjust its own math.
-          // If I change the container width/height vs Transform Scale, I must align DraggableField.
-          // Current Logic: setCanvasWidth(pdfWidth * scale) -> Actual pixel size changes.
-          // This is NOT transform:scale().
-          // Refactoring to transform:scale() is cleaner for infinite canvas but requires updating DraggableField logic significantly (to not double apply scale).
-          // Given the prompt "refactor interactions" not "rewrite math", I will stick to the current "Pixel Size" scaling 
-          // but apply PAN via transform.
+          transform: `translate(${pan.x}px, ${pan.y}px)`,
+          willChange: isPanning || isResizingTemplate ? 'transform' : 'auto',
         }}
+        data-field="canvas"
       >
           {fileType === 'pdf' ? (
             <iframe 
@@ -293,8 +319,8 @@ export function CertificateCanvas({
           {/* Fields Overlay */}
           <div className="absolute inset-0 overflow-hidden">
             {visibleFields.map((field) => (
+              <div key={field.id} data-field="true">
               <DraggableField
-                key={field.id}
                 field={field}
                 scale={scale} // Scale passed down for drag math
                 isSelected={selectedFieldId === field.id}
@@ -306,14 +332,39 @@ export function CertificateCanvas({
                 }}
                 onDelete={() => onFieldDelete(field.id)}
               />
+              </div>
             ))}
           </div>
 
-          {/* Resize Handles (Visual Only for now) */}
-          <div 
-            className="absolute -right-1 -bottom-1 w-4 h-4 bg-primary border-2 border-white rounded-full cursor-se-resize shadow-md hover:scale-125 transition-transform z-50"
-            onMouseDown={handleTemplateResizeStart}
-          ></div>
+          {/* Resize Handles - All 4 Corners */}
+          {onTemplateResize && (
+            <>
+              {/* Top-left */}
+              <div
+                className="absolute -left-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+                data-resize-handle="true"
+                onMouseDown={(e) => handleTemplateResizeStart(e, 'nw')}
+              />
+              {/* Top-right */}
+              <div
+                className="absolute -right-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+                data-resize-handle="true"
+                onMouseDown={(e) => handleTemplateResizeStart(e, 'ne')}
+              />
+              {/* Bottom-left */}
+              <div
+                className="absolute -left-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+                data-resize-handle="true"
+                onMouseDown={(e) => handleTemplateResizeStart(e, 'sw')}
+              />
+              {/* Bottom-right */}
+              <div
+                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+                data-resize-handle="true"
+                onMouseDown={(e) => handleTemplateResizeStart(e, 'se')}
+              />
+            </>
+          )}
           
       </div>
 

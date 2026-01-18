@@ -65,6 +65,12 @@ export function InfiniteCanvas({
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [showMinimap, setShowMinimap] = useState(true);
+  
+  // Template resize state
+  const [isResizingTemplate, setIsResizingTemplate] = useState(false);
+  const resizeCorner = useRef<'nw' | 'ne' | 'sw' | 'se' | null>(null);
+  const templateResizeStart = useRef({ x: 0, y: 0 });
+  const initialTemplateDims = useRef({ w: 0, h: 0 });
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -165,9 +171,16 @@ export function InfiniteCanvas({
     };
   }, [scale, onScaleChange]);
 
-  // Mouse handlers for panning
+  // Mouse handlers for panning - allow left click on empty canvas area
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
+    // Don't start panning if clicking on a field or control element
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-field]') || target.closest('button') || target.closest('[data-resize-handle]')) {
+      return;
+    }
+    
+    // Allow panning with left mouse button on empty canvas, or middle button, or space+left
+    if (e.button === 1 || (e.button === 0 && (isSpacePressed || true))) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = {
@@ -192,7 +205,72 @@ export function InfiniteCanvas({
 
   const handleMouseUp = () => {
     setIsPanning(false);
+    setIsResizingTemplate(false);
   };
+  
+  // Template resize handler for different corners
+  const handleTemplateResizeStart = (e: React.MouseEvent, corner: 'nw' | 'ne' | 'sw' | 'se') => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizingTemplate(true);
+    resizeCorner.current = corner;
+    templateResizeStart.current = { x: e.clientX, y: e.clientY };
+    initialTemplateDims.current = { w: pdfWidth, h: pdfHeight };
+  };
+  
+  // Global mouse move handler for template resize from any corner
+  useEffect(() => {
+    const handleGlobalMove = (e: MouseEvent) => {
+      if (isResizingTemplate && onTemplateResize && resizeCorner.current) {
+        const deltaX = (e.clientX - templateResizeStart.current.x) / scale;
+        const deltaY = (e.clientY - templateResizeStart.current.y) / scale;
+        
+        let newWidth = initialTemplateDims.current.w;
+        let newHeight = initialTemplateDims.current.h;
+        
+        // Calculate new dimensions based on corner
+        switch (resizeCorner.current) {
+          case 'se': // Bottom-right: increase width and height
+            newWidth = initialTemplateDims.current.w + deltaX;
+            newHeight = initialTemplateDims.current.h + deltaY;
+            break;
+          case 'sw': // Bottom-left: decrease width, increase height
+            newWidth = initialTemplateDims.current.w - deltaX;
+            newHeight = initialTemplateDims.current.h + deltaY;
+            break;
+          case 'ne': // Top-right: increase width, decrease height
+            newWidth = initialTemplateDims.current.w + deltaX;
+            newHeight = initialTemplateDims.current.h - deltaY;
+            break;
+          case 'nw': // Top-left: decrease width and height
+            newWidth = initialTemplateDims.current.w - deltaX;
+            newHeight = initialTemplateDims.current.h - deltaY;
+            break;
+        }
+        
+        // Ensure minimum size
+        newWidth = Math.max(100, newWidth);
+        newHeight = Math.max(100, newHeight);
+        
+        onTemplateResize(newWidth, newHeight);
+      }
+    };
+    
+    const handleGlobalUp = () => {
+      setIsResizingTemplate(false);
+      resizeCorner.current = null;
+    };
+    
+    if (isResizingTemplate) {
+      window.addEventListener('mousemove', handleGlobalMove);
+      window.addEventListener('mouseup', handleGlobalUp);
+    }
+    
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalUp);
+    };
+  }, [isResizingTemplate, scale, onTemplateResize]);
 
   // Snap position to grid
   const snapPosition = useCallback((x: number, y: number) => {
@@ -261,7 +339,7 @@ export function InfiniteCanvas({
     }
   }, []);
 
-  const cursorStyle = isPanning ? 'grabbing' : isSpacePressed ? 'grab' : 'default';
+  const cursorStyle = isPanning ? 'grabbing' : (isSpacePressed || isResizingTemplate) ? 'grab' : 'default';
   const visibleFields = fields.filter(f => !hiddenFields.has(f.id));
 
   // Generate grid pattern
@@ -284,7 +362,7 @@ export function InfiniteCanvas({
 
   return (
     <div
-      className="relative w-full h-full bg-muted/30 overflow-hidden select-none"
+      className="relative w-full h-full bg-background overflow-hidden select-none"
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -293,23 +371,9 @@ export function InfiniteCanvas({
       ref={containerRef}
       style={{ cursor: cursorStyle }}
     >
-      {/* Checkerboard background pattern */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(45deg, #808080 25%, transparent 25%),
-            linear-gradient(-45deg, #808080 25%, transparent 25%),
-            linear-gradient(45deg, transparent 75%, #808080 75%),
-            linear-gradient(-45deg, transparent 75%, #808080 75%)
-          `,
-          backgroundSize: '20px 20px',
-          backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-        }}
-      />
 
       {/* Zoom & Control Toolbar */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 bg-background/95 backdrop-blur-sm shadow-lg p-1.5 rounded-lg border">
+      <div className="absolute top-4 right-4 z-50 flex gap-2 bg-background/95 backdrop-blur-sm shadow-lg p-1.5 rounded-lg">
         <Button
           variant={showGrid ? "secondary" : "ghost"}
           size="icon"
@@ -376,13 +440,14 @@ export function InfiniteCanvas({
 
       {/* Canvas Content */}
       <div
-        className="absolute shadow-2xl bg-white origin-top-left transition-none"
+        className="absolute origin-top-left border border-gray-300"
         style={{
           width: canvasWidth,
           height: canvasHeight,
-          left: pan.x,
-          top: pan.y,
+          transform: `translate(${pan.x}px, ${pan.y}px)`,
+          willChange: isPanning || isResizingTemplate ? 'transform' : 'auto',
         }}
+        data-field="canvas"
       >
         {/* Template Background */}
         {fileType === 'pdf' ? (
@@ -406,31 +471,51 @@ export function InfiniteCanvas({
         {/* Fields Overlay */}
         <div className="absolute inset-0">
           {visibleFields.map((field) => (
-            <DraggableField
-              key={field.id}
-              field={field}
-              scale={scale}
-              isSelected={selectedFieldId === field.id}
-              onDrag={(deltaX, deltaY) => handleFieldDrag(field.id, deltaX, deltaY)}
-              onResize={(width, height) => handleFieldResize(field.id, width, height)}
-              onSelect={(e) => {
-                e.stopPropagation();
-                onFieldSelect(field.id);
-              }}
-              onDelete={() => onFieldDelete(field.id)}
-            />
+            <div key={field.id} data-field="true">
+              <DraggableField
+                field={field}
+                scale={scale}
+                isSelected={selectedFieldId === field.id}
+                onDrag={(deltaX, deltaY) => handleFieldDrag(field.id, deltaX, deltaY)}
+                onResize={(width, height) => handleFieldResize(field.id, width, height)}
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  onFieldSelect(field.id);
+                }}
+                onDelete={() => onFieldDelete(field.id)}
+              />
+            </div>
           ))}
         </div>
 
-        {/* Template Resize Handle */}
+        {/* Template Resize Handles - All 4 Corners */}
         {onTemplateResize && (
-          <div
-            className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-primary border-2 border-white rounded-full cursor-se-resize shadow-md hover:scale-125 transition-transform z-50"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              // Template resize logic would go here
-            }}
-          />
+          <>
+            {/* Top-left */}
+            <div
+              className="absolute -left-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+              data-resize-handle="true"
+              onMouseDown={(e) => handleTemplateResizeStart(e, 'nw')}
+            />
+            {/* Top-right */}
+            <div
+              className="absolute -right-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+              data-resize-handle="true"
+              onMouseDown={(e) => handleTemplateResizeStart(e, 'ne')}
+            />
+            {/* Bottom-left */}
+            <div
+              className="absolute -left-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+              data-resize-handle="true"
+              onMouseDown={(e) => handleTemplateResizeStart(e, 'sw')}
+            />
+            {/* Bottom-right */}
+            <div
+              className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+              data-resize-handle="true"
+              onMouseDown={(e) => handleTemplateResizeStart(e, 'se')}
+            />
+          </>
         )}
       </div>
 
