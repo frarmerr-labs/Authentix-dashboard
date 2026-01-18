@@ -15,7 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { PDFViewer } from './PDFViewer';
 
 interface InfiniteCanvasProps {
   fileUrl: string;
@@ -477,11 +477,13 @@ export function InfiniteCanvas({
       >
         {/* Template Background - fills container exactly */}
         {fileType === 'pdf' ? (
-          <iframe
-            src={`${fileUrl}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0`}
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{ border: 'none', display: 'block' }}
-          />
+          <div className="absolute inset-0 w-full h-full pointer-events-none select-none">
+            <PDFViewer
+              fileUrl={fileUrl}
+              pageNumber={currentPage}
+              width={canvasWidth}
+            />
+          </div>
         ) : (
           <img
             src={fileUrl}
