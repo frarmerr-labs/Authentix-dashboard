@@ -329,9 +329,9 @@ export function TemplateSelector({
            ref={scrollContainerRef}
            className="flex overflow-x-auto pb-4 gap-6 px-1 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
         >
-          {savedTemplates.map((template) => (
+          {savedTemplates.map((template, index) => (
             <Card
-              key={template.id}
+              key={template.id || `template-${index}`}
               className="snap-start min-w-[300px] w-[300px] shrink-0 overflow-hidden hover:shadow-lg transition-all cursor-pointer group border-muted hover:border-primary/50"
               onClick={() => onSelectTemplate(template)}
             >

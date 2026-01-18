@@ -55,6 +55,7 @@ export function CertificateCanvas({
   const initialTemplateDims = useRef({ w: 0, h: 0 });
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const [canvasWidth, setCanvasWidth] = useState(600);
 
   // Global events for Toolbar Dragging & Template Resizing
@@ -214,23 +215,55 @@ export function CertificateCanvas({
     }
     
     // Allow panning with left mouse button on empty canvas, or middle button, or space+left
-    if (e.button === 1 || (e.button === 0 && (isSpacePressed || true))) {
+    // Trackpads use button 0 (left click)
+    if (e.button === 1 || e.button === 0) {
       e.preventDefault();
+      e.stopPropagation();
       setIsPanning(true);
+      // Store initial position for trackpad compatibility
+      const panStart = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      panStartRef.current = panStart;
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  // Global mouse move handler for panning (works better with trackpads)
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isPanning) {
+        e.preventDefault();
+        const deltaX = e.clientX - panStartRef.current.x;
+        const deltaY = e.clientY - panStartRef.current.y;
+        const newPanX = panStartRef.current.panX + deltaX;
+        const newPanY = panStartRef.current.panY + deltaY;
+        
+        setPan({
+          x: newPanX,
+          y: newPanY,
+        });
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      setIsPanning(false);
+      setIsResizingTemplate(false);
+    };
+
     if (isPanning) {
-      setPan((prev) => ({
-        x: prev.x + e.movementX,
-        y: prev.y + e.movementY,
-      }));
+      window.addEventListener('mousemove', handleGlobalMouseMove, { passive: false });
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      window.addEventListener('mouseleave', handleGlobalMouseUp);
     }
-  };
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('mouseleave', handleGlobalMouseUp);
+    };
+  }, [isPanning]);
 
   const handleMouseUp = () => {
     setIsPanning(false);
+    setIsResizingTemplate(false);
   };
 
   // Zoom Controls
@@ -260,7 +293,6 @@ export function CertificateCanvas({
         className="relative w-full h-full bg-background overflow-hidden flex items-center justify-center select-none"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         ref={containerRef}
@@ -292,7 +324,7 @@ export function CertificateCanvas({
 
       {/* Infinite Canvas Content Wrapper */}
       <div 
-        className="relative origin-center border border-gray-300"
+        className="relative origin-center"
         style={{ 
           width: canvasWidth, 
           height: canvasWidth * (pdfHeight / pdfWidth),
@@ -301,20 +333,38 @@ export function CertificateCanvas({
         }}
         data-field="canvas"
       >
+          {/* Template Background - fills container exactly */}
           {fileType === 'pdf' ? (
             <iframe 
               src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-              className="w-full h-full pointer-events-none select-none" 
-              style={{ width: '100%', height: '100%' }}
+              className="absolute inset-0 w-full h-full pointer-events-none select-none" 
+              style={{ border: 'none', display: 'block' }}
             />
           ) : (
             <img 
               src={fileUrl} 
               alt="Certificate template" 
-              style={{ width: '100%', height: '100%' }} 
-              className="block select-none" 
+              className="absolute inset-0 select-none pointer-events-none" 
+              style={{ 
+                display: 'block', 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'fill',
+                objectPosition: 'center'
+              }}
+              draggable={false}
             />
           )}
+          
+          {/* Border overlay that sticks to template edges */}
+          <div 
+            className="absolute inset-0 pointer-events-none z-10"
+            style={{
+              border: '1.8px solid #3fcf8e',
+              boxSizing: 'border-box',
+              pointerEvents: 'none',
+            }}
+          />
 
           {/* Fields Overlay */}
           <div className="absolute inset-0 overflow-hidden">
@@ -341,25 +391,29 @@ export function CertificateCanvas({
             <>
               {/* Top-left */}
               <div
-                className="absolute -left-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+                className="absolute -left-1.5 -top-1.5 w-3 h-3 border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50 rounded-sm"
+                style={{ backgroundColor: '#3fcf8e' }}
                 data-resize-handle="true"
                 onMouseDown={(e) => handleTemplateResizeStart(e, 'nw')}
               />
               {/* Top-right */}
               <div
-                className="absolute -right-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+                className="absolute -right-1.5 -top-1.5 w-3 h-3 border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50 rounded-sm"
+                style={{ backgroundColor: '#3fcf8e' }}
                 data-resize-handle="true"
                 onMouseDown={(e) => handleTemplateResizeStart(e, 'ne')}
               />
               {/* Bottom-left */}
               <div
-                className="absolute -left-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+                className="absolute -left-1.5 -bottom-1.5 w-3 h-3 border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50 rounded-sm"
+                style={{ backgroundColor: '#3fcf8e' }}
                 data-resize-handle="true"
                 onMouseDown={(e) => handleTemplateResizeStart(e, 'sw')}
               />
               {/* Bottom-right */}
               <div
-                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50 rounded-sm"
+                style={{ backgroundColor: '#3fcf8e' }}
                 data-resize-handle="true"
                 onMouseDown={(e) => handleTemplateResizeStart(e, 'se')}
               />

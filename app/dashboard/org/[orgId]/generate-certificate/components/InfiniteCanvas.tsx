@@ -180,8 +180,10 @@ export function InfiniteCanvas({
     }
     
     // Allow panning with left mouse button on empty canvas, or middle button, or space+left
-    if (e.button === 1 || (e.button === 0 && (isSpacePressed || true))) {
+    // Trackpads use button 0 (left click)
+    if (e.button === 1 || e.button === 0) {
       e.preventDefault();
+      e.stopPropagation();
       setIsPanning(true);
       panStartRef.current = {
         x: e.clientX,
@@ -192,16 +194,41 @@ export function InfiniteCanvas({
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  // Global mouse move handler for panning (works better with trackpads)
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isPanning) {
+        e.preventDefault();
+        const deltaX = e.clientX - panStartRef.current.x;
+        const deltaY = e.clientY - panStartRef.current.y;
+        const newPanX = panStartRef.current.panX + deltaX;
+        const newPanY = panStartRef.current.panY + deltaY;
+        
+        setPan({
+          x: newPanX,
+          y: newPanY,
+        });
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      setIsPanning(false);
+      setIsResizingTemplate(false);
+    };
+
     if (isPanning) {
-      const deltaX = e.clientX - panStartRef.current.x;
-      const deltaY = e.clientY - panStartRef.current.y;
-      setPan({
-        x: panStartRef.current.panX + deltaX,
-        y: panStartRef.current.panY + deltaY,
-      });
+      window.addEventListener('mousemove', handleGlobalMouseMove, { passive: false });
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      // Also listen for mouseleave to handle edge cases
+      window.addEventListener('mouseleave', handleGlobalMouseUp);
     }
-  };
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('mouseleave', handleGlobalMouseUp);
+    };
+  }, [isPanning]);
 
   const handleMouseUp = () => {
     setIsPanning(false);
@@ -365,7 +392,6 @@ export function InfiniteCanvas({
       className="relative w-full h-full bg-background overflow-hidden select-none"
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       ref={containerRef}
@@ -440,7 +466,7 @@ export function InfiniteCanvas({
 
       {/* Canvas Content */}
       <div
-        className="absolute origin-top-left border border-gray-300"
+        className="absolute origin-top-left"
         style={{
           width: canvasWidth,
           height: canvasHeight,
@@ -449,21 +475,38 @@ export function InfiniteCanvas({
         }}
         data-field="canvas"
       >
-        {/* Template Background */}
+        {/* Template Background - fills container exactly */}
         {fileType === 'pdf' ? (
           <iframe
             src={`${fileUrl}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0`}
-            className="w-full h-full pointer-events-none"
-            style={{ border: 'none' }}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ border: 'none', display: 'block' }}
           />
         ) : (
           <img
             src={fileUrl}
             alt="Certificate template"
-            className="w-full h-full object-contain select-none pointer-events-none"
+            className="absolute inset-0 select-none pointer-events-none"
+            style={{ 
+              display: 'block', 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'fill',
+              objectPosition: 'center'
+            }}
             draggable={false}
           />
         )}
+        
+        {/* Border overlay that sticks to template edges */}
+        <div 
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{
+            border: '1.8px solid #3fcf8e',
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+          }}
+        />
 
         {/* Grid Overlay */}
         {gridPattern}
@@ -493,25 +536,29 @@ export function InfiniteCanvas({
           <>
             {/* Top-left */}
             <div
-              className="absolute -left-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+              className="absolute -left-1.5 -top-1.5 w-3 h-3 border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50 rounded-sm"
+              style={{ backgroundColor: '#3fcf8e' }}
               data-resize-handle="true"
               onMouseDown={(e) => handleTemplateResizeStart(e, 'nw')}
             />
             {/* Top-right */}
             <div
-              className="absolute -right-1.5 -top-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+              className="absolute -right-1.5 -top-1.5 w-3 h-3 border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50 rounded-sm"
+              style={{ backgroundColor: '#3fcf8e' }}
               data-resize-handle="true"
               onMouseDown={(e) => handleTemplateResizeStart(e, 'ne')}
             />
             {/* Bottom-left */}
             <div
-              className="absolute -left-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50"
+              className="absolute -left-1.5 -bottom-1.5 w-3 h-3 border border-white cursor-nesw-resize hover:scale-125 transition-transform z-50 rounded-sm"
+              style={{ backgroundColor: '#3fcf8e' }}
               data-resize-handle="true"
               onMouseDown={(e) => handleTemplateResizeStart(e, 'sw')}
             />
             {/* Bottom-right */}
             <div
-              className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-primary border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50"
+              className="absolute -right-1.5 -bottom-1.5 w-3 h-3 border border-white cursor-nwse-resize hover:scale-125 transition-transform z-50 rounded-sm"
+              style={{ backgroundColor: '#3fcf8e' }}
               data-resize-handle="true"
               onMouseDown={(e) => handleTemplateResizeStart(e, 'se')}
             />
