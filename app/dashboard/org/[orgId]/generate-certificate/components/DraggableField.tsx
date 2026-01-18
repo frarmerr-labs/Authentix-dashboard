@@ -169,8 +169,56 @@ export function DraggableField({
 
       {/* Field Content */}
       {field.type === 'qr_code' ? (
-        <div className="w-full h-full border-2 border-dashed border-current flex items-center justify-center text-xs">
-          QR
+        <div className="w-full h-full flex items-center justify-center p-1">
+          <svg
+            viewBox="0 0 100 100"
+            className="w-full h-full"
+            style={{ maxWidth: '100%', maxHeight: '100%' }}
+          >
+            {/* Simplified QR code pattern for preview */}
+            <rect x="0" y="0" width="100" height="100" fill="white" />
+            {/* Top-left finder */}
+            <rect x="5" y="5" width="25" height="25" fill="currentColor" />
+            <rect x="10" y="10" width="15" height="15" fill="white" />
+            <rect x="13" y="13" width="9" height="9" fill="currentColor" />
+            {/* Top-right finder */}
+            <rect x="70" y="5" width="25" height="25" fill="currentColor" />
+            <rect x="75" y="10" width="15" height="15" fill="white" />
+            <rect x="78" y="13" width="9" height="9" fill="currentColor" />
+            {/* Bottom-left finder */}
+            <rect x="5" y="70" width="25" height="25" fill="currentColor" />
+            <rect x="10" y="75" width="15" height="15" fill="white" />
+            <rect x="13" y="78" width="9" height="9" fill="currentColor" />
+            {/* Data modules (simplified pattern) */}
+            <rect x="35" y="5" width="5" height="5" fill="currentColor" />
+            <rect x="45" y="5" width="5" height="5" fill="currentColor" />
+            <rect x="55" y="5" width="5" height="5" fill="currentColor" />
+            <rect x="35" y="15" width="5" height="5" fill="currentColor" />
+            <rect x="50" y="15" width="5" height="5" fill="currentColor" />
+            <rect x="35" y="35" width="5" height="5" fill="currentColor" />
+            <rect x="45" y="35" width="5" height="5" fill="currentColor" />
+            <rect x="55" y="35" width="5" height="5" fill="currentColor" />
+            <rect x="65" y="35" width="5" height="5" fill="currentColor" />
+            <rect x="40" y="45" width="5" height="5" fill="currentColor" />
+            <rect x="50" y="45" width="5" height="5" fill="currentColor" />
+            <rect x="35" y="55" width="5" height="5" fill="currentColor" />
+            <rect x="45" y="55" width="5" height="5" fill="currentColor" />
+            <rect x="55" y="55" width="5" height="5" fill="currentColor" />
+            <rect x="70" y="40" width="5" height="5" fill="currentColor" />
+            <rect x="80" y="45" width="5" height="5" fill="currentColor" />
+            <rect x="85" y="55" width="5" height="5" fill="currentColor" />
+            <rect x="70" y="60" width="5" height="5" fill="currentColor" />
+            <rect x="40" y="70" width="5" height="5" fill="currentColor" />
+            <rect x="55" y="70" width="5" height="5" fill="currentColor" />
+            <rect x="65" y="75" width="5" height="5" fill="currentColor" />
+            <rect x="75" y="70" width="5" height="5" fill="currentColor" />
+            <rect x="85" y="70" width="5" height="5" fill="currentColor" />
+            <rect x="45" y="85" width="5" height="5" fill="currentColor" />
+            <rect x="55" y="80" width="5" height="5" fill="currentColor" />
+            <rect x="70" y="85" width="5" height="5" fill="currentColor" />
+            <rect x="80" y="80" width="5" height="5" fill="currentColor" />
+            <rect x="90" y="85" width="5" height="5" fill="currentColor" />
+          </svg>
         </div>
       ) : (
         <div className="truncate w-full select-none" style={{ lineHeight: 1 }}>

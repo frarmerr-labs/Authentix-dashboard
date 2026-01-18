@@ -18,6 +18,9 @@ export interface CertificateField {
   width: number;
   height: number;
 
+  // Multi-page support
+  pageNumber?: number; // Page number for multi-page PDFs (0-indexed, defaults to 0)
+
   // Styling
   fontSize: number; // Font size in pt
   fontFamily: string; // Google Fonts name
@@ -43,6 +46,7 @@ export interface CertificateTemplate {
   fileType: 'pdf' | 'image'; // File type
   pdfWidth: number; // Template dimensions in pixels
   pdfHeight: number;
+  pageCount?: number; // Number of pages for multi-page PDFs (defaults to 1)
   fields: CertificateField[];
   createdAt?: Date;
   updatedAt?: Date;

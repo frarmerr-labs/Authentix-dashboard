@@ -19,6 +19,7 @@ interface FieldTypeSelectorProps {
   onAddField: (field: CertificateField) => void;
   pdfWidth: number;
   pdfHeight: number;
+  currentPage?: number; // For multi-page PDF support
 }
 
 const FIELD_ICONS = {
@@ -30,7 +31,7 @@ const FIELD_ICONS = {
   qr_code: QrCode,
 };
 
-export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight }: FieldTypeSelectorProps) {
+export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
   const [showCustomNameDialog, setShowCustomNameDialog] = useState(false);
   const [customFieldName, setCustomFieldName] = useState('');
 
@@ -51,6 +52,7 @@ export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight }: FieldType
       y,
       width: config.defaultWidth,
       height: config.defaultHeight,
+      pageNumber: currentPage, // Assign to current page
       fontSize: type === 'qr_code' ? 0 : 24,
       fontFamily: 'Arial',
       color: '#000000',

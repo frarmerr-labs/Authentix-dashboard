@@ -16,6 +16,7 @@ import {
   CheckCircle2, Circle, Layers, Palette, Database, Wand2
 } from 'lucide-react';
 import { CertificateCanvas } from './components/CertificateCanvas';
+import { InfiniteCanvas } from './components/InfiniteCanvas';
 import { RightPanel } from './components/RightPanel';
 import { TemplateSelector } from './components/TemplateSelector';
 import { AssetLibrary } from './components/AssetLibrary';
@@ -54,6 +55,11 @@ export default function GenerateCertificatePage() {
   const [currentStep, setCurrentStep] = useState<'template' | 'design' | 'data' | 'export'>('template');
   const [activeTab, setActiveTab] = useState('fields');
   const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
+  const [useInfiniteCanvas, setUseInfiniteCanvas] = useState(true); // Toggle between canvas modes
+
+  // Multi-page PDF support
+  const [currentPage, setCurrentPage] = useState(0); // 0-indexed page number
+  const [totalPages, setTotalPages] = useState(1);
 
   // Load saved templates and imports
   useEffect(() => {
@@ -220,6 +226,7 @@ export default function GenerateCertificatePage() {
 
     let pdfWidth = selectedTemplate.width;
     let pdfHeight = selectedTemplate.height;
+    let pageCount = 1; // Default to 1 page
 
     // If dimensions are missing, calculate them
     if (!pdfWidth || !pdfHeight) {
@@ -227,13 +234,13 @@ export default function GenerateCertificatePage() {
             console.log("Template missing dimensions, calculating...");
             const response = await fetch(fileUrl);
             const blob = await response.blob();
-            
+
             // Determine file type from editor data or template data
-            const fileType = editorData?.source_file?.file_type || 
-                           selectedTemplate.file_type || 
+            const fileType = editorData?.source_file?.file_type ||
+                           selectedTemplate.file_type ||
                            (selectedTemplate.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
             const mimeType = editorData?.source_file?.file_type || blob.type;
-            
+
             if (fileType === 'pdf' || mimeType === 'application/pdf' || selectedTemplate.name?.toLowerCase().endsWith('.pdf')) {
                 const arrayBuffer = await blob.arrayBuffer();
                 // Dynamic import of pdf-lib for bundle optimization
@@ -247,6 +254,11 @@ export default function GenerateCertificatePage() {
                 const { width, height } = page.getSize();
                 pdfWidth = width;
                 pdfHeight = height;
+
+                // Set total pages for multi-page PDF support
+                pageCount = pages.length;
+                setTotalPages(pageCount);
+                setCurrentPage(0); // Reset to first page
             } else {
                  const img = new Image();
                  const objectUrl = URL.createObjectURL(blob);
@@ -310,6 +322,7 @@ export default function GenerateCertificatePage() {
       fileType,
       pdfWidth: pdfWidth || 800,
       pdfHeight: pdfHeight || 600,
+      pageCount,
       fields: mappedFields,
     });
     setFields(mappedFields);
@@ -498,7 +511,7 @@ export default function GenerateCertificatePage() {
             label = label.substring(0, 80);
           }
 
-          // Build style object
+          // Build style object - include original field ID for mapping
           const style: Record<string, unknown> = {
             fontSize: field.fontSize || 16,
             fontFamily: field.fontFamily || 'Helvetica',
@@ -506,6 +519,7 @@ export default function GenerateCertificatePage() {
             fontWeight: field.fontWeight || 'normal',
             fontStyle: field.fontStyle || 'normal',
             textAlign: field.textAlign || 'left',
+            originalFieldId: field.id, // Store original ID for field mapping
           };
 
           if (field.dateFormat) style.dateFormat = field.dateFormat;
@@ -532,7 +546,7 @@ export default function GenerateCertificatePage() {
             field_key: fieldKey,
             label: label,
             type: backendType,
-            page_number: 1, // Default to page 1 (can be enhanced later)
+            page_number: (field.pageNumber ?? 0) + 1, // Convert 0-indexed to 1-indexed
             x: Math.max(0, field.x || 0),
             y: Math.max(0, field.y || 0),
             width: width,
@@ -840,6 +854,7 @@ export default function GenerateCertificatePage() {
                         onAddField={handleAddField}
                         pdfWidth={template.pdfWidth}
                         pdfHeight={template.pdfHeight}
+                        currentPage={currentPage}
                       />
                     </div>
 
@@ -865,23 +880,44 @@ export default function GenerateCertificatePage() {
 
             {/* Center Canvas */}
             <div className="flex-1 bg-muted/20 flex flex-col overflow-hidden relative">
-              <div className="flex-1 overflow-auto flex items-center justify-center p-8">
-                <CertificateCanvas
+              {useInfiniteCanvas ? (
+                <InfiniteCanvas
                   fileUrl={template.fileUrl}
                   fileType={template.fileType}
                   pdfWidth={template.pdfWidth}
                   pdfHeight={template.pdfHeight}
-                  fields={fields}
+                  fields={fields.filter(f => (f.pageNumber ?? 0) === currentPage)}
                   selectedFieldId={selectedFieldId}
                   hiddenFields={hiddenFields}
                   scale={canvasScale}
+                  currentPage={currentPage + 1}
+                  totalPages={totalPages}
                   onFieldUpdate={handleUpdateField}
                   onFieldSelect={handleFieldSelect}
                   onScaleChange={setCanvasScale}
                   onFieldDelete={handleDeleteField}
                   onTemplateResize={handleTemplateResize}
+                  onPageChange={(page) => setCurrentPage(page - 1)}
                 />
-              </div>
+              ) : (
+                <div className="flex-1 overflow-auto flex items-center justify-center p-8">
+                  <CertificateCanvas
+                    fileUrl={template.fileUrl}
+                    fileType={template.fileType}
+                    pdfWidth={template.pdfWidth}
+                    pdfHeight={template.pdfHeight}
+                    fields={fields}
+                    selectedFieldId={selectedFieldId}
+                    hiddenFields={hiddenFields}
+                    scale={canvasScale}
+                    onFieldUpdate={handleUpdateField}
+                    onFieldSelect={handleFieldSelect}
+                    onScaleChange={setCanvasScale}
+                    onFieldDelete={handleDeleteField}
+                    onTemplateResize={handleTemplateResize}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Right Sidebar - Properties (Only shown when field selected) */}
