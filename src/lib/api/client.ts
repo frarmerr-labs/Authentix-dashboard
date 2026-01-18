@@ -94,6 +94,34 @@ export interface InProgressTemplate {
   fields: TemplateField[];
 }
 
+export interface Certificate {
+  id: string;
+  organization_id: string;
+  certificate_template_id: string | null;
+  recipient_name: string;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  course_name: string | null;
+  issue_date: string;
+  expiry_date: string | null;
+  certificate_number: string;
+  storage_path: string;
+  preview_url: string | null;
+  verification_code: string;
+  verification_token: string | null;
+  status: 'issued' | 'revoked' | 'expired';
+  issued_by: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined fields from template
+  template?: {
+    id: string;
+    title: string;
+    category?: { id: string; name: string };
+    subcategory?: { id: string; name: string };
+  } | null;
+}
+
 /**
  * Custom error class for API errors
  */
@@ -889,10 +917,51 @@ export const api = {
     },
   },
 
-  /**
+/**
    * Certificates API
    */
   certificates: {
+    /**
+     * List certificates with filtering and pagination
+     */
+    list: async (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: 'issued' | 'revoked' | 'expired';
+      category_id?: string;
+      subcategory_id?: string;
+      date_from?: string;
+      date_to?: string;
+      sort_by?: string;
+      sort_order?: 'asc' | 'desc';
+    }): Promise<PaginatedResponse<Certificate>> => {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.set('page', params.page.toString());
+      if (params?.limit) queryParams.set('limit', params.limit.toString());
+      if (params?.search) queryParams.set('search', params.search);
+      if (params?.status) queryParams.set('status', params.status);
+      if (params?.category_id) queryParams.set('category_id', params.category_id);
+      if (params?.subcategory_id) queryParams.set('subcategory_id', params.subcategory_id);
+      if (params?.date_from) queryParams.set('date_from', params.date_from);
+      if (params?.date_to) queryParams.set('date_to', params.date_to);
+      if (params?.sort_by) queryParams.set('sort_by', params.sort_by);
+      if (params?.sort_order) queryParams.set('sort_order', params.sort_order);
+
+      const response = await apiRequest<PaginatedResponse<Certificate>>(
+        `/certificates?${queryParams.toString()}`
+      );
+      return response.data!;
+    },
+
+    /**
+     * Get a single certificate by ID
+     */
+    get: async (id: string): Promise<Certificate> => {
+      const response = await apiRequest<Certificate>(`/certificates/${id}`);
+      return response.data!;
+    },
+
     /**
      * Generate certificates
      * Supports expiry options, custom issue date, and returns individual certificate details

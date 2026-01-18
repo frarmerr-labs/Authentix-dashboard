@@ -1,460 +1,410 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileSpreadsheet, Download, Info, Mail, MessageSquare, CheckCircle2, XCircle } from "lucide-react";
-import { api } from "@/lib/api/client";
+import {
+  FileSpreadsheet,
+  Download,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Calendar,
+  FileText,
+  Layers,
+  MoreHorizontal,
+  ExternalLink,
+  Database,
+} from "lucide-react";
+import { api, type ImportJob } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import * as XLSX from 'xlsx';
-import { useCertificateCategories } from "@/lib/hooks/use-certificate-categories";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { formatDistanceToNow, format } from "date-fns";
+
+interface ImportWithPreview extends ImportJob {
+  previewData?: Record<string, unknown>[];
+  previewLoading?: boolean;
+}
 
 export default function ImportsPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-  const [importedData, setImportedData] = useState<any[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [hasEmail, setHasEmail] = useState(false);
-  const [hasPhone, setHasPhone] = useState(false);
-  const [categoryName, setCategoryName] = useState("");
-  const [subcategoryName, setSubcategoryName] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [dragActive, setDragActive] = useState(false);
-
-  // Use the shared hook for DB-driven category logic
-  const {
-    categories,
-    loading: categoriesLoading,
-    error: categoriesError,
-    getSubcategories,
-    requiresSubcategory,
-  } = useCertificateCategories();
-
-  // Get subcategories for selected category
-  const subcategories = categoryName ? getSubcategories(categoryName) : [];
-  const showSubcategory = categoryName && requiresSubcategory(categoryName);
-
-  // Reset subcategory when category changes
-  useEffect(() => {
-    if (!showSubcategory) {
-      setSubcategoryName("");
-    }
-  }, [showSubcategory]);
+  const [imports, setImports] = useState<ImportWithPreview[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [importToDelete, setImportToDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    loadTemplates();
+    loadImports();
   }, []);
 
-  // Set error from categories hook
-  useEffect(() => {
-    if (categoriesError) {
-      setError(categoriesError);
-    }
-  }, [categoriesError]);
-
-  const loadTemplates = async () => {
+  const loadImports = async () => {
+    setLoading(true);
     try {
-      const response = await api.templates.list({ sort_by: 'name', sort_order: 'asc' });
-      setTemplates(response.items.map((t: any) => ({ id: t.id, name: t.name })) || []);
-    } catch (err) {
-      console.error('Error loading templates:', err);
-    }
-  };
-
-  const generateSampleFile = () => {
-    const sampleData = [
-      {
-        recipient_name: "John Doe",
-        recipient_email: "john@example.com",
-        recipient_phone: "+1234567890",
-        custom_field_1: "Sample Value 1",
-        custom_field_2: "Sample Value 2",
-      },
-      {
-        recipient_name: "Jane Smith",
-        recipient_email: "jane@example.com",
-        recipient_phone: "+9876543210",
-        custom_field_1: "Sample Value 3",
-        custom_field_2: "Sample Value 4",
-      }
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Recipients");
-    XLSX.writeFile(wb, "certificate_recipients_sample.xlsx");
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      handleFileSelected(selectedFile);
-    }
-  };
-
-  const handleFileSelected = async (selectedFile: File) => {
-    const validTypes = [
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv'
-    ];
-
-    if (!validTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(xlsx|xls|csv)$/i)) {
-      setError("Please upload a valid CSV or Excel file");
-      return;
-    }
-
-    setFile(selectedFile);
-    setError("");
-    await parseFile(selectedFile);
-  };
-
-  const parseFile = async (file: File) => {
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      
-      const firstSheetName = workbook.SheetNames[0];
-      if (!firstSheetName) {
-        setError("File contains no sheets");
-        return;
-      }
-      
-      const worksheet = workbook.Sheets[firstSheetName];
-      if (!worksheet) {
-        setError("Failed to read worksheet");
-        return;
-      }
-      
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-      if (jsonData.length === 0) {
-        setError("File is empty");
-        return;
-      }
-
-      const fileHeaders = Object.keys(jsonData[0] as object);
-      setHeaders(fileHeaders);
-
-      const emailCol = fileHeaders.find(h => h.toLowerCase().includes('email'));
-      const phoneCol = fileHeaders.find(h => h.toLowerCase().includes('phone') || h.toLowerCase().includes('whatsapp'));
-
-      const hasEmailData = emailCol && jsonData.some((row: any) => row[emailCol]);
-      const hasPhoneData = phoneCol && jsonData.some((row: any) => row[phoneCol]);
-
-      setHasEmail(!!hasEmailData);
-      setHasPhone(!!hasPhoneData);
-      setImportedData(jsonData);
-    } catch (err) {
-      console.error('Error parsing file:', err);
-      setError("Failed to parse file");
-    }
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      handleFileSelected(droppedFile);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!file || !categoryName) {
-      setError("Please select a file and category");
-      return;
-    }
-
-    // Validate subcategory if required
-    if (requiresSubcategory(categoryName) && !subcategoryName) {
-      setError("Please select a subcategory");
-      return;
-    }
-
-    setUploading(true);
-    setError("");
-
-    try {
-      await api.imports.create(file, {
-        file_name: file.name,
-        certificate_category: categoryName,
-        certificate_subcategory: subcategoryName || undefined,
-        certificate_template_id: templateId || undefined,
-        reusable: false,
+      const response = await api.imports.list({
+        sort_by: "created_at",
+        sort_order: "desc",
+        limit: 50,
       });
-
-      setFile(null);
-      setImportedData([]);
-      setHeaders([]);
-      setCategoryName("");
-      setSubcategoryName("");
-      setTemplateId("");
-      setError("");
-      alert("Import successful! Data is being processed.");
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      setError(err.message || "Failed to upload import");
+      setImports(response.items || []);
+    } catch (err) {
+      console.error("Error loading imports:", err);
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
+
+  const toggleExpand = async (importId: string) => {
+    if (expandedId === importId) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(importId);
+
+    // Load preview data if not already loaded
+    const importItem = imports.find((i) => i.id === importId);
+    if (importItem && !importItem.previewData && !importItem.previewLoading) {
+      // Mark as loading
+      setImports((prev) =>
+        prev.map((i) => (i.id === importId ? { ...i, previewLoading: true } : i))
+      );
+
+      try {
+        const data = await api.imports.getData(importId, { page: 1, limit: 5 });
+        setImports((prev) =>
+          prev.map((i) =>
+            i.id === importId
+              ? { ...i, previewData: data.items as Record<string, unknown>[], previewLoading: false }
+              : i
+          )
+        );
+      } catch (err) {
+        console.error("Error loading preview data:", err);
+        setImports((prev) =>
+          prev.map((i) =>
+            i.id === importId ? { ...i, previewLoading: false } : i
+          )
+        );
+      }
+    }
+  };
+
+  const handleDownload = async (importId: string) => {
+    try {
+      const downloadUrl = await api.imports.getDownloadUrl(importId);
+      window.open(downloadUrl, "_blank");
+    } catch (err) {
+      console.error("Error getting download URL:", err);
+      alert("Failed to download file");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!importToDelete) return;
+
+    // TODO: Add delete API endpoint to backend
+    // For now, just remove from local state
+    setImports((prev) => prev.filter((i) => i.id !== importToDelete));
+    setDeleteDialogOpen(false);
+    setImportToDelete(null);
+  };
+
+  const handleUseForGeneration = (importId: string) => {
+    // Navigate to generate certificate page with import ID
+    window.location.href = `/dashboard/generate-certificate?import=${importId}`;
+  };
+
+  const getStatusBadge = (status: ImportJob["status"]) => {
+    const variants: Record<ImportJob["status"], { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+      completed: { variant: "default", label: "Completed" },
+      pending: { variant: "secondary", label: "Pending" },
+      processing: { variant: "outline", label: "Processing" },
+      failed: { variant: "destructive", label: "Failed" },
+    };
+    const config = variants[status] || variants.pending;
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Imported Data</h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            View and manage data files used for certificate generation
+          </p>
+        </div>
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Imports</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Imported Data</h1>
           <p className="text-muted-foreground mt-1.5 text-base">
-            Import CSV / Excel files to generate certificates in bulk
+            View and manage data files used for certificate generation
           </p>
         </div>
-        <Button variant="outline" onClick={generateSampleFile} className="gap-2">
-          <Download className="h-4 w-4" />
-          Download Sample File
+        <Button variant="outline" onClick={loadImports} className="gap-2">
+          <RefreshCw className="h-4 w-4" />
+          Refresh
         </Button>
       </div>
 
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription className="text-sm">
-          <strong>Required columns:</strong> recipient_name<br />
-          <strong>Optional columns:</strong> recipient_email, recipient_phone/whatsapp_number, custom fields
-        </AlertDescription>
-      </Alert>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload Recipients Data</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            className={cn(
-              "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
-              dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
-              file && "border-primary bg-primary/5"
-            )}
-            onClick={() => document.getElementById('file-upload')?.click()}
-          >
-            <input
-              id="file-upload"
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={handleFileChange}
-              className="hidden"
-              disabled={uploading}
-            />
-
-            {file ? (
-              <div className="space-y-3">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-muted text-muted-foreground">
-                  <FileSpreadsheet className="h-8 w-8" />
-                </div>
-                <div>
-                  <p className="font-medium">{file.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {importedData.length} rows • {headers.length} columns
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFile(null);
-                    setImportedData([]);
-                    setHeaders([]);
-                  }}
-                >
-                  Remove
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-muted text-muted-foreground">
-                  <Upload className="h-8 w-8" />
-                </div>
-                <div>
-                  <p className="font-medium">Drop your CSV / Excel file here</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    or click to browse
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Supports: CSV, XLSX, XLS
-                </p>
-              </div>
-            )}
-          </div>
-
-          {file && importedData.length > 0 && (
-            <>
-              <div className="flex gap-2">
-                <Badge variant={hasEmail ? "default" : "secondary"} className="gap-1">
-                  {hasEmail ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                  <Mail className="h-3 w-3" />
-                  Email {hasEmail ? "Available" : "Not Available"}
-                </Badge>
-                <Badge variant={hasPhone ? "default" : "secondary"} className="gap-1">
-                  {hasPhone ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                  <MessageSquare className="h-3 w-3" />
-                  WhatsApp {hasPhone ? "Available" : "Not Available"}
-                </Badge>
-              </div>
-
-              <div className="space-y-4">
-                {categoriesError && (
-                  <Alert variant="destructive">
-                    <AlertDescription className="text-sm">
-                      {categoriesError}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="space-y-2">
-                  <Label>
-                    Category <span className="text-destructive">*</span>
-                  </Label>
-                  <Select 
-                    value={categoryName} 
-                    onValueChange={setCategoryName} 
-                    disabled={uploading || categoriesLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Subcategory - Only shown if category requires it */}
-                {showSubcategory && (
-                  <div className="space-y-2">
-                    <Label>
-                      Subcategory <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={subcategoryName} onValueChange={setSubcategoryName} disabled={uploading}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select subcategory" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {subcategories.map((subcat) => (
-                          <SelectItem key={subcat} value={subcat}>
-                            {subcat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+      {/* Import Cards */}
+      {imports.length === 0 ? (
+        <Card className="border-2 border-dashed border-border bg-card/40">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center mb-6">
+              <Database className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-2xl font-bold mb-2">No imported data yet</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-8 leading-relaxed">
+              Data files will appear here after you upload them during certificate generation.
+            </p>
+            <Button asChild>
+              <a href="/dashboard/generate-certificate">Generate Certificates</a>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {imports.map((importItem) => (
+            <Card
+              key={importItem.id}
+              className={cn(
+                "transition-all duration-200",
+                expandedId === importItem.id && "ring-1 ring-primary"
+              )}
+            >
+              {/* Card Header - Always Visible */}
+              <div
+                className="p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                onClick={() => toggleExpand(importItem.id)}
+              >
+                <div className="flex items-start gap-4">
+                  {/* File Icon */}
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <FileSpreadsheet className="h-6 w-6 text-primary" />
                   </div>
-                )}
 
-                <div className="space-y-2">
-                  <Label>Certificate Template (Optional)</Label>
-                  <Select value={templateId} onValueChange={setTemplateId} disabled={uploading}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select template" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((tmpl) => (
-                        <SelectItem key={tmpl.id} value={tmpl.id}>
-                          {tmpl.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                  {/* Main Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-base truncate">
+                          {importItem.file_name}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Layers className="h-3.5 w-3.5" />
+                            {importItem.total_rows || 0} rows
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3.5 w-3.5" />
+                            {formatFileSize(importItem.file_size)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {formatDistanceToNow(new Date(importItem.created_at), { addSuffix: true })}
+                          </span>
+                        </div>
+                      </div>
 
-              <div className="border rounded-lg overflow-hidden">
-                <div className="overflow-x-auto max-h-96">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted sticky top-0">
-                      <tr>
-                        {headers.map((header, i) => (
-                          <th key={i} className="px-4 py-2 text-left font-medium">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importedData.slice(0, 10).map((row, i) => (
-                        <tr key={i} className="border-t">
-                          {headers.map((header, j) => (
-                            <td key={j} className="px-4 py-2">
-                              {row[header] || <span className="text-muted-foreground">-</span>}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {importedData.length > 10 && (
-                  <div className="px-4 py-2 bg-muted text-xs text-muted-foreground border-t">
-                    Showing first 10 of {importedData.length} rows
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {getStatusBadge(importItem.status)}
+
+                        {/* Actions Dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleDownload(importItem.id)}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleUseForGeneration(importItem.id)}>
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Use for Generation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => {
+                                setImportToDelete(importItem.id);
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Expand/Collapse Icon */}
+                        <div className="text-muted-foreground">
+                          {expandedId === importItem.id ? (
+                            <ChevronUp className="h-5 w-5" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category/Subcategory Tags */}
+                    {(importItem.certificate_category || importItem.certificate_subcategory) && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {importItem.certificate_category && (
+                          <Badge variant="outline" className="text-xs">
+                            {importItem.certificate_category}
+                          </Badge>
+                        )}
+                        {importItem.certificate_subcategory && (
+                          <Badge variant="outline" className="text-xs">
+                            {importItem.certificate_subcategory}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
-              {error && (
-                <div className="bg-destructive/10 border border-destructive/50 text-destructive px-4 py-3 rounded-lg text-sm">
-                  {error}
+              {/* Expanded Content - Data Preview */}
+              {expandedId === importItem.id && (
+                <div className="border-t">
+                  <div className="p-4">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                      Data Preview (Top 5 rows)
+                    </h4>
+
+                    {importItem.previewLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : importItem.previewData && importItem.previewData.length > 0 ? (
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50">
+                              <tr>
+                                {Object.keys(importItem.previewData[0]).map((header) => (
+                                  <th
+                                    key={header}
+                                    className="px-4 py-2 text-left font-medium text-muted-foreground whitespace-nowrap"
+                                  >
+                                    {header}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {importItem.previewData.map((row, rowIndex) => (
+                                <tr key={rowIndex} className="border-t">
+                                  {Object.values(row).map((value, colIndex) => (
+                                    <td key={colIndex} className="px-4 py-2 whitespace-nowrap">
+                                      {value !== null && value !== undefined
+                                        ? String(value)
+                                        : <span className="text-muted-foreground">-</span>}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <p>No preview data available</p>
+                      </div>
+                    )}
+
+                    {/* Additional Details */}
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">File Type</p>
+                          <p className="font-medium">{importItem.file_type.toUpperCase()}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Uploaded</p>
+                          <p className="font-medium">
+                            {format(new Date(importItem.created_at), "MMM d, yyyy 'at' h:mm a")}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Reusable</p>
+                          <p className="font-medium">{importItem.reusable ? "Yes" : "No"}</p>
+                        </div>
+                        {importItem.error_message && (
+                          <div className="col-span-2 md:col-span-4">
+                            <p className="text-muted-foreground">Error</p>
+                            <p className="font-medium text-destructive">{importItem.error_message}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
+            </Card>
+          ))}
+        </div>
+      )}
 
-              <Button 
-                onClick={handleUpload} 
-                disabled={
-                  uploading || 
-                  !categoryName || 
-                  (showSubcategory && !subcategoryName) ||
-                  categoriesLoading
-                } 
-                className="w-full gap-2"
-              >
-                {uploading ? (
-                  <>Uploading...</>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4" />
-                    Import {importedData.length} Recipients
-                  </>
-                )}
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Import</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this import? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
