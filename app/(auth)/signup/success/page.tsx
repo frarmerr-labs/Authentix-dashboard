@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mail, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { Mail, CheckCircle2, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api/client";
-import { getAccessToken } from "@/lib/auth/storage";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+interface VerificationStatusResponse {
+  verified: boolean;
+  email?: string;
+  user_id?: string;
+}
 
 function SignupSuccessContent() {
   const searchParams = useSearchParams();
@@ -15,195 +20,295 @@ function SignupSuccessContent() {
   const email = searchParams.get("email");
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isCheckingRef = useRef(false);
+
+  /**
+   * Check verification status via backend endpoint (cookie-independent)
+   * This works even if verification happened in another browser/device
+   */
+  const checkVerification = useCallback(async (): Promise<boolean> => {
+    if (!email) {
+      console.warn("[SignupSuccess] No email provided for verification check");
+      return false;
+    }
+
+    // Prevent concurrent checks
+    if (isCheckingRef.current) {
+      return false;
+    }
+
+    isCheckingRef.current = true;
+
+    try {
+      // Call verification-status endpoint (does NOT require cookies)
+      const response = await fetch(
+        `/api/auth/verification-status?email=${encodeURIComponent(email)}`,
+        {
+          method: "GET",
+          credentials: "include", // Include cookies if available, but not required
+        }
+      );
+
+      if (!response.ok) {
+        // If 401, user needs to login (no session cookie)
+        // This is expected in signup flow - don't treat as error
+        if (response.status === 401) {
+          // Email might be verified but no session - show verified state
+          setIsVerified(true);
+          setIsChecking(false);
+          isCheckingRef.current = false;
+          return true;
+        }
+        throw new Error(`Verification check failed: ${response.status}`);
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        data?: VerificationStatusResponse;
+        error?: { message: string };
+      };
+
+      if (!result.success || !result.data) {
+        console.debug("[SignupSuccess] Verification check returned no data");
+        isCheckingRef.current = false;
+        return false;
+      }
+
+      if (result.data.verified) {
+        // Email is verified - stop polling and show login CTA
+        setIsVerified(true);
+        setIsChecking(false);
+        isCheckingRef.current = false;
+        return true;
+      }
+
+      isCheckingRef.current = false;
+      return false;
+    } catch (error) {
+      console.error("[SignupSuccess] Verification check error:", error);
+      // Don't set error state - just return false to continue polling
+      isCheckingRef.current = false;
+      return false;
+    }
+  }, [email]);
+
+  const handleManualCheck = useCallback(async () => {
+    // Keep the waiting box visible; just trigger a fresh check
+    setError(null);
+    await checkVerification();
+  }, [checkVerification]);
 
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
 
-    const checkVerification = async () => {
-      try {
-        const token = getAccessToken();
-        if (!token) {
-          return; // No token yet, user hasn't verified
-        }
+    const startPolling = async () => {
+      // Check immediately
+      const verified = await checkVerification();
+      if (verified) return;
 
-        const session = await api.auth.getSession();
-        
-        if (session.valid && session.user) {
-          setIsVerified(true);
-          setIsChecking(false);
-          
-          // Clear intervals
-          if (pollInterval) clearInterval(pollInterval);
-          if (timeout) clearTimeout(timeout);
-          
-          // Redirect to dashboard after a brief delay
-          setTimeout(() => {
-            router.push("/dashboard");
-            router.refresh();
-          }, 1500);
-          return;
+      // Poll every 2 seconds for verification (faster polling)
+      pollInterval = setInterval(async () => {
+        const verified = await checkVerification();
+        if (verified) {
+          clearInterval(pollInterval);
+          clearTimeout(timeout);
         }
-      } catch (err) {
-        // Silently handle errors - no session is expected
-        console.error("Verification check error:", err);
+      }, 2000);
+
+      // Stop polling after 5 minutes (300 seconds)
+      timeout = setTimeout(() => {
+        if (pollInterval) clearInterval(pollInterval);
+        setIsChecking(false);
+      }, 300000);
+    };
+
+    startPolling();
+
+    // Add window focus listener to refresh check when user returns to tab
+    const handleFocus = () => {
+      if (!isVerified) {
+        checkVerification();
       }
     };
 
-    // Start checking immediately
-    checkVerification();
-
-    // Poll every 3 seconds for verification
-    pollInterval = setInterval(checkVerification, 3000);
-
-    // Stop polling after 5 minutes (300 seconds)
-    timeout = setTimeout(() => {
-      if (pollInterval) clearInterval(pollInterval);
-      setIsChecking(false);
-    }, 300000);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (timeout) clearTimeout(timeout);
+      window.removeEventListener("focus", handleFocus);
+      isCheckingRef.current = false;
     };
-  }, [router]);
+  }, [checkVerification, isVerified]);
 
-  // Show verified state
+  // Auto-redirect to login when verified (optional - can be disabled if you prefer manual button)
+  useEffect(() => {
+    if (isVerified && email) {
+      // Optional: Auto-redirect after 2 seconds, or user can click button immediately
+      // Comment out the timeout if you want manual button only
+      const redirectTimer = setTimeout(() => {
+        const loginUrl = `/login?verified=1&email=${encodeURIComponent(email)}`;
+        router.push(loginUrl);
+      }, 2000);
+
+      return () => clearTimeout(redirectTimer);
+    }
+  }, [isVerified, email, router]);
+
+  // Show verified state - redirect to login (or show button)
   if (isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-        <div className="w-full max-w-[500px] text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6">
-            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
-          </div>
-          <h1 className="text-3xl font-bold mb-3">
-            Email Verified!
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            Your account has been verified. Redirecting to dashboard...
-          </p>
-          <div className="flex justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+        <div className="w-full max-w-[420px]">
+          <Card className="p-6 shadow-sm">
+            <div className="text-center space-y-5">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-1">
+                <CheckCircle2 className="h-8 w-8 text-primary" />
+              </div>
+              <h1 className="text-2xl font-bold">Email verified</h1>
+              <p className="text-muted-foreground">
+                Your email has been verified successfully. Please sign in to continue to your dashboard.
+              </p>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <div className="pt-2">
+                <Button
+                  onClick={() => {
+                    // Prefill email + show verified banner on login
+                    const loginUrl = email
+                      ? `/login?verified=1&email=${encodeURIComponent(email)}`
+                      : "/login?verified=1";
+                    router.push(loginUrl);
+                  }}
+                  className="w-full bg-primary hover:bg-primary/90"
+                  size="lg"
+                >
+                  Sign in to dashboard
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Redirecting to login in a moment...
+              </p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Show fallback UI if email is missing
+  if (!email) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+        <div className="w-full max-w-[420px]">
+          <Card className="p-8 shadow-sm">
+            <div className="text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+              <h1 className="text-2xl font-bold">Missing email context</h1>
+              <p className="text-muted-foreground">
+                We couldn't determine which email to check. Please sign in to continue.
+              </p>
+              <Button asChild className="w-full">
+                <Link href="/login">Go to Login</Link>
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-[500px]">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6">
-            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-[420px]">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mb-4">
+            <CheckCircle2 className="h-10 w-10 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold mb-3">
+          <h1 className="text-2xl font-bold mb-2">
             Account Created Successfully!
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             We've sent a verification email to your inbox
           </p>
         </div>
 
-        <Card className="p-8 shadow-sm">
+        <Card className="p-6 shadow-sm">
           <div className="space-y-6">
-            <div className="flex items-start gap-4 p-4 bg-muted/50 rounded-lg">
-              <div className="flex-shrink-0 mt-1">
-                <Mail className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold mb-1">Check your email</h3>
-                <p className="text-sm text-muted-foreground">
-                  {email ? (
-                    <>
-                      We've sent a verification link to{" "}
-                      <span className="font-medium text-foreground">{email}</span>
-                    </>
-                  ) : (
-                    "We've sent a verification link to your email address"
-                  )}
-                </p>
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Mail className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-sm mb-1">Check your email</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    We've sent a verification link to{" "}
+                    <span className="font-medium text-foreground break-all">{email}</span>
+                  </p>
+                </div>
               </div>
             </div>
 
             {isChecking && (
-              <div className="flex items-center justify-center gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <p className="text-sm font-medium text-primary">
-                  Waiting for email verification...
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <p className="text-sm font-medium text-primary">
+                    Waiting for email verification...
+                  </p>
+                </div>
+                <p className="text-xs text-center text-muted-foreground">
+                  If you&apos;ve already clicked the verification link,{" "}
+                  <button
+                    onClick={handleManualCheck}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    click here to refresh
+                  </button>
                 </p>
               </div>
             )}
 
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 text-sm">
-                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-                  <span className="text-primary text-xs font-semibold">1</span>
-                </div>
-                <div>
-                  <p className="font-medium">Open your email inbox</p>
-                  <p className="text-muted-foreground">
-                    Look for an email from MineCertificate
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 text-sm">
-                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-                  <span className="text-primary text-xs font-semibold">2</span>
-                </div>
-                <div>
-                  <p className="font-medium">Click the verification link</p>
-                  <p className="text-muted-foreground">
-                    This will confirm your email address and activate your account
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 text-sm">
-                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-                  <span className="text-primary text-xs font-semibold">3</span>
-                </div>
-                <div>
-                  <p className="font-medium">Automatic redirect</p>
-                  <p className="text-muted-foreground">
-                    Once verified, you'll be automatically taken to your dashboard
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t">
-              <p className="text-xs text-muted-foreground mb-4 text-center">
+            <div className="pt-5 border-t space-y-4">
+              <p className="text-xs text-muted-foreground text-center">
                 Didn't receive the email? Check your spam folder or{" "}
-                <Link href="/signup" className="text-primary hover:underline">
+                <Link href="/signup" className="text-primary hover:underline font-medium">
                   try signing up again
                 </Link>
               </p>
 
+              <div className="p-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <p className="text-xs text-gray-900 dark:text-gray-100 text-center">
+                  <strong className="font-semibold text-gray-900 dark:text-gray-100">Tip:</strong> If you clicked the verification link in another browser or device,{" "}
+                  <button
+                    onClick={handleManualCheck}
+                    className="font-semibold underline hover:no-underline text-primary dark:text-primary"
+                  >
+                    click here to check your status
+                  </button>
+                  . The page will also check automatically when you return to this tab.
+                </p>
+              </div>
+
               {!isChecking && (
                 <div className="mb-4">
                   <Button
-                    onClick={async () => {
-                      setIsChecking(true);
-                      try {
-                        const token = getAccessToken();
-                        if (token) {
-                          const session = await api.auth.getSession();
-                          if (session.valid && session.user) {
-                            setIsVerified(true);
-                            setTimeout(() => {
-                              router.push("/dashboard");
-                              router.refresh();
-                            }, 1500);
-                            return;
-                          }
-                        }
-                        setIsChecking(false);
-                      } catch (err) {
-                        setIsChecking(false);
-                      }
-                    }}
+                    onClick={handleManualCheck}
                     className="w-full bg-primary hover:bg-primary/90"
                   >
                     Check Verification Status
@@ -212,14 +317,8 @@ function SignupSuccessContent() {
               )}
 
               <div className="flex gap-3">
-                <Button
-                  asChild
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Link href="/signup">
-                    Back to Sign Up
-                  </Link>
+                <Button asChild variant="outline" className="flex-1">
+                  <Link href="/signup">Back to Sign Up</Link>
                 </Button>
                 <Button
                   asChild
@@ -241,16 +340,18 @@ function SignupSuccessContent() {
 
 export default function SignupSuccessPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-6 animate-pulse">
-            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mb-6 animate-pulse">
+              <CheckCircle2 className="h-10 w-10 text-primary" />
+            </div>
+            <p className="text-muted-foreground">Loading...</p>
           </div>
-          <p className="text-muted-foreground">Loading...</p>
         </div>
-      </div>
-    }>
+      }
+    >
       <SignupSuccessContent />
     </Suspense>
   );

@@ -1,0 +1,160 @@
+'use client';
+
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Calendar, Clock, Infinity, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+export type ExpiryType = 'day' | 'week' | 'month' | 'year' | '5_years' | 'never' | 'custom';
+
+interface ExpiryDateSelectorProps {
+  value: ExpiryType;
+  customDate?: string;
+  issueDate?: string;
+  onChange: (expiryType: ExpiryType, customDate?: string) => void;
+  className?: string;
+}
+
+const expiryOptions: { value: ExpiryType; label: string; description: string }[] = [
+  { value: 'day', label: '1 Day', description: 'Expires tomorrow' },
+  { value: 'week', label: '1 Week', description: 'Expires in 7 days' },
+  { value: 'month', label: '1 Month', description: 'Expires in 30 days' },
+  { value: 'year', label: '1 Year', description: 'Default expiry period' },
+  { value: '5_years', label: '5 Years', description: 'Long-term validity' },
+  { value: 'never', label: 'Never', description: 'No expiration' },
+  { value: 'custom', label: 'Custom', description: 'Set a specific date' },
+];
+
+export function ExpiryDateSelector({
+  value,
+  customDate,
+  issueDate,
+  onChange,
+  className,
+}: ExpiryDateSelectorProps) {
+  // Calculate preview expiry date based on current selection
+  const getPreviewExpiryDate = (): string | null => {
+    const baseDate = issueDate ? new Date(issueDate) : new Date();
+
+    switch (value) {
+      case 'day':
+        return new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toLocaleDateString();
+      case 'week':
+        return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString();
+      case 'month':
+        const monthDate = new Date(baseDate);
+        monthDate.setMonth(monthDate.getMonth() + 1);
+        return monthDate.toLocaleDateString();
+      case 'year':
+        const yearDate = new Date(baseDate);
+        yearDate.setFullYear(yearDate.getFullYear() + 1);
+        return yearDate.toLocaleDateString();
+      case '5_years':
+        const fiveYearDate = new Date(baseDate);
+        fiveYearDate.setFullYear(fiveYearDate.getFullYear() + 5);
+        return fiveYearDate.toLocaleDateString();
+      case 'never':
+        return null;
+      case 'custom':
+        return customDate ? new Date(customDate).toLocaleDateString() : null;
+      default:
+        return null;
+    }
+  };
+
+  const previewDate = getPreviewExpiryDate();
+
+  // Get minimum date for custom date picker (today or issue date)
+  const getMinDate = (): string => {
+    const today = new Date();
+    const base = issueDate ? new Date(issueDate) : today;
+    const minDate = base > today ? base : today;
+    return minDate.toISOString().split('T')[0]!;
+  };
+
+  return (
+    <Card className={cn("p-4", className)}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-primary" />
+          <Label className="text-sm font-medium">Certificate Expiry</Label>
+        </div>
+
+        <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/50 p-2 rounded-md">
+          <AlertCircle className="w-3.5 h-3.5" />
+          <span>Default: 1 year from issue date. Expired certificates show as &quot;Expired&quot; on verification.</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {expiryOptions.map((option) => (
+            <label
+              key={option.value}
+              className={cn(
+                "flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all",
+                value === option.value
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border hover:border-primary/50 hover:bg-muted/50"
+              )}
+              onClick={() => onChange(option.value, customDate)}
+            >
+              <input
+                type="radio"
+                name="expiryType"
+                value={option.value}
+                checked={value === option.value}
+                onChange={() => onChange(option.value, customDate)}
+                className="sr-only"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {option.value === 'never' ? (
+                    <Infinity className="w-3.5 h-3.5 text-muted-foreground" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">{option.label}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                  {option.description}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {/* Custom Date Picker */}
+        {value === 'custom' && (
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="custom-expiry-date" className="text-xs text-muted-foreground">
+              Custom Expiry Date
+            </Label>
+            <Input
+              id="custom-expiry-date"
+              type="date"
+              value={customDate || ''}
+              min={getMinDate()}
+              onChange={(e) => onChange('custom', e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
+        )}
+
+        {/* Preview */}
+        {previewDate && (
+          <div className="flex items-center gap-2 text-xs pt-2 border-t">
+            <span className="text-muted-foreground">Certificates will expire on:</span>
+            <span className="font-medium text-foreground">{previewDate}</span>
+          </div>
+        )}
+
+        {value === 'never' && (
+          <div className="flex items-center gap-2 text-xs pt-2 border-t">
+            <Infinity className="w-3.5 h-3.5 text-green-600" />
+            <span className="text-green-600 font-medium">Certificates will never expire</span>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}

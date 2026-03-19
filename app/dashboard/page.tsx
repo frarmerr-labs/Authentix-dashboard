@@ -1,343 +1,288 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Award, FileText, Shield, Ban, TrendingUp, TrendingDown, ArrowUpRight, Clock, Activity } from "lucide-react";
-import { api } from "@/lib/api/client";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState({
-    totalCertificates: 0,
-    pendingJobs: 0,
-    verificationsToday: 0,
-    revokedCertificates: 0,
-  });
-  const [recentImports, setRecentImports] = useState<any[]>([]);
-  const [recentVerifications, setRecentVerifications] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+/**
+ * Dashboard resolver - redirects to /dashboard/org/[orgId]
+ */
+export default function DashboardResolver() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    async function resolveOrg() {
+      try {
+        const TIMEOUT_MS = 12000;
+        let timeoutId: NodeJS.Timeout | undefined;
 
-  const loadDashboardData = async () => {
-    try {
-      const data = await api.dashboard.getStats();
-      
-      setStats(data.stats);
-      setRecentImports(data.recentImports);
-      setRecentVerifications(data.recentVerifications);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
+        const mePromise = fetch("/api/auth/me", {
+          credentials: "include",
+        }).then(async (res) => {
+          const responseData = await res.json();
+          
+          // Log full backend response
+          console.log("[DashboardResolver] /api/auth/me response:", JSON.stringify({
+            status: res.status,
+            ok: res.ok,
+            response: responseData,
+          }, null, 2));
+          
+          if (!res.ok) {
+            throw new Error(`Me request failed: ${res.status}`);
+          }
+          return responseData as {
+            success: boolean;
+            data?: {
+              authenticated: boolean;
+              user: { id: string; email: string } | null;
+              organization?: { id: string; name?: string } | null;
+            };
+          };
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("Request timeout")), TIMEOUT_MS);
+        });
+
+        const me = await Promise.race([mePromise, timeoutPromise]);
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (!me.data?.authenticated) {
+          router.replace("/login");
+          return;
+        }
+
+        const orgId = me.data?.organization?.id;
+        console.log("[DashboardResolver] Organization check:", JSON.stringify({
+          hasOrgId: !!orgId,
+          orgId: orgId,
+          authenticated: me.data?.authenticated,
+          hasUser: !!me.data?.user,
+          userId: me.data?.user?.id,
+          userEmail: me.data?.user?.email,
+          fullMeData: me.data,
+        }, null, 2));
+        
+        if (!orgId) {
+          // Organization missing - try calling bootstrap if we have a session
+          // This handles cases where bootstrap didn't run after login
+          console.log("[DashboardResolver] No organization found, attempting bootstrap...");
+          try {
+            const bootstrapResponse = await fetch("/api/proxy/auth/bootstrap", {
+              method: "POST",
+              credentials: "include",
+            });
+
+            const bootstrapData = await bootstrapResponse.json();
+            
+            // Log full bootstrap response
+            console.log("[DashboardResolver] Bootstrap response:", JSON.stringify({
+              status: bootstrapResponse.status,
+              ok: bootstrapResponse.ok,
+              response: bootstrapData,
+            }, null, 2));
+
+            if (bootstrapResponse.ok && bootstrapData.data?.organization?.id) {
+              const newOrgId = bootstrapData.data.organization.id;
+              console.log("[DashboardResolver] Bootstrap succeeded, redirecting to org:", newOrgId);
+              // Bootstrap succeeded - redirect to new org
+              router.replace(`/dashboard/org/${newOrgId}`);
+              return;
+            } else {
+              console.warn("[DashboardResolver] Bootstrap response missing orgId, retrying /api/auth/me...");
+              
+              // Bootstrap might have succeeded but /users/me isn't ready yet
+              // Retry /api/auth/me a few times with delays
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 1s, 2s, 3s
+                
+                try {
+                  const retryMeResponse = await fetch("/api/auth/me", {
+                    credentials: "include",
+                  });
+                  
+                  if (retryMeResponse.ok) {
+                    const retryMeData = await retryMeResponse.json();
+                    const retryOrgId = retryMeData.data?.organization?.id;
+                    
+                    console.log(`[DashboardResolver] Retry ${attempt}/3 - orgId:`, retryOrgId);
+                    
+                    if (retryOrgId) {
+                      router.replace(`/dashboard/org/${retryOrgId}`);
+                      return;
+                    }
+                  }
+                } catch (retryError) {
+                  console.warn(`[DashboardResolver] Retry ${attempt}/3 failed:`, retryError);
+                }
+              }
+              
+              // If still no org after retries, show error
+              console.error("[DashboardResolver] No organization found after bootstrap and retries");
+              setError("Organization setup is taking longer than expected. Please refresh the page.");
+              return;
+            }
+          } catch (bootstrapError) {
+            console.error("[DashboardResolver] Bootstrap error:", bootstrapError);
+            setError("Failed to set up organization. Please try logging in again.");
+            return;
+          }
+        }
+
+        // Check for redirect path from saved URLs
+        const redirectPath = document.cookie
+          .split("; ")
+          .find((row) => row.startsWith("redirect_path="))
+          ?.split("=")[1];
+        document.cookie = "redirect_path=; path=/; max-age=0";
+
+        const targetPath = redirectPath ? redirectPath.replace("/dashboard", "") : "";
+        router.replace(`/dashboard/org/${orgId}${targetPath}`);
+      } catch (error: unknown) {
+        // Handle timeout gracefully
+        if (error instanceof Error && error.message === "Request timeout") {
+          setError("Request timed out. Please try again.");
+          return;
+        }
+
+        console.error("[DashboardResolver] Error:", error);
+        // Fallback: redirect to login
+        router.replace("/login");
+      }
     }
-  };
+    resolveOrg();
+  }, [router]);
 
-  const getTimeAgo = (date: string) => {
-    const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  };
-
-  if (loading) {
+  if (error) {
     return (
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4 max-w-md px-4">
           <div className="space-y-2">
-            <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-96 bg-muted animate-pulse rounded" />
+            <h2 className="text-lg font-semibold text-destructive">Setup Error</h2>
+            <p className="text-sm text-muted-foreground">{error}</p>
           </div>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="space-y-3">
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                  <div className="h-10 w-24 bg-muted animate-pulse rounded" />
-                  <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <div className="flex flex-col gap-2 pt-4">
+            <button
+              onClick={() => router.refresh()}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
+            >
+              Return to Login
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  const hasData = stats.totalCertificates > 0 || recentImports.length > 0;
-
-  const kpiCards = [
-    {
-      title: "Total Certificates",
-      value: stats.totalCertificates.toLocaleString(),
-      icon: Award,
-      // Only show trend once you actually have certificates
-      trend: stats.totalCertificates > 0 ? { value: 12.5, direction: "up" as const } : undefined,
-      gradient: "from-blue-500 to-cyan-500",
-      bgGradient: "from-blue-500/10 to-cyan-500/10",
-    },
-    {
-      title: "Pending Jobs",
-      value: stats.pendingJobs,
-      icon: Clock,
-      subtitle: stats.pendingJobs === 0 ? 'All caught up' : 'In progress',
-      gradient: "from-orange-500 to-amber-500",
-      bgGradient: "from-orange-500/10 to-amber-500/10",
-    },
-    {
-      title: "Verifications Today",
-      value: stats.verificationsToday.toLocaleString(),
-      icon: Shield,
-      trend: { value: 8.2, direction: "up" as const },
-      gradient: "from-green-500 to-emerald-500",
-      bgGradient: "from-green-500/10 to-emerald-500/10",
-    },
-    {
-      title: "Revoked",
-      value: stats.revokedCertificates,
-      icon: Ban,
-      subtitle: 'Certificates',
-      gradient: "from-red-500 to-rose-500",
-      bgGradient: "from-red-500/10 to-rose-500/10",
-    },
-  ];
-
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-muted-foreground mt-1.5 text-base">
-            {hasData ? "Monitor your certificate operations" : "Get started with your first template"}
-          </p>
-        </div>
-        {!hasData && (
-          <Link href="/dashboard/templates">
-            <Button className="h-9 px-4">
-              Create Template
-            </Button>
-          </Link>
-        )}
-      </div>
+    <div className="min-h-screen bg-background">
+      {/* Dashboard Skeleton */}
+      <div className="flex">
+        {/* Sidebar Skeleton */}
+        <aside className="fixed top-0 left-0 z-40 h-screen w-14 bg-card border-r">
+          <div className="flex flex-col h-full">
+            {/* Logo skeleton */}
+            <div className="h-16 flex items-center justify-center border-b">
+              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
+            </div>
+            
+            {/* Navigation skeleton */}
+            <nav className="flex-1 p-2 space-y-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-10 w-full rounded-lg bg-muted animate-pulse"
+                />
+              ))}
+            </nav>
+            
+            {/* Bottom actions skeleton */}
+            <div className="p-2 border-t space-y-1">
+              <div className="h-10 w-full rounded-lg bg-muted animate-pulse" />
+              <div className="h-10 w-full rounded-lg bg-muted animate-pulse" />
+            </div>
+          </div>
+        </aside>
 
-      {/* Enhanced KPI Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {kpiCards.map((card, index) => (
-          <Card
-            key={card.title}
-            className="relative overflow-hidden border border-border bg-card/60 hover:bg-card transition-all duration-300 group"
-            style={{ 
-              animation: `fadeIn 0.5s ease-out ${index * 0.1}s backwards` 
-            }}
-          >
-            <div className="absolute inset-0 bg-card/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            <CardContent className="p-6 relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 rounded-xl bg-muted flex items-center justify-center">
-                  <card.icon className="h-5 w-5 text-muted-foreground" />
-                </div>
-                {card.trend && (
-                  <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-                    card.trend.direction === 'up' 
-                      ? 'bg-green-500/10 text-green-600 dark:text-green-400' 
-                      : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                  }`}>
-                    {card.trend.direction === 'up' ? (
-                      <TrendingUp className="h-3 w-3" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3" />
-                    )}
-                    <span>{card.trend.value}%</span>
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1.5">
-                  {card.title}
-                </p>
-                <p className="text-3xl font-bold tracking-tight mb-1">
-                  {card.value}
-                </p>
-                {card.subtitle && (
-                  <p className="text-xs text-muted-foreground">
-                    {card.subtitle}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Empty State */}
-      {!hasData && (
-        <Card className="border-2 border-dashed border-border bg-card/40 relative overflow-hidden">
-          <CardContent className="relative flex flex-col items-center justify-center py-16 px-4">
-            <div className="mb-6">
-              <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center">
-                <Award className="h-8 w-8 text-muted-foreground" />
+        {/* Main content skeleton */}
+        <div className="pl-14 flex-1">
+          {/* Header skeleton */}
+          <header className="h-16 bg-card border-b sticky top-0 z-30">
+            <div className="h-full px-6 flex items-center justify-between">
+              <div className="h-6 w-48 bg-muted animate-pulse rounded" />
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
               </div>
             </div>
-            <h3 className="text-2xl font-bold mb-2">
-              No certificates yet
-            </h3>
-            <p className="text-muted-foreground text-center mb-8 max-w-md leading-relaxed">
-              Get started by creating a template, then import an Excel file to generate your first batch of certificates.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link href="/dashboard/templates">
-                <Button className="h-9 px-4">
-                  Create Template
-                </Button>
-              </Link>
-              <Link href="/dashboard/imports">
-                <Button variant="outline" className="h-9 px-4">
-                  Import Excel
-                </Button>
-              </Link>
+          </header>
+
+          {/* Content skeleton */}
+          <main className="p-6">
+            <div className="max-w-[1400px] mx-auto space-y-8">
+              {/* Header section skeleton */}
+              <div className="space-y-2">
+                <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+                <div className="h-4 w-96 bg-muted animate-pulse rounded" />
+              </div>
+
+              {/* KPI Cards skeleton */}
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card p-6 space-y-3"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="h-11 w-11 rounded-xl bg-muted animate-pulse" />
+                      <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
+                    </div>
+                    <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+                    <div className="h-9 w-20 bg-muted animate-pulse rounded" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Activity Grid skeleton */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card"
+                  >
+                    <div className="border-b bg-muted/30 p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 bg-muted animate-pulse rounded" />
+                        <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+                      </div>
+                      <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                    </div>
+                    <div className="p-6 space-y-4">
+                      {Array.from({ length: 3 }).map((_, j) => (
+                        <div key={j} className="flex items-start gap-4">
+                          <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
+                            <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Activity Grid with Timeline Design */}
-      {hasData && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Recent Imports */}
-          <Card className="overflow-hidden">
-            <CardHeader className="border-b bg-muted/30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-muted flex items-center justify-center">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <CardTitle className="text-lg font-semibold">Recent Imports</CardTitle>
-                </div>
-                <Link href="/dashboard/imports">
-                  <Button variant="ghost" size="sm" className="h-8 text-xs gap-1">
-                    View all
-                    <ArrowUpRight className="h-3 w-3" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              {recentImports.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
-                    <FileText className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm text-muted-foreground">No imports yet</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {recentImports.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="relative flex items-start gap-4 group"
-                    >
-                      {index !== recentImports.length - 1 && (
-                        <div className="absolute left-4 top-10 bottom-0 w-px bg-border" />
-                      )}
-                      <div className="relative flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-background bg-muted">
-                        <Activity className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0 pt-1">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <p className="text-sm font-medium truncate">
-                            {item.file_name}
-                          </p>
-                          <Badge 
-                            variant={item.status === 'completed' ? 'default' : item.status === 'failed' ? 'destructive' : 'secondary'}
-                            className="text-xs flex-shrink-0"
-                          >
-                            {item.status}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {item.total_rows || 0} rows • {getTimeAgo(item.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent Verifications */}
-          <Card className="overflow-hidden">
-            <CardHeader className="border-b bg-muted/30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-muted flex items-center justify-center">
-                    <Shield className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <CardTitle className="text-lg font-semibold">Recent Verifications</CardTitle>
-                </div>
-                <Link href="/dashboard/verification-logs">
-                  <Button variant="ghost" size="sm" className="h-8 text-xs gap-1">
-                    View all
-                    <ArrowUpRight className="h-3 w-3" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              {recentVerifications.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
-                    <Shield className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm text-muted-foreground">No verifications yet</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {recentVerifications.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="relative flex items-start gap-4 group"
-                    >
-                      {index !== recentVerifications.length - 1 && (
-                        <div className="absolute left-4 top-10 bottom-0 w-px bg-border" />
-                      )}
-                      <div className="relative flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-background bg-muted">
-                        <Shield className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0 pt-1">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <p className="text-sm font-medium truncate">
-                            {item.certificates?.recipient_name || 'Unknown'}
-                          </p>
-                          <Badge 
-                            variant={item.result === 'valid' ? 'default' : 'destructive'}
-                            className="text-xs flex-shrink-0"
-                          >
-                            {item.result}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {item.certificates?.course_name || 'N/A'} • {getTimeAgo(item.verified_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          </main>
         </div>
-      )}
+      </div>
     </div>
   );
 }
