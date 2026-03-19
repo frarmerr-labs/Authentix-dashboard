@@ -15,15 +15,18 @@ import {
   Sparkles, Upload, Image as ImageIcon, FileText, Download,
   CheckCircle2, Circle, Layers, Palette, Database, Wand2
 } from 'lucide-react';
-import { CertificateCanvas } from './components/CertificateCanvas';
-import { InfiniteCanvas } from './components/InfiniteCanvas';
-import { RightPanel } from './components/RightPanel';
-import { TemplateSelector } from './components/TemplateSelector';
-import { AssetLibrary } from './components/AssetLibrary';
-import { DataSelector } from './components/DataSelector';
-import { FieldTypeSelector } from './components/FieldTypeSelector';
-import { FieldLayersList } from './components/FieldLayersList';
-import { ExportSection } from './components/ExportSection';
+import dynamic from 'next/dynamic';
+
+// Heavy components lazy-loaded to reduce initial bundle and speed up first render
+const CertificateCanvas  = dynamic(() => import('./components/CertificateCanvas').then(m => ({ default: m.CertificateCanvas })),  { ssr: false });
+const InfiniteCanvas     = dynamic(() => import('./components/InfiniteCanvas').then(m => ({ default: m.InfiniteCanvas })),     { ssr: false });
+const RightPanel         = dynamic(() => import('./components/RightPanel').then(m => ({ default: m.RightPanel })),         { ssr: false });
+const TemplateSelector   = dynamic(() => import('./components/TemplateSelector').then(m => ({ default: m.TemplateSelector })),   { ssr: false });
+const AssetLibrary       = dynamic(() => import('./components/AssetLibrary').then(m => ({ default: m.AssetLibrary })),       { ssr: false });
+const DataSelector       = dynamic(() => import('./components/DataSelector').then(m => ({ default: m.DataSelector })),       { ssr: false });
+const FieldTypeSelector  = dynamic(() => import('./components/FieldTypeSelector').then(m => ({ default: m.FieldTypeSelector })),  { ssr: false });
+const FieldLayersList    = dynamic(() => import('./components/FieldLayersList').then(m => ({ default: m.FieldLayersList })),    { ssr: false });
+const ExportSection      = dynamic(() => import('./components/ExportSection').then(m => ({ default: m.ExportSection })),      { ssr: false });
 
 export default function GenerateCertificatePage() {
   // Get query parameters

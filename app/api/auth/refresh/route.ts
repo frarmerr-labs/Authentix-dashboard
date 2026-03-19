@@ -6,13 +6,7 @@ import {
   sanitizeErrorMessage,
 } from "@/lib/api/server";
 
-function getBackendUrl(): string {
-  const url = process.env.BACKEND_API_URL;
-  if (url) return url;
-  // In development, BACKEND_API_URL should be set in .env file
-  // No fallback to avoid incorrect API calls
-  return "";
-}
+import { BACKEND_PRIMARY_URL, BACKEND_FALLBACK_URL, isConnectionRefused } from "@/lib/config/env";
 
 interface RefreshResponse {
   session: {
@@ -23,15 +17,6 @@ interface RefreshResponse {
 }
 
 export async function POST() {
-  const backendUrl = getBackendUrl();
-
-  if (!backendUrl) {
-    return NextResponse.json(
-      { success: false, error: "Service unavailable" },
-      { status: 503 }
-    );
-  }
-
   try {
     const refreshToken = await getServerRefreshToken();
 
@@ -42,13 +27,23 @@ export async function POST() {
       );
     }
 
-    const response = await fetch(`${backendUrl}/auth/refresh`, {
+    const fetchOpts = {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(`${BACKEND_PRIMARY_URL}/auth/refresh`, fetchOpts);
+    } catch (fetchError) {
+      if (isConnectionRefused(fetchError) && BACKEND_FALLBACK_URL) {
+        console.info("[Refresh] Local backend unavailable, switching to Vercel backend");
+        response = await fetch(`${BACKEND_FALLBACK_URL}/auth/refresh`, fetchOpts);
+      } else {
+        throw fetchError;
+      }
+    }
 
     const data = await response.json();
 

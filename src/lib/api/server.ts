@@ -11,25 +11,9 @@ import { cookies } from "next/headers";
  * Backend API URL - Server-only, never exposed to client
  * BACKEND_API_URL must be set in environment variables for production
  */
-function getBackendUrl(): string {
-  const url = process.env.BACKEND_API_URL;
-  if (url) return url;
+import { BACKEND_PRIMARY_URL, BACKEND_FALLBACK_URL, isConnectionRefused } from "@/lib/config/env";
 
-  // Fallback for development only
-  // Note: In development, BACKEND_API_URL should be set to point to your backend server
-  // This fallback is only used if BACKEND_API_URL is not set
-  if (process.env.NODE_ENV === "development") {
-    // If no backend URL is configured, we can't make requests
-    // The user should set BACKEND_API_URL in their .env file
-    return "";
-  }
-
-  // In production, we'll check at runtime when actually making requests
-  // This allows the build to succeed even without the env var set
-  return "";
-}
-
-const BACKEND_URL = getBackendUrl();
+const BACKEND_URL = BACKEND_PRIMARY_URL;
 
 /** Cookie names for auth tokens */
 export const AUTH_COOKIES = {
@@ -189,24 +173,33 @@ export async function serverApiRequest<T>(
     );
   }
 
-  const url = `${BACKEND_URL}${endpoint}`;
+  const primaryUrl = `${BACKEND_URL}${endpoint}`;
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(primaryUrl, {
       ...fetchOptions,
       headers,
-      // Don't cache authenticated requests by default
       cache: skipAuth ? "default" : "no-store",
     });
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Network error";
-    throw new ServerApiError(
-      "NETWORK_ERROR",
-      `Failed to connect to backend: ${errorMessage}`,
-      503
-    );
+    // If local backend is not running, automatically fall back to Vercel
+    if (isConnectionRefused(error) && BACKEND_FALLBACK_URL) {
+      console.info("[API] Local backend unavailable, switching to Vercel backend");
+      try {
+        response = await fetch(`${BACKEND_FALLBACK_URL}${endpoint}`, {
+          ...fetchOptions,
+          headers,
+          cache: skipAuth ? "default" : "no-store",
+        });
+      } catch (fallbackError) {
+        const msg = fallbackError instanceof Error ? fallbackError.message : "Network error";
+        throw new ServerApiError("NETWORK_ERROR", `Failed to connect to backend: ${msg}`, 503);
+      }
+    } else {
+      const errorMessage = error instanceof Error ? error.message : "Network error";
+      throw new ServerApiError("NETWORK_ERROR", `Failed to connect to backend: ${errorMessage}`, 503);
+    }
   }
 
   // Handle non-JSON responses
@@ -265,25 +258,27 @@ export async function backendAuthRequest<T>(
     );
   }
 
-  const url = `${BACKEND_URL}${endpoint}`;
+  const primaryUrl = `${BACKEND_URL}${endpoint}`;
+  const fetchHeaders = { "Content-Type": "application/json", ...options.headers };
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    });
+    response = await fetch(primaryUrl, { ...options, headers: fetchHeaders });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Network error";
-    console.error(`[BackendAuth] Network error for ${url}:`, errorMessage);
-    throw new ServerApiError(
-      "NETWORK_ERROR",
-      `Failed to connect to backend: ${errorMessage}`,
-      503
-    );
+    // If local backend is not running, automatically fall back to Vercel
+    if (isConnectionRefused(error) && BACKEND_FALLBACK_URL) {
+      console.info("[BackendAuth] Local backend unavailable, switching to Vercel backend");
+      try {
+        response = await fetch(`${BACKEND_FALLBACK_URL}${endpoint}`, { ...options, headers: fetchHeaders });
+      } catch (fallbackError) {
+        const msg = fallbackError instanceof Error ? fallbackError.message : "Network error";
+        throw new ServerApiError("NETWORK_ERROR", `Failed to connect to backend: ${msg}`, 503);
+      }
+    } else {
+      const errorMessage = error instanceof Error ? error.message : "Network error";
+      console.error(`[BackendAuth] Network error for ${primaryUrl}:`, errorMessage);
+      throw new ServerApiError("NETWORK_ERROR", `Failed to connect to backend: ${errorMessage}`, 503);
+    }
   }
 
   let data: ApiResponse<T>;
@@ -291,7 +286,7 @@ export async function backendAuthRequest<T>(
     data = (await response.json()) as ApiResponse<T>;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Parse error";
-    console.error(`[BackendAuth] JSON parse error for ${url}:`, errorMessage);
+    console.error(`[BackendAuth] JSON parse error for ${primaryUrl}:`, errorMessage);
     throw new ServerApiError(
       "PARSE_ERROR",
       `Failed to parse backend response: ${errorMessage}`,
@@ -301,7 +296,7 @@ export async function backendAuthRequest<T>(
 
   // Log the response for debugging
   if (!response.ok || !data.success) {
-    console.error(`[BackendAuth] Error response from ${url}:`, {
+    console.error(`[BackendAuth] Error response from ${primaryUrl}:`, {
       status: response.status,
       success: data.success,
       error: data.error,
@@ -317,7 +312,7 @@ export async function backendAuthRequest<T>(
 
   // Check if data.data exists
   if (!data.data) {
-    console.warn(`[BackendAuth] No data in response from ${url}, but success=true`);
+    console.warn(`[BackendAuth] No data in response from ${primaryUrl}, but success=true`);
     // Return empty object as fallback (caller should handle this)
     return {} as T;
   }

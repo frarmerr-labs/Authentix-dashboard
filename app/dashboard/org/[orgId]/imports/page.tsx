@@ -320,7 +320,7 @@ export default function ImportsPage() {
                           <table className="w-full text-sm">
                             <thead className="bg-muted/50">
                               <tr>
-                                {Object.keys(importItem.previewData[0]).map((header) => (
+                                {Object.keys(importItem.previewData[0] ?? {}).map((header) => (
                                   <th
                                     key={header}
                                     className="px-4 py-2 text-left font-medium text-muted-foreground whitespace-nowrap"

@@ -21,7 +21,9 @@ import { AUTH_COOKIES } from "@/lib/api/server";
 // Configuration (Server-only)
 // ============================================================================
 
-const BACKEND_API_URL = process.env.BACKEND_API_URL;
+import { BACKEND_PRIMARY_URL, BACKEND_FALLBACK_URL, isConnectionRefused as checkConnectionRefused } from "@/lib/config/env";
+
+const BACKEND_API_URL = BACKEND_PRIMARY_URL;
 
 // Request timeout in milliseconds
 // Longer timeout for file uploads (multipart requests)
@@ -222,6 +224,7 @@ async function proxyRequest(
 
   // Build backend URL
   const backendUrl = `${BACKEND_API_URL}${pathSegments}${url.search}`;
+  const fallbackUrl = BACKEND_FALLBACK_URL ? `${BACKEND_FALLBACK_URL}${pathSegments}${url.search}` : "";
 
   // Get auth cookies to forward to backend
   const cookieStore = await cookies();
@@ -301,28 +304,34 @@ async function proxyRequest(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+  const fetchOptions = {
+    method,
+    headers: safeHeaders,
+    body: body as BodyInit,
+    signal: controller.signal,
+    redirect: "manual" as const,
+    credentials: "include" as const,
+  };
+
   try {
-    // Log request details for debugging
     if (isMultipart) {
       console.log('[Proxy] Sending multipart request to backend:', {
-        url: backendUrl,
-        method,
-        hasBody: !!body,
+        url: backendUrl, method, hasBody: !!body,
         contentType: safeHeaders.get("content-type"),
-        headers: Object.fromEntries(safeHeaders.entries()),
       });
     }
 
-    const response = await fetch(backendUrl, {
-      method,
-      headers: safeHeaders,
-      body: body as BodyInit,
-      signal: controller.signal,
-      // Don't follow redirects - let backend handle them
-      redirect: "manual",
-      // Forward cookies to backend (in addition to Cookie header)
-      credentials: "include",
-    });
+    let response: Response;
+    try {
+      response = await fetch(backendUrl, fetchOptions);
+    } catch (fetchError) {
+      if (checkConnectionRefused(fetchError) && fallbackUrl) {
+        console.info("[Proxy] Local backend unavailable, switching to Vercel backend");
+        response = await fetch(fallbackUrl, fetchOptions);
+      } else {
+        throw fetchError;
+      }
+    }
     
     if (isMultipart) {
       console.log('[Proxy] Backend response for multipart request:', {
