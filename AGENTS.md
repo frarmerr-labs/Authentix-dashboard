@@ -31,7 +31,7 @@
 - **Never add Supabase client library to frontend** — no direct DB access from browser
 - **All data fetches go through `/api/proxy/*`** or Next.js Route Handlers
 - **Never store tokens in localStorage or sessionStorage** — HttpOnly cookies only
-- **All new pages must be created under `app/dashboard/org/[orgId]/`** for protected routes
+- **All new pages must be created under `app/dashboard/org/[slug]/`** for protected routes
 - **Server Components are preferred** for initial data loading (RSC pattern)
 - **Client Components (`"use client"`)** only when interactivity is required
 - **Server Actions (`"use server"`)** for form submissions (login, signup, etc.)
@@ -111,7 +111,7 @@ After ANY code change, update the relevant memory file:
 
 ### Adding a New Feature (Frontend)
 1. Read `projectmemory.md`
-2. Create page under `app/dashboard/org/[orgId]/[feature]/`
+2. Create page under `app/dashboard/org/[slug]/[feature]/`
 3. Add proxy allowlist entry if new backend route needed
 4. Add to `src/lib/api/client.ts` api object
 5. Update `projectmemory.md` → API Endpoints + Recent Changes
@@ -129,6 +129,25 @@ After ANY code change, update the relevant memory file:
 2. Update `projectmemory.md` → Supabase Schema
 3. Apply tenant isolation (`organization_id` filter on every query)
 4. Document in both repo memory files
+
+---
+
+## API Contract Rules
+
+### Response Envelope
+- **Always use `ApiResponse<T>` envelope:** `{ success: boolean, data: T, error?: { code, message }, meta?: { request_id, timestamp } }`
+- **Never return raw Supabase/DB structures** — always transform to frontend-compatible shape
+- **Strip internal IDs from responses** — `*_file_id`, `*_bucket`, `*_path` DB fields stay server-side unless explicitly needed by client
+- **Slug is for routing only** — never use slug for authorization; always use `organizationId` from JWT context
+
+### Type Safety
+- **Validate all request/response shapes with Zod** — no raw `any` or implicit `unknown` casts
+- **Client method signatures must match backend contract** — method (GET/POST/PUT), path, and body shape
+- **Status enums must be complete** — if backend adds a new status value, update frontend type immediately
+
+### Logging
+- **Never log full response bodies** on success paths — only log `status`, `errorCode`, and `errorMessage` on failures
+- **No sensitive data in console** — tokens, user PII, API keys must never appear in browser console
 
 ---
 

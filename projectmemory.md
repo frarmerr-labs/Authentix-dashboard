@@ -44,7 +44,7 @@ app/                           # Next.js App Router
   (auth)/verify-email/        # Email verification page
   verify/[token]/             # Public certificate verification
   dashboard/                  # Org resolver (redirects)
-  dashboard/org/[orgId]/      # Protected org shell (Server layout)
+  dashboard/org/[slug]/       # Protected org shell (Server layout) — slug-based routing
     generate-certificate/     # Certificate builder (Client)
     templates/                # Template management (Client)
     certificates/             # Certificate list (Client)
@@ -251,3 +251,5 @@ src/
 
 - **2026-03-19** | Initial full system audit | First audit of codebase; all above is baseline state
 - **2026-03-19** | Dynamic backend URL system | `.env.local` now defaults to `http://localhost:3001/api/v1`; `getBackendUrl()` in `server.ts` falls back to localhost in non-production; `refresh/route.ts` duplicate `getBackendUrl()` aligned to same logic; `.env.example` documents local vs production setup. Vercel env sets `BACKEND_API_URL=https://authentix-backend.vercel.app/api/v1` for production. No `NEXT_PUBLIC_` used — backend URL stays server-only.
+- **2026-03-19** | Slug-based org routing | Replaced UUID-based `[orgId]` with human-readable `[slug]` in all dashboard URLs (`/dashboard/org/{slug}`). `OrgContext` now exposes `slug` instead of `orgId`. `useOrgSlug()` added; `useOrgId()` kept as deprecated alias. UUID backward-compat: layout detects UUID pattern and redirects to `/dashboard`. Auth flows (login, callback, dashboard resolver, bootstrap) all use `org.slug ?? org.id` for fallback safety. Security: slug is for routing only — backend always uses `organizationId` from JWT.
+- **2026-03-19** | API contract standardization | 7 contract fixes: (1) `ImportJob.status` type now includes `'queued'`; (2) `api.verification.verify()` changed from `GET /verification/{token}` to `POST /verification/verify` with body; (3) `api.auth.bootstrap()` response type now includes `org.slug`; (4) `/api/auth/me` BFF fallback now returns `organization.slug`; (5) removed all excessive debug `console.log` from `apiRequest()`, template upload, and catalog methods — kept error-path logging only; (6) `imports/page.tsx` now handles `'queued'` status badge; (7) backend `/organizations/me` (GET+PUT) no longer leaks `logo_file_id` internal DB field.

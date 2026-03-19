@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased] - 2026-03-19
+
+### Added — Slug-Based Organization Routing
+
+- Dashboard URLs now use human-readable slugs: `/dashboard/org/{slug}` instead of `/dashboard/org/{uuid}`
+- `OrgContext` (`src/lib/org/context.tsx`) exposes `slug` via `useOrgSlug()` hook; `useOrgId()` kept as deprecated alias
+- Layout (`app/dashboard/org/[slug]/layout.tsx`) detects UUID-shaped params and redirects to `/dashboard` for backward compat with old bookmarks
+- Auth flows (login action, callback route, dashboard resolver) all use `org.slug ?? org.id` fallback pattern
+- Security: slug is for routing only — authorization always uses `organizationId` from JWT context
+
+### Fixed — API Contract Standardization
+
+**1. `ImportJob.status` type mismatch** — added `'queued'` to union type in `src/lib/api/client.ts`; added `'queued'` badge variant in `imports/page.tsx`
+
+**2. `api.verification.verify()` wrong HTTP method** — was `GET /verification/{token}`; now `POST /verification/verify` with body `{ token }` to match backend contract
+
+**3. `api.auth.bootstrap()` response type** — added `slug?: string` to `organization` field for slug-based redirects after bootstrap
+
+**4. `/api/auth/me` BFF fallback** — updated `/users/me` response type to match actual backend structure `{ profile, organization, membership }`; fallback path now returns `organization.slug`
+
+**5. Removed excessive debug logging** — removed all verbose `console.log` from success paths in `apiRequest()`, template upload, and catalog methods; kept `console.error` on failures only (trimmed to `status`, `errorCode`, `errorMessage`)
+
+**Files changed:**
+- `src/lib/api/client.ts`: Status type, verify method, bootstrap type, logging cleanup
+- `app/api/auth/me/route.ts`: Organization slug in fallback path
+- `app/dashboard/org/[slug]/imports/page.tsx`: Queued badge variant
+- `src/lib/org/context.tsx`: Slug-based context, `useOrgSlug()` hook
+- `src/components/dashboard/DashboardShell.tsx`: Slug props
+- `app/dashboard/org/[slug]/layout.tsx`: UUID backward-compat redirect
+- `app/(auth)/login/actions.ts`: Slug-based redirect
+- `app/(auth)/auth/callback/route.ts`: Slug-based redirect
+- `app/dashboard/page.tsx`: Slug-based resolver
+
+---
+
 ## 2026-01-14
 
 ### Signup & Email Verification Flow Improvements

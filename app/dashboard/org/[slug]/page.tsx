@@ -67,7 +67,7 @@ interface DashboardData {
 }
 
 interface PageProps {
-  params: Promise<{ orgId: string }>;
+  params: Promise<{ slug: string }>;
 }
 
 // ============================================================================
@@ -151,10 +151,10 @@ function KpiCard({ title, value, icon: Icon, trend, subtitle }: KpiCardProps) {
 }
 
 interface EmptyStateProps {
-  readonly orgId: string;
+  readonly slug: string;
 }
 
-function EmptyState({ orgId }: EmptyStateProps) {
+function EmptyState({ slug }: EmptyStateProps) {
   return (
     <Card className="border-2 border-dashed bg-card/40">
       <CardContent className="flex flex-col items-center justify-center py-16">
@@ -167,10 +167,10 @@ function EmptyState({ orgId }: EmptyStateProps) {
           certificates.
         </p>
         <div className="flex gap-3">
-          <Link href={orgPath(orgId, "/templates")}>
+          <Link href={orgPath(slug,"/templates")}>
             <Button>Create Template</Button>
           </Link>
-          <Link href={orgPath(orgId, "/imports")}>
+          <Link href={orgPath(slug,"/imports")}>
             <Button variant="outline">Import Data</Button>
           </Link>
         </div>
@@ -180,11 +180,11 @@ function EmptyState({ orgId }: EmptyStateProps) {
 }
 
 interface RecentImportsCardProps {
-  readonly orgId: string;
+  readonly slug: string;
   readonly imports: ImportItem[];
 }
 
-function RecentImportsCard({ orgId, imports }: RecentImportsCardProps) {
+function RecentImportsCard({ slug, imports }: RecentImportsCardProps) {
   return (
     <Card>
       <CardHeader className="border-b bg-muted/30">
@@ -193,7 +193,7 @@ function RecentImportsCard({ orgId, imports }: RecentImportsCardProps) {
             <FileText className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-lg">Recent Imports</CardTitle>
           </div>
-          <Link href={orgPath(orgId, "/imports")}>
+          <Link href={orgPath(slug,"/imports")}>
             <Button variant="ghost" size="sm" className="gap-1">
               View all
               <ArrowUpRight className="h-3 w-3" />
@@ -248,12 +248,12 @@ function RecentImportsCard({ orgId, imports }: RecentImportsCardProps) {
 }
 
 interface RecentVerificationsCardProps {
-  readonly orgId: string;
+  readonly slug: string;
   readonly verifications: VerificationItem[];
 }
 
 function RecentVerificationsCard({
-  orgId,
+  slug,
   verifications,
 }: RecentVerificationsCardProps) {
   return (
@@ -264,7 +264,7 @@ function RecentVerificationsCard({
             <Shield className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-lg">Recent Verifications</CardTitle>
           </div>
-          <Link href={orgPath(orgId, "/verification-logs")}>
+          <Link href={orgPath(slug,"/verification-logs")}>
             <Button variant="ghost" size="sm" className="gap-1">
               View all
               <ArrowUpRight className="h-3 w-3" />
@@ -319,7 +319,7 @@ function RecentVerificationsCard({
 // ============================================================================
 
 export default async function OrgDashboardPage({ params }: PageProps) {
-  const { orgId } = await params;
+  const { slug } = await params;
   const data = await getDashboardData();
 
   // Default data if fetch failed or is partial
@@ -378,7 +378,7 @@ export default async function OrgDashboardPage({ params }: PageProps) {
           </p>
         </div>
         {!hasData && (
-          <Link href={orgPath(orgId, "/templates")}>
+          <Link href={orgPath(slug,"/templates")}>
             <Button>Create Template</Button>
           </Link>
         )}
@@ -392,14 +392,14 @@ export default async function OrgDashboardPage({ params }: PageProps) {
       </div>
 
       {/* Empty State */}
-      {!hasData && <EmptyState orgId={orgId} />}
+      {!hasData && <EmptyState slug={slug} />}
 
       {/* Activity Grid */}
       {hasData && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <RecentImportsCard orgId={orgId} imports={recentImports} />
+          <RecentImportsCard slug={slug} imports={recentImports} />
           <RecentVerificationsCard
-            orgId={orgId}
+            slug={slug}
             verifications={recentVerifications}
           />
         </div>

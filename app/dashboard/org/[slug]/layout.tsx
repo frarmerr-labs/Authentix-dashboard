@@ -27,7 +27,7 @@ import { getOrganizationLogoUrl } from "@/lib/utils/organization-logo";
 
 interface OrgLayoutProps {
   children: React.ReactNode;
-  params: Promise<{ orgId: string }>;
+  params: Promise<{ slug: string }>;
 }
 
 interface MeResponse {
@@ -84,6 +84,7 @@ interface UserProfileResponse {
   organization?: {
     id: string;
     name: string;
+    slug: string;
     // Logo fields from backend - supports multiple structures
     logo_file_id?: string | null;
     logo_bucket?: string | null;
@@ -147,7 +148,14 @@ export default async function OrgDashboardLayout({
   params,
 }: OrgLayoutProps) {
   // Unwrap params (Next.js 16 async params)
-  const { orgId } = await params;
+  const { slug } = await params;
+
+  // Backward compat: if someone navigates with a UUID (legacy link), redirect to dashboard
+  // to let the dashboard resolver fetch the correct slug
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (UUID_RE.test(slug)) {
+    redirect("/dashboard");
+  }
 
   // Check authentication server-side
   const isAuthenticated = await isServerAuthenticated();
@@ -255,6 +263,7 @@ export default async function OrgDashboardLayout({
           organization: backendData.organization ? {
             id: backendData.organization.id,
             name: backendData.organization.name,
+            slug: backendData.organization.slug,
             logo: backendData.organization.logo ? {
               bucket: backendData.organization.logo.bucket,
               path: backendData.organization.logo.path,
@@ -353,13 +362,13 @@ export default async function OrgDashboardLayout({
     );
   }
 
-  // Derive orgId from profile (don't trust URL param until verified)
-  const effectiveOrgId = userProfile.organization.id;
+  // Derive slug from profile (don't trust URL param until verified)
+  const effectiveSlug = userProfile.organization.slug;
 
-  // Validate org access - redirect if URL param doesn't match actual org
-  if (effectiveOrgId !== orgId) {
+  // Validate org access - redirect if URL param doesn't match actual org slug
+  if (effectiveSlug !== slug) {
     // User belongs to a different org - redirect to their actual org
-    redirect(`/dashboard/org/${effectiveOrgId}`);
+    redirect(`/dashboard/org/${effectiveSlug}`);
   }
 
   // Prepare user and organization data for client
@@ -387,7 +396,7 @@ export default async function OrgDashboardLayout({
 
   return (
     <DashboardShell
-      orgId={orgId}
+      slug={slug}
       initialUser={userData}
       initialCompany={organizationData}
     >
