@@ -313,7 +313,7 @@ export function DashboardShell({
         {/* Sidebar */}
         <aside
           className={cn(
-            "fixed top-0 left-0 z-40 h-screen bg-card border-r transition-all duration-300",
+            "fixed top-0 left-0 z-[60] h-screen bg-card border-r transition-all duration-300",
             sidebarExpanded ? "w-52" : "w-14"
           )}
           onMouseEnter={() => setSidebarExpanded(true)}
