@@ -1,6 +1,154 @@
 import { useRef, useState, useEffect } from 'react';
 import { CertificateField } from '@/lib/types/certificate';
 import { GripVertical, Trash2 } from 'lucide-react';
+import QRCodeLib from 'qrcode';
+
+// ── Real QR code preview using qrcode package ────────────────────────────────
+
+type QRStyle = 'standard' | 'rounded' | 'dots' | 'classy' | 'logo';
+
+// Determine if a module index is inside one of the three finder patterns
+function isFinderModule(row: number, col: number, size: number): boolean {
+  // top-left: rows 0-6, cols 0-6
+  if (row <= 6 && col <= 6) return true;
+  // top-right: rows 0-6, cols size-7 to size-1
+  if (row <= 6 && col >= size - 7) return true;
+  // bottom-left: rows size-7 to size-1, cols 0-6
+  if (row >= size - 7 && col <= 6) return true;
+  return false;
+}
+
+function QRCodePreview({
+  style, color, transparent, logoUrl,
+}: {
+  style: QRStyle;
+  color: string;
+  transparent: boolean;
+  logoUrl: string | null;
+}) {
+  const [modules, setModules] = useState<{ data: Uint8Array; size: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      // `create` is a public export not reflected in @types/qrcode
+      const qr = (QRCodeLib as any).create('https://authentix.app/verify/sample', {
+        errorCorrectionLevel: style === 'logo' ? 'H' : 'M',
+      });
+      setModules({ data: qr.modules.data as Uint8Array, size: qr.modules.size as number });
+    } catch {
+      // fallback: no render
+    }
+  }, [style]);
+
+  if (!modules) {
+    return (
+      <svg viewBox="0 0 100 100" className="w-full h-full">
+        <rect x="0" y="0" width="100" height="100" fill={transparent ? 'transparent' : 'white'} />
+      </svg>
+    );
+  }
+
+  const { data, size } = modules;
+  const pad = 2; // quiet zone in "units"
+  const viewSize = size + pad * 2;
+  const bg = transparent ? 'transparent' : 'white';
+  const finderBg = transparent ? 'white' : bg;
+
+  // Logo area bounds (centre 30% of QR)
+  const logoRegionStart = Math.floor(size * 0.35);
+  const logoRegionEnd = Math.ceil(size * 0.65);
+  const isInLogoRegion = (r: number, c: number) =>
+    r >= logoRegionStart && r <= logoRegionEnd && c >= logoRegionStart && c <= logoRegionEnd;
+
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    if (!data[i]) continue;
+    const row = Math.floor(i / size);
+    const col = i % size;
+    const x = col + pad;
+    const y = row + pad;
+    const isFinder = isFinderModule(row, col, size);
+    const skipForLogo = style === 'logo' && isInLogoRegion(row, col);
+    if (skipForLogo && !isFinder) continue;
+
+    if (style === 'dots' && !isFinder) {
+      elements.push(<circle key={i} cx={x + 0.5} cy={y + 0.5} r="0.42" fill={color} />);
+    } else if ((style === 'rounded' || style === 'classy') && !isFinder) {
+      elements.push(<rect key={i} x={x + 0.08} y={y + 0.08} width="0.84" height="0.84" rx="0.25" fill={color} />);
+    } else if (isFinder && (style === 'rounded' || style === 'classy')) {
+      // Finder modules rendered separately below — skip here
+    } else {
+      elements.push(<rect key={i} x={x} y={y} width="1" height="1" fill={color} />);
+    }
+  }
+
+  const outerRx = style === 'rounded' || style === 'classy' ? 1.2 : 0;
+  const styledFinder = (fx: number, fy: number) => {
+    const gx = fx + pad;
+    const gy = fy + pad;
+    return (
+      <g key={`f-${fx}-${fy}`}>
+        <rect x={gx} y={gy} width="7" height="7" rx={outerRx} fill={color} />
+        <rect x={gx + 1} y={gy + 1} width="5" height="5" rx={outerRx * 0.5} fill={finderBg} />
+        <rect x={gx + 2} y={gy + 2} width="3" height="3" rx={outerRx * 0.4} fill={color} />
+      </g>
+    );
+  };
+
+  return (
+    <svg
+      viewBox={`0 0 ${viewSize} ${viewSize}`}
+      className="w-full h-full"
+      style={{ maxWidth: '100%', maxHeight: '100%' }}
+    >
+      <rect x="0" y="0" width={viewSize} height={viewSize} fill={bg} />
+      {elements}
+      {/* Styled finders for rounded/classy (drawn on top) */}
+      {(style === 'rounded' || style === 'classy') && (
+        <>
+          {styledFinder(0, 0)}
+          {styledFinder(size - 7, 0)}
+          {styledFinder(0, size - 7)}
+        </>
+      )}
+      {/* Logo centre overlay */}
+      {style === 'logo' && (
+        <>
+          <rect
+            x={logoRegionStart + pad - 0.5}
+            y={logoRegionStart + pad - 0.5}
+            width={logoRegionEnd - logoRegionStart + 1}
+            height={logoRegionEnd - logoRegionStart + 1}
+            fill="white"
+            rx="1"
+          />
+          {logoUrl ? (
+            <image
+              href={logoUrl}
+              x={logoRegionStart + pad}
+              y={logoRegionStart + pad}
+              width={logoRegionEnd - logoRegionStart}
+              height={logoRegionEnd - logoRegionStart}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          ) : (
+            <text
+              x={(logoRegionStart + logoRegionEnd) / 2 + pad}
+              y={(logoRegionStart + logoRegionEnd) / 2 + pad + 1}
+              textAnchor="middle"
+              fontSize="2.5"
+              fill={color}
+              fontFamily="sans-serif"
+            >
+              Logo
+            </text>
+          )}
+        </>
+      )}
+    </svg>
+  );
+}
 
 interface DraggableFieldProps {
   field: CertificateField;
@@ -110,6 +258,26 @@ export function DraggableField({
 
   const displayValue = field.sampleValue || field.label;
 
+  // Gradient / shadow styles for text content
+  const isGradient = field.colorMode === 'linear' || field.colorMode === 'radial';
+  const gradientBg = isGradient
+    ? field.colorMode === 'linear'
+      ? `linear-gradient(${field.gradientAngle ?? 90}deg, ${field.gradientStartColor ?? field.color}, ${field.gradientEndColor ?? '#ffffff'})`
+      : `radial-gradient(circle, ${field.gradientStartColor ?? field.color}, ${field.gradientEndColor ?? '#ffffff'})`
+    : undefined;
+  // Base text styles (no clip properties — those live in .gradient-clip-text CSS class)
+  const textContentStyle: React.CSSProperties = {
+    lineHeight: field.lineHeight ?? 1.2,
+    letterSpacing: field.letterSpacing ? `${field.letterSpacing * scale}px` : undefined,
+    opacity: (field.opacity ?? 100) / 100,
+    textTransform: (field.textTransform ?? 'none') as React.CSSProperties['textTransform'],
+    textShadow: field.textShadow
+      ? `${field.textShadow.offsetX}px ${field.textShadow.offsetY}px ${field.textShadow.blur}px ${field.textShadow.color}`
+      : undefined,
+    // Only set the gradient background here; clipping is forced by .gradient-clip-text class
+    ...(isGradient ? { background: gradientBg } : {}),
+  };
+
   return (
     <div
       ref={fieldRef}
@@ -123,19 +291,25 @@ export function DraggableField({
         top: scaledY,
         width: scaledWidth,
         height: scaledHeight,
-        fontSize: scaledFontSize,
-        fontFamily: field.fontFamily,
-        color: field.color,
-        fontWeight: field.fontWeight,
-        fontStyle: field.fontStyle,
-        textAlign: field.textAlign,
+        ...(field.type !== 'image' ? {
+          fontSize: scaledFontSize,
+          fontFamily: field.fontFamily,
+          color: field.color,
+          fontWeight: field.fontWeight,
+          fontStyle: field.fontStyle,
+          textAlign: field.textAlign,
+          padding: '4px 8px',
+        } : {}),
         display: 'flex',
         alignItems: 'center',
-        justifyContent: field.textAlign === 'center' ? 'center' : field.textAlign === 'right' ? 'flex-end' : 'flex-start',
-        backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.04)',
-        border: isSelected ? '1px solid rgb(59, 130, 246)' : '1px dashed rgba(59, 130, 246, 0.4)',
-        borderRadius: '2px',
-        padding: '4px 8px',
+        justifyContent: field.type === 'image' ? 'center' : (field.textAlign === 'center' ? 'center' : field.textAlign === 'right' ? 'flex-end' : 'flex-start'),
+        backgroundColor: field.type === 'image'
+          ? (isSelected ? 'rgba(62,207,142,0.06)' : 'transparent')
+          : (isSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.04)'),
+        border: field.type === 'image'
+          ? (isSelected ? '1px solid rgba(62,207,142,0.7)' : '1px solid transparent')
+          : (isSelected ? '1px solid rgb(59, 130, 246)' : '1px dashed rgba(59, 130, 246, 0.4)'),
+        borderRadius: field.type === 'image' ? (field.cornerRadius ? `${field.cornerRadius}px` : '2px') : '2px',
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => {
@@ -169,62 +343,34 @@ export function DraggableField({
 
       {/* Field Content */}
       {field.type === 'qr_code' ? (
-        <div className="w-full h-full flex items-center justify-center p-1">
-          <svg
-            viewBox="0 0 100 100"
-            className="w-full h-full"
-            style={{ maxWidth: '100%', maxHeight: '100%' }}
-          >
-            {/* Simplified QR code pattern for preview */}
-            <rect x="0" y="0" width="100" height="100" fill="white" />
-            {/* Top-left finder */}
-            <rect x="5" y="5" width="25" height="25" fill="currentColor" />
-            <rect x="10" y="10" width="15" height="15" fill="white" />
-            <rect x="13" y="13" width="9" height="9" fill="currentColor" />
-            {/* Top-right finder */}
-            <rect x="70" y="5" width="25" height="25" fill="currentColor" />
-            <rect x="75" y="10" width="15" height="15" fill="white" />
-            <rect x="78" y="13" width="9" height="9" fill="currentColor" />
-            {/* Bottom-left finder */}
-            <rect x="5" y="70" width="25" height="25" fill="currentColor" />
-            <rect x="10" y="75" width="15" height="15" fill="white" />
-            <rect x="13" y="78" width="9" height="9" fill="currentColor" />
-            {/* Data modules (simplified pattern) */}
-            <rect x="35" y="5" width="5" height="5" fill="currentColor" />
-            <rect x="45" y="5" width="5" height="5" fill="currentColor" />
-            <rect x="55" y="5" width="5" height="5" fill="currentColor" />
-            <rect x="35" y="15" width="5" height="5" fill="currentColor" />
-            <rect x="50" y="15" width="5" height="5" fill="currentColor" />
-            <rect x="35" y="35" width="5" height="5" fill="currentColor" />
-            <rect x="45" y="35" width="5" height="5" fill="currentColor" />
-            <rect x="55" y="35" width="5" height="5" fill="currentColor" />
-            <rect x="65" y="35" width="5" height="5" fill="currentColor" />
-            <rect x="40" y="45" width="5" height="5" fill="currentColor" />
-            <rect x="50" y="45" width="5" height="5" fill="currentColor" />
-            <rect x="35" y="55" width="5" height="5" fill="currentColor" />
-            <rect x="45" y="55" width="5" height="5" fill="currentColor" />
-            <rect x="55" y="55" width="5" height="5" fill="currentColor" />
-            <rect x="70" y="40" width="5" height="5" fill="currentColor" />
-            <rect x="80" y="45" width="5" height="5" fill="currentColor" />
-            <rect x="85" y="55" width="5" height="5" fill="currentColor" />
-            <rect x="70" y="60" width="5" height="5" fill="currentColor" />
-            <rect x="40" y="70" width="5" height="5" fill="currentColor" />
-            <rect x="55" y="70" width="5" height="5" fill="currentColor" />
-            <rect x="65" y="75" width="5" height="5" fill="currentColor" />
-            <rect x="75" y="70" width="5" height="5" fill="currentColor" />
-            <rect x="85" y="70" width="5" height="5" fill="currentColor" />
-            <rect x="45" y="85" width="5" height="5" fill="currentColor" />
-            <rect x="55" y="80" width="5" height="5" fill="currentColor" />
-            <rect x="70" y="85" width="5" height="5" fill="currentColor" />
-            <rect x="80" y="80" width="5" height="5" fill="currentColor" />
-            <rect x="90" y="85" width="5" height="5" fill="currentColor" />
-          </svg>
+        <div className="w-full h-full flex items-center justify-center p-1" style={{ opacity: (field.opacity ?? 100) / 100 }}>
+          <QRCodePreview
+            style={field.qrStyle ?? 'standard'}
+            color={field.color ?? '#000000'}
+            transparent={field.qrTransparentBg ?? false}
+            logoUrl={field.qrStyle === 'logo' ? (field.qrLogoUrl ?? null) : null}
+          />
+        </div>
+      ) : field.type === 'image' ? (
+        <div className="w-full h-full overflow-hidden" style={{ opacity: (field.opacity ?? 100) / 100, borderRadius: field.cornerRadius ? `${field.cornerRadius}px` : undefined }}>
+          {field.imageUrl ? (
+            <img src={field.imageUrl} alt={field.label} className="w-full h-full object-contain" draggable={false} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-muted/30 text-muted-foreground/40">
+              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="truncate w-full select-none" style={{ lineHeight: 1 }}>
-          {field.prefix}
-          {displayValue}
-          {field.suffix}
+        <div
+          className={isGradient ? 'gradient-clip-text w-full select-none' : 'truncate w-full select-none'}
+          style={textContentStyle}
+        >
+          {field.prefix}{displayValue}{field.suffix}
         </div>
       )}
 
@@ -240,7 +386,7 @@ export function DraggableField({
         <>
           {/* Bottom-Right Corner - Standard Resize */}
           <div
-            className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-primary border-2 border-white rounded-full cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
+            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-primary border-2 border-white rounded-[2px] cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
             onMouseDown={handleResizeStart}
           />
         </>

@@ -5,248 +5,271 @@
    ============================================ */
 
 @theme {
-  /* Border radius */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.625rem;
-  --radius-xl: 0.75rem;
-  --radius-2xl: 1rem;
-  
-  /* Custom colors - extend the palette */
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  
-  /* Primary scale (green) aligned to brand primary #3ECF8E */
-  --color-primary-50: #ecfdf5;
-  --color-primary-100: #d1fae5;
-  --color-primary-200: #a7f3d0;
-  --color-primary-300: #6ee7b7;
-  --color-primary-400: #34d399;
-  --color-primary-500: #3ecf8e;
-  --color-primary-600: #21b27a;
-  --color-primary-700: #159263;
-  --color-primary-800: #0f7450;
-  --color-primary-900: #0b5a3e;
+  /* Border radius — matches shadcn default radius 0.625rem */
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Semantic color tokens — mapped directly (Tailwind v4: values are full colors, no hsl() wrapper) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Brand primary scale (#3ECF8E) */
+  --color-brand-50:  #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #3ecf8e;
+  --color-brand-600: #21b27a;
+  --color-brand-700: #159263;
+  --color-brand-800: #0f7450;
+  --color-brand-900: #0b5a3e;
 }
 
 /* ============================================
-   CSS VARIABLES FOR THEME SWITCHING
+   LIGHT THEME — shadcn neutral base
    ============================================ */
 
-  :root {
-    /* Light mode - GitHub inspired */
-    --background: 0 0% 100%;
-    --foreground: 213 14% 14%;
-    --card: 0 0% 100%;
-    --card-foreground: 213 14% 14%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 213 14% 14%;
-    /* Brand primary: #3ECF8E */
-    --primary: 153 60% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 17% 98%;
-    --secondary-foreground: 213 14% 14%;
-    --muted: 210 17% 98%;
-    --muted-foreground: 0 0% 40%;
-    --accent: 210 17% 98%;
-    --accent-foreground: 213 14% 14%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 210 18% 82%;
-    --input: 210 18% 82%;
-    --ring: 153 60% 53%;
-    --radius: 0.5rem;
+:root {
+  /* shadcn neutral palette */
+  --background:          oklch(1 0 0);
+  --foreground:          oklch(0.145 0 0);
+  --card:                oklch(1 0 0);
+  --card-foreground:     oklch(0.145 0 0);
+  --popover:             oklch(1 0 0);
+  --popover-foreground:  oklch(0.145 0 0);
 
-  /* Chart brand colors (fixed across light/dark) */
-  --chart-1: #3ecf8e; /* primary-500 */
-  --chart-2: #34d399; /* primary-400 */
-  --chart-3: #6ee7b7; /* primary-300 */
-  --chart-4: #a7f3d0; /* primary-200 */
-  --chart-5: #21b27a; /* primary-600 */
-    
-    /* GitHub light colors */
-    --color-fg-default: #1f2328;
-    --color-fg-muted: #656d76;
-    --color-fg-subtle: #6e7781;
-    --color-canvas-default: #ffffff;
-    --color-canvas-subtle: #f6f8fa;
-    --color-border-default: #d0d7de;
-    --color-border-muted: #d8dee4;
-    --color-neutral-muted: rgba(175, 184, 193, 0.2);
-    --color-accent-fg: #0969da;
-    --color-success-fg: #1a7f37;
-    --color-attention-fg: #9a6700;
-    --color-danger-fg: #d1242f;
+  /* Brand primary: #3ECF8E */
+  --primary:             oklch(0.765 0.149 162);
+  --primary-foreground:  oklch(1 0 0);
 
-    /* Canvas (generate-certificate design area) */
-    --canvas-bg: #ffffff;
-    --canvas-dot: #d4d4d4;
-  }
+  --secondary:           oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted:               oklch(0.97 0 0);
+  --muted-foreground:    oklch(0.556 0 0);
+  --accent:              oklch(0.97 0 0);
+  --accent-foreground:   oklch(0.205 0 0);
+  --destructive:         oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
 
-  .dark {
-    /* Dark mode - GitHub inspired with #171717 background */
-    --background: 0 0% 9%;
-    --foreground: 210 40% 90%;
-    --card: 0 0% 9%;
-    --card-foreground: 210 40% 90%;
-    --popover: 0 0% 9%;
-    --popover-foreground: 210 40% 90%;
-    /* Brand primary: #3ECF8E */
-    --primary: 153 60% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 13%;
-    --secondary-foreground: 210 40% 90%;
-    --muted: 0 0% 13%;
-    --muted-foreground: 0 0% 52%;
-    --accent: 0 0% 13%;
-    --accent-foreground: 210 40% 90%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 19%;
-    --input: 0 0% 19%;
-    --ring: 153 60% 53%;
+  /* Borders clearly visible in light mode */
+  --border:              oklch(0.922 0 0);
+  --input:               oklch(0.922 0 0);
 
-  /* Chart brand colors (fixed across light/dark) */
-  --chart-1: #3ecf8e; /* primary-500 */
-  --chart-2: #34d399; /* primary-400 */
-  --chart-3: #6ee7b7; /* primary-300 */
-  --chart-4: #a7f3d0; /* primary-200 */
-  --chart-5: #21b27a; /* primary-600 */
-    
-    /* GitHub dark colors with #171717 base */
-    --color-fg-default: #e6edf3;
-    --color-fg-muted: #848d97;
-    --color-fg-subtle: #6e7681;
-    --color-canvas-default: #0d1117;
-    --color-canvas-subtle: #161b22;
-    --color-border-default: #30363d;
-    --color-border-muted: #21262d;
-    --color-neutral-muted: rgba(110, 118, 129, 0.4);
-    --color-accent-fg: #2f81f7;
-    --color-success-fg: #3fb950;
-    --color-attention-fg: #d29922;
-    --color-danger-fg: #f85149;
+  /* Brand ring */
+  --ring:                oklch(0.765 0.149 162);
 
-    /* Canvas (generate-certificate design area) */
-    --canvas-bg: #0f1117;
-    --canvas-dot: #94a3b8;
-  }
+  /* Chart — brand greens */
+  --chart-1: #3ecf8e;
+  --chart-2: #34d399;
+  --chart-3: #6ee7b7;
+  --chart-4: #a7f3d0;
+  --chart-5: #21b27a;
 
-  /* Gray scale */
-  :root {
-    --colors-gray-dark-100: 0deg 0% 8.6%;
-    --colors-gray-dark-200: 0deg 0% 11%;
-    --colors-gray-dark-300: 0deg 0% 13.7%;
-    --colors-gray-dark-400: 0deg 0% 15.7%;
-    --colors-gray-dark-500: 0deg 0% 18%;
-    --colors-gray-dark-600: 0deg 0% 20.4%;
-    --colors-gray-dark-700: 0deg 0% 24.3%;
-    --colors-gray-dark-800: 0deg 0% 31.4%;
-    --colors-gray-dark-900: 0deg 0% 43.9%;
-    --colors-gray-dark-1000: 0deg 0% 49.4%;
-    --colors-gray-dark-1100: 0deg 0% 62.7%;
-    --colors-gray-dark-1200: 0deg 0% 92.9%;
-    
-    --colors-gray-light-100: 0deg 0% 98.8%;
-    --colors-gray-light-200: 0deg 0% 97.3%;
-    --colors-gray-light-300: 0deg 0% 95.3%;
-    --colors-gray-light-400: 0deg 0% 92.9%;
-    --colors-gray-light-500: 0deg 0% 91%;
-    --colors-gray-light-600: 0deg 0% 88.6%;
-    --colors-gray-light-700: 0deg 0% 85.9%;
-    --colors-gray-light-800: 0deg 0% 78%;
-    --colors-gray-light-900: 0deg 0% 56.1%;
-    --colors-gray-light-1000: 0deg 0% 52.2%;
-    --colors-gray-light-1100: 0deg 0% 43.5%;
-    --colors-gray-light-1200: 0deg 0% 9%;
-  }
+  /* Sidebar */
+  --sidebar:                     oklch(0.985 0 0);
+  --sidebar-foreground:          oklch(0.145 0 0);
+  --sidebar-primary:             oklch(0.765 0.149 162);
+  --sidebar-primary-foreground:  oklch(1 0 0);
+  --sidebar-accent:              oklch(0.97 0 0);
+  --sidebar-accent-foreground:   oklch(0.205 0 0);
+  --sidebar-border:              oklch(0.922 0 0);
+  --sidebar-ring:                oklch(0.708 0 0);
+
+  /* Canvas (generate-certificate design area) */
+  --canvas-bg:  #f5f5f5;
+  --canvas-dot: #d4d4d4;
+}
+
+/* ============================================
+   DARK THEME — shadcn neutral base
+   ============================================ */
+
+.dark {
+  --background:          oklch(0.145 0 0);
+  --foreground:          oklch(0.985 0 0);
+  --card:                oklch(0.205 0 0);
+  --card-foreground:     oklch(0.985 0 0);
+  --popover:             oklch(0.269 0 0);
+  --popover-foreground:  oklch(0.985 0 0);
+
+  /* Brand primary: #3ECF8E */
+  --primary:             oklch(0.765 0.149 162);
+  --primary-foreground:  oklch(0.145 0 0);
+
+  --secondary:           oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted:               oklch(0.269 0 0);
+  --muted-foreground:    oklch(0.708 0 0);
+  --accent:              oklch(0.371 0 0);
+  --accent-foreground:   oklch(0.985 0 0);
+  --destructive:         oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  /* Slightly more visible than default 10% for clear edges */
+  --border:              oklch(1 0 0 / 12%);
+  --input:               oklch(1 0 0 / 15%);
+
+  /* Brand ring */
+  --ring:                oklch(0.765 0.149 162);
+
+  /* Chart — brand greens */
+  --chart-1: #3ecf8e;
+  --chart-2: #34d399;
+  --chart-3: #6ee7b7;
+  --chart-4: #a7f3d0;
+  --chart-5: #21b27a;
+
+  /* Sidebar */
+  --sidebar:                     oklch(0.205 0 0);
+  --sidebar-foreground:          oklch(0.985 0 0);
+  --sidebar-primary:             oklch(0.765 0.149 162);
+  --sidebar-primary-foreground:  oklch(0.985 0 0);
+  --sidebar-accent:              oklch(0.269 0 0);
+  --sidebar-accent-foreground:   oklch(0.985 0 0);
+  --sidebar-border:              oklch(1 0 0 / 12%);
+  --sidebar-ring:                oklch(0.439 0 0);
+
+  /* Canvas (generate-certificate design area) */
+  --canvas-bg:  #141414;
+  --canvas-dot: #333333;
+}
+
+/* ============================================
+   REMOVE NUMBER INPUT SPINNERS GLOBALLY
+   ============================================ */
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
 
 /* ============================================
    BASE STYLES
    ============================================ */
 
 * {
-  border-color: hsl(var(--border));
-  }
+  border-color: var(--border);
+}
 
-  body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  }
-  
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* ============================================
+   GRADIENT TEXT — reliable cross-browser gradient-clip
+   ============================================ */
+
+.gradient-clip-text {
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+/* ============================================
+   COMPACT COLOR PICKER (react-colorful overrides)
+   ============================================ */
+
+.cp-compact .react-colorful {
+  width: 100%;
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+}
+.cp-compact .react-colorful__saturation {
+  border-radius: 6px;
+  height: 130px;
+  flex-shrink: 0;
+}
+.cp-compact .react-colorful__hue,
+.cp-compact .react-colorful__alpha {
+  height: 12px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+.cp-compact .react-colorful__hue::before,
+.cp-compact .react-colorful__alpha::before {
+  border-radius: 6px;
+}
+.cp-compact .react-colorful__hue > .react-colorful__interactive,
+.cp-compact .react-colorful__alpha > .react-colorful__interactive {
+  overflow: visible;
+}
+.cp-compact .react-colorful__pointer {
+  width: 14px !important;
+  height: 14px !important;
+  border: 2px solid #fff !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.25), 0 1px 4px rgba(0,0,0,0.3) !important;
+}
+.cp-compact .react-colorful__saturation .react-colorful__pointer {
+  width: 14px !important;
+  height: 14px !important;
+}
+
 /* ============================================
    ANIMATIONS
    ============================================ */
 
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateX(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-/* Tailwind animate compatibility layer */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes accordion-down {
-  from {
-    height: 0;
-  }
-  to {
-    height: var(--radix-accordion-content-height);
-  }
+  from { height: 0; }
+  to   { height: var(--radix-accordion-content-height); }
 }
 
 @keyframes accordion-up {
-  from {
-    height: var(--radix-accordion-content-height);
-  }
-  to {
-    height: 0;
-  }
+  from { height: var(--radix-accordion-content-height); }
+  to   { height: 0; }
 }
 
-.animate-accordion-down {
-  animation: accordion-down 0.2s ease-out;
-}
-
-.animate-accordion-up {
-  animation: accordion-up 0.2s ease-out;
-}
+.animate-accordion-down { animation: accordion-down 0.2s ease-out; }
+.animate-accordion-up   { animation: accordion-up   0.2s ease-out; }

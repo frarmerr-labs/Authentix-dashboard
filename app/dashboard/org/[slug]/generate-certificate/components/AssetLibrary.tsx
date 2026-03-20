@@ -1,25 +1,33 @@
 'use client';
 
 import { useState } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Image as ImageIcon, Stamp, PenTool, Upload, Plus, Trash2 } from 'lucide-react';
+import { Image as ImageIcon, Stamp, PenTool, Upload, Plus, Trash2, MousePointerClick } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
-interface Asset {
+export interface Asset {
   id: string;
   name: string;
   url: string;
   type: 'logo' | 'signature' | 'stamp';
-  createdAt: Date;
 }
 
-export function AssetLibrary() {
-  const [assets, setAssets] = useState<Asset[]>([]);
+interface AssetLibraryProps {
+  assets: Asset[];
+  onAssetsChange: (assets: Asset[]) => void;
+  onAddAsset: (url: string, name: string) => void;
+}
+
+const ASSET_TYPES = [
+  { id: 'logo' as const, label: 'Logos', icon: ImageIcon },
+  { id: 'signature' as const, label: 'Signatures', icon: PenTool },
+  { id: 'stamp' as const, label: 'Stamps', icon: Stamp },
+];
+
+export function AssetLibrary({ assets, onAssetsChange, onAddAsset }: AssetLibraryProps) {
   const [activeType, setActiveType] = useState<'logo' | 'signature' | 'stamp'>('logo');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -30,172 +38,151 @@ export function AssetLibrary() {
       const file = acceptedFiles[0];
       if (file) {
         setUploadFile(file);
-        setAssetName(file.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+        setAssetName(file.name.replace(/\.(png|jpg|jpeg|svg|webp)$/i, ''));
       }
     },
-    accept: {
-      'image/png': ['.png'],
-      'image/jpeg': ['.jpg', '.jpeg'],
-    },
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.svg', '.webp'] },
     maxFiles: 1,
+    noClick: false,
   });
 
   const handleUpload = () => {
-    if (!uploadFile || !assetName) return;
-
+    if (!uploadFile || !assetName.trim()) return;
     const newAsset: Asset = {
-      id: Math.random().toString(36).substring(7),
-      name: assetName,
+      id: Math.random().toString(36).slice(2),
+      name: assetName.trim(),
       url: URL.createObjectURL(uploadFile),
       type: activeType,
-      createdAt: new Date(),
     };
-
-    setAssets((prev) => [...prev, newAsset]);
+    onAssetsChange([...assets, newAsset]);
     setShowUploadDialog(false);
     setUploadFile(null);
     setAssetName('');
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Delete this asset?')) {
-      setAssets((prev) => prev.filter((asset) => asset.id !== id));
-    }
+    onAssetsChange(assets.filter((a) => a.id !== id));
   };
 
-  const filteredAssets = assets.filter((asset) => asset.type === activeType);
-
-  const assetTypes = [
-    { id: 'logo', label: 'Logos', icon: ImageIcon },
-    { id: 'signature', label: 'Signatures', icon: PenTool },
-    { id: 'stamp', label: 'Stamps', icon: Stamp },
-  ];
+  const filteredAssets = assets.filter((a) => a.type === activeType);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Asset Library</h3>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">Asset Library</p>
         <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
           <DialogTrigger asChild>
-            <Button size="sm" variant="outline">
-              <Plus className="w-4 h-4 mr-2" />
+            <button className="flex items-center gap-1 text-[10px] font-medium text-primary hover:text-primary/80 transition-colors">
+              <Plus className="w-3 h-3" />
               Add Asset
-            </Button>
+            </button>
           </DialogTrigger>
-
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Upload {activeType.charAt(0).toUpperCase() + activeType.slice(1)}</DialogTitle>
             </DialogHeader>
-
             <div className="space-y-4">
               <div
                 {...getRootProps()}
-                className={`
-                  border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all
-                  ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary'}
-                `}
+                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+                  isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
+                }`}
               >
                 <input {...getInputProps()} />
                 <div className="flex flex-col items-center gap-2">
                   {uploadFile ? (
                     <>
-                      <img
-                        src={URL.createObjectURL(uploadFile)}
-                        alt="Preview"
-                        className="max-w-full max-h-32 object-contain"
-                      />
+                      <img src={URL.createObjectURL(uploadFile)} alt="Preview" className="max-w-full max-h-32 object-contain rounded" />
                       <p className="text-sm font-medium">{uploadFile.name}</p>
                     </>
                   ) : (
                     <>
                       <Upload className="w-8 h-8 text-muted-foreground" />
-                      <p className="text-sm font-medium">Upload Image</p>
-                      <p className="text-xs text-muted-foreground">PNG or JPEG</p>
+                      <p className="text-sm font-medium">Drag & drop or click to upload</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, SVG, WebP</p>
                     </>
                   )}
                 </div>
               </div>
-
               {uploadFile && (
                 <div className="space-y-2">
-                  <Label htmlFor="assetName">Asset Name</Label>
-                  <Input
-                    id="assetName"
-                    value={assetName}
-                    onChange={(e) => setAssetName(e.target.value)}
-                    placeholder="e.g., Company Logo"
-                  />
+                  <Label htmlFor="assetName">Name</Label>
+                  <Input id="assetName" value={assetName} onChange={(e) => setAssetName(e.target.value)} placeholder="e.g., Company Logo" />
                 </div>
               )}
-
-              <Button
-                onClick={handleUpload}
-                disabled={!uploadFile || !assetName}
-                className="w-full"
-              >
-                Upload
+              <Button onClick={handleUpload} disabled={!uploadFile || !assetName.trim()} className="w-full">
+                Add to Library
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Tabs value={activeType} onValueChange={(v) => setActiveType(v as any)}>
-        <TabsList className="grid w-full grid-cols-3">
-          {assetTypes.map((type) => (
-            <TabsTrigger key={type.id} value={type.id} className="flex items-center gap-1.5">
-              <type.icon className="w-3.5 h-3.5" />
-              <span className="text-xs">{type.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {assetTypes.map((type) => (
-          <TabsContent key={type.id} value={type.id} className="mt-4">
-            {filteredAssets.length === 0 ? (
-              <Card className="p-8 text-center">
-                <type.icon className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  No {type.label.toLowerCase()} yet
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Upload your first {type.id}
-                </p>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {filteredAssets.map((asset) => (
-                  <Card key={asset.id} className="group relative overflow-hidden">
-                    <div className="aspect-square bg-muted p-4 flex items-center justify-center">
-                      <img
-                        src={asset.url}
-                        alt={asset.name}
-                        className="max-w-full max-h-full object-contain cursor-move hover:scale-110 transition-transform"
-                        draggable
-                      />
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium truncate">{asset.name}</p>
-                    </div>
-                    <button
-                      onClick={() => handleDelete(asset.id)}
-                      className="absolute top-2 right-2 p-1.5 rounded-md bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
+      {/* Type tabs */}
+      <div className="flex items-center bg-muted rounded-lg p-1 gap-1">
+        {ASSET_TYPES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveType(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1 text-[10px] font-medium py-1 rounded-md transition-all ${
+              activeType === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <t.icon className="w-3 h-3" />
+            {t.label}
+          </button>
         ))}
-      </Tabs>
-
-      <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-        <p className="font-medium mb-1">💡 Tip: Drag and drop assets onto your certificate</p>
-        <p>You can upload multiple logos, signatures, or stamps and position them anywhere on your certificate.</p>
       </div>
+
+      {/* Asset grid */}
+      {filteredAssets.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          {(() => { const T = ASSET_TYPES.find(t => t.id === activeType)!; return <T.icon className="w-7 h-7 text-muted-foreground/40" />; })()}
+          <p className="text-xs text-muted-foreground">No {activeType}s yet</p>
+          <p className="text-[10px] text-muted-foreground/60">Upload one to add it to your certificate</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {filteredAssets.map((asset) => (
+            <div
+              key={asset.id}
+              className="group relative rounded-lg border border-border/50 bg-card overflow-hidden cursor-pointer hover:border-primary/50 hover:shadow-md transition-all"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('asset-url', asset.url);
+                e.dataTransfer.setData('asset-name', asset.name);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+              onClick={() => onAddAsset(asset.url, asset.name)}
+              title={`Click or drag to add "${asset.name}"`}
+            >
+              <div className="aspect-square bg-muted/50 flex items-center justify-center p-3">
+                <img src={asset.url} alt={asset.name} className="max-w-full max-h-full object-contain" draggable={false} />
+              </div>
+              {/* Overlay on hover */}
+              <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                <div className="bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg">
+                  <MousePointerClick className="w-3 h-3" />
+                </div>
+              </div>
+              <div className="px-2 py-1.5">
+                <p className="text-[10px] font-medium truncate text-foreground">{asset.name}</p>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(asset.id); }}
+                className="absolute top-1 right-1 p-1 rounded bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filteredAssets.length > 0 && (
+        <p className="text-[9px] text-muted-foreground/50 text-center">Click or drag assets onto the template</p>
+      )}
     </div>
   );
 }

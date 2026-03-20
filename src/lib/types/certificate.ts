@@ -1,8 +1,8 @@
 // Certificate Field Types
-export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code';
+export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code' | 'image';
 
 export type TextAlign = 'left' | 'center' | 'right';
-export type FontWeight = 'normal' | 'bold';
+export type FontWeight = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'normal' | 'bold';
 export type FontStyle = 'normal' | 'italic';
 
 // Individual field configuration
@@ -24,7 +24,8 @@ export interface CertificateField {
   // Styling
   fontSize: number; // Font size in pt
   fontFamily: string; // Google Fonts name
-  color: string; // Hex color
+  color: string; // Hex color (#RRGGBB)
+  opacity?: number; // 0–100, defaults to 100
   fontWeight: FontWeight;
   fontStyle: FontStyle;
   textAlign: TextAlign;
@@ -33,6 +34,41 @@ export interface CertificateField {
   dateFormat?: string; // For date fields: "MM/DD/YYYY", "DD-MM-YYYY", etc
   prefix?: string; // Text before value (e.g., "Name: ")
   suffix?: string; // Text after value
+
+  // Typography extras
+  letterSpacing?: number; // px in design space
+  lineHeight?: number; // unitless multiplier (default 1.2)
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
+  // Color / gradient
+  colorMode?: 'solid' | 'linear' | 'radial'; // defaults to 'solid'
+  gradientAngle?: number; // degrees for linear gradient (default 90)
+  gradientStartColor?: string; // hex
+  gradientStartOpacity?: number; // 0–100
+  gradientEndColor?: string; // hex
+  gradientEndOpacity?: number; // 0–100
+
+  // Effects
+  textShadow?: { offsetX: number; offsetY: number; blur: number; color: string } | null;
+
+  // QR code options
+  qrStyle?: 'standard' | 'rounded' | 'dots' | 'classy' | 'logo'; // QR visual style (default 'standard')
+  qrTransparentBg?: boolean; // Remove white background (default false)
+  qrLogoUrl?: string; // Logo image URL to display in centre (used when qrStyle === 'logo')
+
+  // Image field
+  imageUrl?: string; // For image-type fields
+
+  // Image appearance
+  cornerRadius?: number; // px, 0–500
+  strokeColor?: string; // hex
+  strokeWidth?: number; // px, 0–50
+  strokePosition?: 'inside' | 'center' | 'outside';
+
+  // Effects
+  dropShadow?: { offsetX: number; offsetY: number; blur: number; spread: number; color: string } | null;
+  layerBlur?: number; // px, 0–100
+  backgroundBlur?: number; // px, 0–100
 
   // Sample/default value for preview
   sampleValue?: string;
@@ -90,22 +126,65 @@ export interface GenerationJob {
   completedAt?: Date;
 }
 
-// Google Fonts list (popular fonts for certificates)
+// Google Fonts list (comprehensive selection for certificates)
 export const CERTIFICATE_FONTS = [
+  // ── System fonts ─────────────────────────────────────────────────────────
   { name: 'Arial', value: 'Arial', category: 'sans-serif' },
-  { name: 'Times New Roman', value: 'Times New Roman', category: 'serif' },
-  { name: 'Courier New', value: 'Courier New', category: 'monospace' },
   { name: 'Georgia', value: 'Georgia', category: 'serif' },
+  { name: 'Times New Roman', value: 'Times New Roman', category: 'serif' },
   { name: 'Helvetica', value: 'Helvetica', category: 'sans-serif' },
-  { name: 'Playfair Display', value: 'Playfair Display', category: 'serif', googleFont: true },
+  // ── Google Sans-serif ─────────────────────────────────────────────────────
+  { name: 'Inter', value: 'Inter', category: 'sans-serif', googleFont: true },
   { name: 'Roboto', value: 'Roboto', category: 'sans-serif', googleFont: true },
   { name: 'Open Sans', value: 'Open Sans', category: 'sans-serif', googleFont: true },
   { name: 'Lato', value: 'Lato', category: 'sans-serif', googleFont: true },
   { name: 'Montserrat', value: 'Montserrat', category: 'sans-serif', googleFont: true },
-  { name: 'Merriweather', value: 'Merriweather', category: 'serif', googleFont: true },
   { name: 'Poppins', value: 'Poppins', category: 'sans-serif', googleFont: true },
+  { name: 'Nunito', value: 'Nunito', category: 'sans-serif', googleFont: true },
+  { name: 'Raleway', value: 'Raleway', category: 'sans-serif', googleFont: true },
+  { name: 'Oswald', value: 'Oswald', category: 'sans-serif', googleFont: true },
+  { name: 'Ubuntu', value: 'Ubuntu', category: 'sans-serif', googleFont: true },
+  { name: 'Work Sans', value: 'Work Sans', category: 'sans-serif', googleFont: true },
+  { name: 'DM Sans', value: 'DM Sans', category: 'sans-serif', googleFont: true },
+  { name: 'Plus Jakarta Sans', value: 'Plus Jakarta Sans', category: 'sans-serif', googleFont: true },
+  { name: 'Outfit', value: 'Outfit', category: 'sans-serif', googleFont: true },
+  { name: 'Jost', value: 'Jost', category: 'sans-serif', googleFont: true },
+  { name: 'Barlow', value: 'Barlow', category: 'sans-serif', googleFont: true },
+  { name: 'Mulish', value: 'Mulish', category: 'sans-serif', googleFont: true },
+  { name: 'PT Sans', value: 'PT Sans', category: 'sans-serif', googleFont: true },
+  { name: 'Noto Sans', value: 'Noto Sans', category: 'sans-serif', googleFont: true },
+  { name: 'Source Sans 3', value: 'Source Sans 3', category: 'sans-serif', googleFont: true },
+  // ── Google Serif ──────────────────────────────────────────────────────────
+  { name: 'Playfair Display', value: 'Playfair Display', category: 'serif', googleFont: true },
+  { name: 'Merriweather', value: 'Merriweather', category: 'serif', googleFont: true },
+  { name: 'Lora', value: 'Lora', category: 'serif', googleFont: true },
+  { name: 'EB Garamond', value: 'EB Garamond', category: 'serif', googleFont: true },
+  { name: 'Cormorant Garamond', value: 'Cormorant Garamond', category: 'serif', googleFont: true },
+  { name: 'Libre Baskerville', value: 'Libre Baskerville', category: 'serif', googleFont: true },
+  { name: 'Crimson Text', value: 'Crimson Text', category: 'serif', googleFont: true },
+  { name: 'PT Serif', value: 'PT Serif', category: 'serif', googleFont: true },
+  { name: 'Noto Serif', value: 'Noto Serif', category: 'serif', googleFont: true },
+  { name: 'DM Serif Display', value: 'DM Serif Display', category: 'serif', googleFont: true },
+  { name: 'Italiana', value: 'Italiana', category: 'serif', googleFont: true },
+  { name: 'Spectral', value: 'Spectral', category: 'serif', googleFont: true },
+  { name: 'Cardo', value: 'Cardo', category: 'serif', googleFont: true },
+  // ── Google Display ────────────────────────────────────────────────────────
+  { name: 'Abril Fatface', value: 'Abril Fatface', category: 'display', googleFont: true },
+  { name: 'Bebas Neue', value: 'Bebas Neue', category: 'display', googleFont: true },
+  { name: 'Anton', value: 'Anton', category: 'display', googleFont: true },
+  { name: 'Righteous', value: 'Righteous', category: 'display', googleFont: true },
+  { name: 'Cinzel', value: 'Cinzel', category: 'display', googleFont: true },
+  { name: 'Philosopher', value: 'Philosopher', category: 'display', googleFont: true },
+  // ── Google Handwriting / Script ───────────────────────────────────────────
   { name: 'Great Vibes', value: 'Great Vibes', category: 'handwriting', googleFont: true },
   { name: 'Dancing Script', value: 'Dancing Script', category: 'handwriting', googleFont: true },
+  { name: 'Pacifico', value: 'Pacifico', category: 'handwriting', googleFont: true },
+  { name: 'Sacramento', value: 'Sacramento', category: 'handwriting', googleFont: true },
+  { name: 'Satisfy', value: 'Satisfy', category: 'handwriting', googleFont: true },
+  { name: 'Kaushan Script', value: 'Kaushan Script', category: 'handwriting', googleFont: true },
+  { name: 'Allura', value: 'Allura', category: 'handwriting', googleFont: true },
+  { name: 'Alex Brush', value: 'Alex Brush', category: 'handwriting', googleFont: true },
+  { name: 'Pinyon Script', value: 'Pinyon Script', category: 'handwriting', googleFont: true },
 ] as const;
 
 // Preset colors for quick selection
@@ -173,5 +252,12 @@ export const FIELD_TYPE_CONFIG = {
     defaultWidth: 100,
     defaultHeight: 100,
     sampleValue: '[QR Code]',
+  },
+  image: {
+    label: 'Image',
+    icon: 'Image',
+    defaultWidth: 120,
+    defaultHeight: 120,
+    sampleValue: '',
   },
 } as const;

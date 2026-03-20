@@ -1,4 +1,4 @@
-import { CertificateField, FIELD_TYPE_CONFIG } from '@/lib/types/certificate';
+import { CertificateField, FIELD_TYPE_CONFIG, FieldType } from '@/lib/types/certificate';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trash2, Eye, EyeOff } from 'lucide-react';
@@ -70,12 +70,12 @@ export function FieldLayersList({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="text-xs font-medium truncate">{field.label}</div>
-                    <div className="text-[10px] text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
-                      {field.type}
+                    <div className="text-[10px] text-muted-foreground px-1.5 py-0.5 bg-muted rounded shrink-0">
+                      {FIELD_TYPE_CONFIG[field.type as FieldType]?.label ?? field.type}
                     </div>
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1 truncate">
-                    {field.fontSize}pt • {field.fontFamily}
+                    {field.type === 'image' ? 'Image field' : field.type === 'qr_code' ? 'QR Code' : `${field.fontSize}pt • ${field.fontFamily}`}
                   </div>
                 </div>
 

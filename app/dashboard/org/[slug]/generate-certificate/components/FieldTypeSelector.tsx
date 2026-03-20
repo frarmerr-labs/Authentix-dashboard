@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { CertificateField, FieldType, FIELD_TYPE_CONFIG } from '@/lib/types/certificate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,11 +12,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { User, BookOpen, Calendar, Type, QrCode } from 'lucide-react';
+import { User, BookOpen, Calendar, Type, QrCode, Image as ImageIcon } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 interface FieldTypeSelectorProps {
   onAddField: (field: CertificateField) => void;
+  onAddImageField?: (url: string, name: string) => void;
   pdfWidth: number;
   pdfHeight: number;
   currentPage?: number; // For multi-page PDF support
@@ -29,15 +30,17 @@ const FIELD_ICONS = {
   end_date: Calendar,
   custom_text: Type,
   qr_code: QrCode,
+  image: ImageIcon,
 };
 
 // Reference dimensions the FIELD_TYPE_CONFIG defaults were designed for (A4 portrait at 72 DPI)
 const REF_WIDTH = 595;
 const REF_HEIGHT = 842;
 
-export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
+export function FieldTypeSelector({ onAddField, onAddImageField, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
   const [showCustomNameDialog, setShowCustomNameDialog] = useState(false);
   const [customFieldName, setCustomFieldName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createField = (type: FieldType, customLabel?: string) => {
     const config = FIELD_TYPE_CONFIG[type];
@@ -85,12 +88,22 @@ export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage
 
   const handleFieldClick = (type: FieldType) => {
     if (type === 'custom_text') {
-      // Show dialog to get custom name
       setCustomFieldName('');
       setShowCustomNameDialog(true);
+    } else if (type === 'image' && onAddImageField) {
+      fileInputRef.current?.click();
     } else {
       createField(type);
     }
+  };
+
+  const handleImageFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    onAddImageField?.(url, file.name);
+    // Reset input so same file can be re-picked
+    e.target.value = '';
   };
 
   const handleCreateCustomField = () => {
@@ -102,6 +115,13 @@ export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageFileSelected}
+      />
       <div className="grid grid-cols-2 gap-2">
         {(Object.keys(FIELD_TYPE_CONFIG) as FieldType[]).map((type) => {
           const Icon = FIELD_ICONS[type];
