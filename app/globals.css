@@ -101,6 +101,10 @@
     --color-success-fg: #1a7f37;
     --color-attention-fg: #9a6700;
     --color-danger-fg: #d1242f;
+
+    /* Canvas (generate-certificate design area) */
+    --canvas-bg: #ffffff;
+    --canvas-dot: #d4d4d4;
   }
 
   .dark {
@@ -146,8 +150,12 @@
     --color-success-fg: #3fb950;
     --color-attention-fg: #d29922;
     --color-danger-fg: #f85149;
+
+    /* Canvas (generate-certificate design area) */
+    --canvas-bg: #0f1117;
+    --canvas-dot: #94a3b8;
   }
-  
+
   /* Gray scale */
   :root {
     --colors-gray-dark-100: 0deg 0% 8.6%;

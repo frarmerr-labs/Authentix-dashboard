@@ -31,6 +31,10 @@ const FIELD_ICONS = {
   qr_code: QrCode,
 };
 
+// Reference dimensions the FIELD_TYPE_CONFIG defaults were designed for (A4 portrait at 72 DPI)
+const REF_WIDTH = 595;
+const REF_HEIGHT = 842;
+
 export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
   const [showCustomNameDialog, setShowCustomNameDialog] = useState(false);
   const [customFieldName, setCustomFieldName] = useState('');
@@ -38,9 +42,17 @@ export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage
   const createField = (type: FieldType, customLabel?: string) => {
     const config = FIELD_TYPE_CONFIG[type];
 
+    // Scale field dimensions proportionally to the actual template size so fields
+    // look visually similar regardless of orientation (portrait vs landscape).
+    const wScale = pdfWidth > 0 ? pdfWidth / REF_WIDTH : 1;
+    const hScale = pdfHeight > 0 ? pdfHeight / REF_HEIGHT : 1;
+
+    const scaledWidth = Math.round(config.defaultWidth * wScale);
+    const scaledHeight = Math.round(config.defaultHeight * hScale);
+
     // Center the field in the PDF
-    const x = (pdfWidth - config.defaultWidth) / 2;
-    const y = (pdfHeight - config.defaultHeight) / 2;
+    const x = (pdfWidth - scaledWidth) / 2;
+    const y = (pdfHeight - scaledHeight) / 2;
 
     const label = customLabel || config.label;
 
@@ -50,10 +62,11 @@ export function FieldTypeSelector({ onAddField, pdfWidth, pdfHeight, currentPage
       label,
       x,
       y,
-      width: config.defaultWidth,
-      height: config.defaultHeight,
+      width: scaledWidth,
+      height: scaledHeight,
       pageNumber: currentPage, // Assign to current page
-      fontSize: type === 'qr_code' ? 0 : 24,
+      // Font size scales with template height; clamped to a readable minimum
+      fontSize: type === 'qr_code' ? 0 : Math.max(12, Math.round(24 * hScale)),
       fontFamily: 'Arial',
       color: '#000000',
       fontWeight: 'normal',

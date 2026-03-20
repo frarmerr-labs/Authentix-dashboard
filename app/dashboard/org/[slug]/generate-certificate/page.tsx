@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
@@ -64,6 +64,29 @@ export default function GenerateCertificatePage() {
   const [currentPage, setCurrentPage] = useState(0); // 0-indexed page number
   const [totalPages, setTotalPages] = useState(1);
 
+  // ── Session persistence ────────────────────────────────────────────────────
+  // Track whether initial mount has passed so we don't wipe the session on first render.
+  const sessionInitRef = useRef(false);
+
+  useEffect(() => {
+    if (currentStep === 'design' && template?.id) {
+      sessionInitRef.current = true; // session is now actively managed
+      try {
+        sessionStorage.setItem('gencert_session', JSON.stringify({
+          templateId: template.id,
+          fields,
+          currentPage,
+          canvasScale,
+          templateVersionId,
+        }));
+      } catch { /* quota exceeded – ignore */ }
+    } else if (currentStep === 'template' && sessionInitRef.current) {
+      // Only clear when the user deliberately navigates back to template selection,
+      // not on the initial mount where currentStep starts as 'template'.
+      sessionStorage.removeItem('gencert_session');
+    }
+  }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
+
   // Load saved templates and imports
   useEffect(() => {
     loadSavedData();
@@ -120,6 +143,31 @@ export default function GenerateCertificatePage() {
         console.warn('[Generate] Error loading imports:', error);
         // Continue without imports - user can still proceed
         setSavedImports([]);
+      }
+
+      // ── Restore session on page RELOAD only ───────────────────────────────
+      // Only restore when the user refreshed (F5 / Ctrl+R), not on normal navigation.
+      // performance.navigation gives 'reload' for refresh, 'navigate' for link clicks.
+      const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
+      const isReload = navType === 'reload';
+
+      if (isReload && !new URLSearchParams(window.location.search).get('template')) {
+        try {
+          const saved = sessionStorage.getItem('gencert_session');
+          if (saved) {
+            const { templateId, fields: savedFields, currentPage: savedPage, canvasScale: savedScale, templateVersionId: savedVersionId } = JSON.parse(saved);
+            if (templateId && savedFields?.length >= 0) {
+              const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateId) || { id: templateId };
+              await handleTemplateSelect(templateObj);
+              setFields(savedFields);
+              if (savedPage !== undefined) setCurrentPage(savedPage);
+              if (savedScale) setCanvasScale(savedScale);
+              if (savedVersionId) setTemplateVersionId(savedVersionId);
+            }
+          }
+        } catch {
+          sessionStorage.removeItem('gencert_session');
+        }
       }
     } catch (error) {
       console.error('[Generate] Error loading saved data:', error);
