@@ -97,23 +97,27 @@ export interface InProgressTemplate {
 export interface Certificate {
   id: string;
   organization_id: string;
-  certificate_template_id: string | null;
+  generation_job_id: string | null;
+  template_id: string | null;
+  template_version_id: string | null;
+  category_id: string | null;
+  subcategory_id: string | null;
   recipient_name: string;
   recipient_email: string | null;
   recipient_phone: string | null;
-  course_name: string | null;
-  issue_date: string;
-  expiry_date: string | null;
+  recipient_data: Record<string, unknown> | null;
   certificate_number: string;
-  storage_path: string;
-  preview_url: string | null;
-  verification_code: string;
-  verification_token: string | null;
-  status: 'issued' | 'revoked' | 'expired';
-  issued_by: string | null;
+  issued_at: string;
+  expires_at: string | null;
+  status: 'active' | 'revoked' | 'expired';
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  verification_path: string | null;
+  qr_payload_url: string | null;
   created_at: string;
-  updated_at: string;
-  // Joined fields from template
+  // Computed/joined fields
+  download_url: string | null;
+  preview_url: string | null;
   template?: {
     id: string;
     title: string;
@@ -1231,6 +1235,7 @@ export const api = {
           pendingJobs?: number;
           verificationsToday?: number;
           revokedCertificates?: number;
+          verificationEventsTotal?: number;
         };
         recentImports?: Array<{
           id: string;
@@ -1252,6 +1257,20 @@ export const api = {
             recipient_name?: string | null;
             course_name?: string | null;
           } | null;
+        }>;
+        /** Last 90 UTC days from backend; issued/revoked per day */
+        certificatesDaily?: Array<{
+          date: string;
+          issued: number;
+          revoked: number;
+          verificationScans?: number;
+        }>;
+        certificateCategoryMix?: Array<{
+          categoryId: string | null;
+          subcategoryId: string | null;
+          categoryName: string;
+          subcategoryName: string;
+          count: number;
         }>;
       }>("/dashboard/stats");
       return response.data!;

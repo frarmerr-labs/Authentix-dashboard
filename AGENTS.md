@@ -1,6 +1,6 @@
 # AGENTS.md — AI Agent Rules for Authentix Platform
 
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-20
 **Applies to:** Claude Code, Cursor, and any AI agent working in this repository
 
 ---
@@ -52,7 +52,7 @@
 ## Security Rules
 
 ### Secrets & Credentials
-- **Never expose `SUPABASE_SERVICE_ROLE_KEY` to frontend code**
+- **Never expose `SUPABASE_SECRET_KEY` (service role) to frontend code** — env var renamed from `SUPABASE_SERVICE_ROLE_KEY` per Supabase 2025 dashboard
 - **Never expose `BACKEND_API_URL` to browser** (server-only env var)
 - **Never commit `.env.local` or `.env`** to version control
 - **Never log tokens, API keys, or passwords** — use PII redaction
@@ -161,6 +161,13 @@ After ANY code change, update the relevant memory file:
 - Do NOT make async cert generation work for >50 without implementing the worker
 - Do NOT return raw Supabase errors to frontend (sanitize first)
 - Do NOT use `unsafe-eval` in CSP unless explicitly needed by a library
+- Do NOT use `getPublicUrl()` for Supabase Storage — all buckets are private; always use `createSignedUrl()`
+- Do NOT query `certificate_templates.status` — column does not exist in live DB
+- Do NOT use `row_number` for `file_import_rows` — column is `row_index`
+- Do NOT filter `file_import_rows` by `organization_id` or `is_deleted` — those columns don't exist
+- Do NOT insert into `file_import_jobs` with old columns (`file_name`, `storage_path`, `total_rows`, `source_type`, `reusable`, `data_persisted`, `failure_count`) — use `source_file_id`, `source_format`, `row_count`
+- Do NOT use `certificate.status = 'issued'` — correct value is `'active'`
+- Do NOT reference `certificate.issue_date`/`expiry_date` — correct columns are `issued_at`/`expires_at`
 
 ---
 

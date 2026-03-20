@@ -240,6 +240,11 @@ export default function GenerateCertificatePage() {
 
     // If dimensions are missing, calculate them
     if (!pdfWidth || !pdfHeight) {
+        if (!fileUrl) {
+            // No file URL available, use defaults
+            pdfWidth = 800;
+            pdfHeight = 600;
+        } else
         try {
             console.log("Template missing dimensions, calculating...");
             const response = await fetch(fileUrl);

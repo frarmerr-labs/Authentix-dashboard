@@ -1,5 +1,63 @@
 # Changelog
 
+## [Unreleased] - 2026-03-20
+
+### Removed — Cloudflare Turnstile CAPTCHA
+
+CAPTCHA was disabled on Supabase dashboard but code still required `NEXT_PUBLIC_TURNSTILE_SITE_KEY` — signin button was permanently `disabled` with no error shown.
+
+- Removed `@marsidev/react-turnstile` package (`npm uninstall`)
+- Removed Turnstile widget, `captchaToken` state, `turnstileRef`, and hidden input from `app/(auth)/login/page.tsx`
+- Removed `captchaToken` from `login/actions.ts` request body
+- Submit button now only `disabled={pending}`
+
+**Files changed:**
+- `app/(auth)/login/page.tsx`
+- `app/(auth)/login/actions.ts`
+- `package.json`, `package-lock.json`
+
+---
+
+### Fixed — Certificate Interface Aligned to Live DB Schema
+
+`Certificate` interface in `src/lib/api/client.ts` was using old column names that don't exist in the live database.
+
+**Removed:** `certificate_template_id`, `course_name`, `issue_date`, `expiry_date`, `storage_path`, `verification_code`, `verification_token`, `issued_by`
+
+**Added/corrected:** `generation_job_id`, `template_version_id`, `category_id`, `subcategory_id`, `recipient_phone`, `recipient_data`, `issued_at`, `expires_at`, `status: 'active' | 'revoked' | 'expired'` (was `'issued'`), `revoked_at`, `revoked_reason`, `verification_path`, `qr_payload_url`, `download_url`
+
+**Files changed:**
+- `src/lib/api/client.ts`
+
+---
+
+### Fixed — Certificates Page Field References
+
+All UI references updated to use correct field names from new Certificate schema.
+
+- `cert.issue_date` → `cert.issued_at`
+- `cert.expiry_date` → `cert.expires_at`
+- `cert.verification_code` / `cert.verification_token` → `cert.verification_path`
+- `cert.course_name` → `cert.template?.subcategory?.name`
+- `status: 'issued'` badge → `status: 'active'`
+- Verify Link and Public Page actions now use `cert.verification_path` directly
+
+**Files changed:**
+- `app/dashboard/org/[slug]/certificates/page.tsx`
+
+---
+
+### Fixed — Null fileUrl Crash in Generate-Certificate Dimension Extraction
+
+When `fileUrl` was `null` or `undefined` (no preview URL and no source file URL), the code called `fetch(null)` which threw a TypeError logged as `Failed to extract dimensions {}`.
+
+Added a null guard: if `fileUrl` is falsy, skip fetch and fall back to 800×600 defaults.
+
+**Files changed:**
+- `app/dashboard/org/[slug]/generate-certificate/page.tsx`
+
+---
+
 ## [Unreleased] - 2026-03-19
 
 ### Added — Slug-Based Organization Routing

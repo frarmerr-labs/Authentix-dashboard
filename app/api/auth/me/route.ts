@@ -104,11 +104,11 @@ export async function GET() {
             email_verified: emailVerified,
             full_name: session.user.full_name,
           },
-          organization: profile?.data?.organization
+          organization: profile?.organization
             ? {
-                id: profile.data.organization.id,
-                name: profile.data.organization.name,
-                slug: profile.data.organization.slug,
+                id: profile.organization.id,
+                name: profile.organization.name,
+                slug: profile.organization.slug,
               }
             : null,
         },

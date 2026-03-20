@@ -80,6 +80,13 @@
     --input: 210 18% 82%;
     --ring: 153 60% 53%;
     --radius: 0.5rem;
+
+  /* Chart brand colors (fixed across light/dark) */
+  --chart-1: #3ecf8e; /* primary-500 */
+  --chart-2: #34d399; /* primary-400 */
+  --chart-3: #6ee7b7; /* primary-300 */
+  --chart-4: #a7f3d0; /* primary-200 */
+  --chart-5: #21b27a; /* primary-600 */
     
     /* GitHub light colors */
     --color-fg-default: #1f2328;
@@ -118,6 +125,13 @@
     --border: 0 0% 19%;
     --input: 0 0% 19%;
     --ring: 153 60% 53%;
+
+  /* Chart brand colors (fixed across light/dark) */
+  --chart-1: #3ecf8e; /* primary-500 */
+  --chart-2: #34d399; /* primary-400 */
+  --chart-3: #6ee7b7; /* primary-300 */
+  --chart-4: #a7f3d0; /* primary-200 */
+  --chart-5: #21b27a; /* primary-600 */
     
     /* GitHub dark colors with #171717 base */
     --color-fg-default: #e6edf3;
