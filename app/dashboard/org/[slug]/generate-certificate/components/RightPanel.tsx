@@ -141,7 +141,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 // ── Floating colour picker ─────────────────────────────────────────────────────
 
-type ColorTarget = 'main' | 'shadow' | 'stroke';
+type ColorTarget = 'main' | 'shadow' | 'stroke' | 'gradStart' | 'gradEnd';
 
 function FloatingColorPicker({
   color, label, initialPos, onClose, onChange,
@@ -263,6 +263,118 @@ function QRLogoUploader({
           }}
         >
           <Upload className="w-4 h-4 text-muted-foreground/50 mx-auto mb-1" />
+          <p className="text-[10px] text-muted-foreground/60">Click or drag image</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Gradient Angle Dial ────────────────────────────────────────────────────────
+
+function GradientAngleDial({ angle, onChange }: { angle: number; onChange: (a: number) => void }) {
+  const dialRef = useRef<HTMLDivElement>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const getAngle = (clientX: number, clientY: number) => {
+    if (!dialRef.current) return 0;
+    const rect = dialRef.current.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    return Math.round(((Math.atan2(dy, dx) * 180) / Math.PI + 90 + 360) % 360);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onChangeRef.current(getAngle(e.clientX, e.clientY));
+    const onMove = (ev: MouseEvent) => onChangeRef.current(getAngle(ev.clientX, ev.clientY));
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // CSS angle 0° = top, clockwise — convert to SVG coords
+  const rad = ((angle - 90) * Math.PI) / 180;
+  const r = 10;
+  const hx = 16 + r * Math.cos(rad);
+  const hy = 16 + r * Math.sin(rad);
+
+  return (
+    <div
+      ref={dialRef}
+      onMouseDown={handleMouseDown}
+      title={`${angle}°`}
+      className="w-8 h-8 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 cursor-grab active:cursor-grabbing shrink-0 select-none flex items-center justify-center"
+    >
+      <svg width="32" height="32" viewBox="0 0 32 32" style={{ display: 'block' }}>
+        <circle cx="16" cy="16" r="1.5" fill="rgba(100,100,100,0.4)" />
+        <line x1="16" y1="16" x2={hx} y2={hy} stroke="rgba(100,100,100,0.4)" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx={hx} cy={hy} r="3" fill="white" stroke="oklch(0.765 0.149 162)" strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
+// ── Image Source Uploader ──────────────────────────────────────────────────────
+
+function ImageSourceUploader({
+  imageUrl,
+  onImageChange,
+}: {
+  imageUrl: string | null;
+  onImageChange: (url: string | null) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    onImageChange(url);
+  };
+
+  return (
+    <div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+      />
+      {imageUrl ? (
+        <div className="flex items-center gap-2">
+          <div className="relative w-12 h-12 rounded border border-border/50 overflow-hidden bg-muted/30 shrink-0">
+            <img src={imageUrl} alt="Field image" className="w-full h-full object-contain" />
+          </div>
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="text-[10px] text-primary hover:text-primary/80 text-left transition-colors"
+            >
+              Replace image
+            </button>
+            <button
+              onClick={() => onImageChange(null)}
+              className="text-[10px] text-destructive/70 hover:text-destructive text-left transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="border border-dashed border-border/50 rounded-lg p-3 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleFile(f);
+          }}
+        >
+          <ImageIcon className="w-4 h-4 text-muted-foreground/50 mx-auto mb-1" />
           <p className="text-[10px] text-muted-foreground/60">Click or drag image</p>
         </div>
       )}
@@ -451,6 +563,10 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
       onFieldUpdate({ textShadow: { ...prev, color: rgbaToHex(c) } });
     } else if (pickerTarget === 'stroke') {
       onFieldUpdate({ strokeColor: rgbaToHex(c) });
+    } else if (pickerTarget === 'gradStart') {
+      onFieldUpdate({ gradientStartColor: rgbaToHex(c), gradientStartOpacity: Math.round(c.a * 100) });
+    } else if (pickerTarget === 'gradEnd') {
+      onFieldUpdate({ gradientEndColor: rgbaToHex(c), gradientEndOpacity: Math.round(c.a * 100) });
     } else {
       onFieldUpdate({ color: rgbaToHex(c), opacity: Math.round(c.a * 100) });
     }
@@ -572,6 +688,16 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
         </Section>
       )}
 
+      {/* ── Image Source ── */}
+      {isImage && (
+        <Section label="Image Source">
+          <ImageSourceUploader
+            imageUrl={selectedField.imageUrl ?? null}
+            onImageChange={(url) => onFieldUpdate({ imageUrl: url ?? undefined })}
+          />
+        </Section>
+      )}
+
       {/* ── Appearance ── */}
       <Section label="Appearance">
         {isImage ? (
@@ -646,9 +772,22 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
         ) : (
           <div className="space-y-2.5">
 
-            {/* Colour row */}
+            {/* Fill mode tabs */}
             <div>
-              <p className="text-[9px] text-muted-foreground/50 mb-1.5 select-none">Color</p>
+              <p className="text-[9px] text-muted-foreground/50 mb-1.5 select-none">Fill</p>
+              <div className="flex items-center gap-1">
+                {(['solid', 'linear', 'radial'] as const).map((mode) => (
+                  <button key={mode}
+                    className={`${btn((selectedField.colorMode ?? 'solid') === mode)} flex-1 text-[9px] capitalize`}
+                    onClick={() => onFieldUpdate({ colorMode: mode })}>
+                    {mode === 'solid' ? 'Solid' : mode === 'linear' ? 'Linear' : 'Radial'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Solid color */}
+            {(selectedField.colorMode ?? 'solid') === 'solid' && (
               <div className={`flex items-stretch ${INP} overflow-hidden`} style={{ height: '30px' }}>
                 <button title="Pick colour"
                   className="w-9 shrink-0 flex items-center justify-center border-r border-gray-200 dark:border-white/10 hover:opacity-80 transition-opacity"
@@ -671,7 +810,58 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
                   className="w-7 bg-transparent text-xs text-right outline-none" />
                 <span className="text-[10px] text-muted-foreground/50 flex items-center pr-1.5 shrink-0">%</span>
               </div>
-            </div>
+            )}
+
+            {/* Gradient controls */}
+            {(selectedField.colorMode === 'linear' || selectedField.colorMode === 'radial') && (
+              <div className="space-y-2">
+                {/* Preview bar */}
+                <div className="h-4 rounded w-full border border-gray-200 dark:border-white/10"
+                  style={{
+                    background: selectedField.colorMode === 'linear'
+                      ? `linear-gradient(${selectedField.gradientAngle ?? 90}deg, ${selectedField.gradientStartColor ?? selectedField.color}, ${selectedField.gradientEndColor ?? '#ffffff'})`
+                      : `radial-gradient(circle, ${selectedField.gradientStartColor ?? selectedField.color}, ${selectedField.gradientEndColor ?? '#ffffff'})`
+                  }} />
+
+                {/* Single row: [dial?] start-swatch opacity% → end-swatch opacity% */}
+                <div className="flex items-center gap-2">
+                  {selectedField.colorMode === 'linear' && (
+                    <GradientAngleDial
+                      angle={selectedField.gradientAngle ?? 90}
+                      onChange={(v) => onFieldUpdate({ gradientAngle: v })}
+                    />
+                  )}
+                  {/* Start stop */}
+                  <button className="relative w-6 h-6 shrink-0 rounded border border-gray-200 dark:border-white/10 overflow-hidden hover:border-primary/50"
+                    style={{ background: CHECKER }} onClick={(e) => openPicker('gradStart', e.currentTarget)}>
+                    <span className="absolute inset-0" style={{ backgroundColor: selectedField.gradientStartColor ?? selectedField.color, opacity: (selectedField.gradientStartOpacity ?? 100) / 100 }} />
+                  </button>
+                  <input type="number" min={0} max={100} value={selectedField.gradientStartOpacity ?? 100}
+                    onChange={(e) => onFieldUpdate({ gradientStartOpacity: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                    className={`w-8 h-6 ${INP} text-[10px] text-center px-0.5`} />
+                  <span className="text-[9px] text-muted-foreground/40 shrink-0">%</span>
+                  <span className="text-muted-foreground/30 text-xs shrink-0">→</span>
+                  {/* End stop */}
+                  <button className="relative w-6 h-6 shrink-0 rounded border border-gray-200 dark:border-white/10 overflow-hidden hover:border-primary/50"
+                    style={{ background: CHECKER }} onClick={(e) => openPicker('gradEnd', e.currentTarget)}>
+                    <span className="absolute inset-0" style={{ backgroundColor: selectedField.gradientEndColor ?? '#ffffff', opacity: (selectedField.gradientEndOpacity ?? 100) / 100 }} />
+                  </button>
+                  <input type="number" min={0} max={100} value={selectedField.gradientEndOpacity ?? 100}
+                    onChange={(e) => onFieldUpdate({ gradientEndOpacity: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                    className={`w-8 h-6 ${INP} text-[10px] text-center px-0.5`} />
+                  <span className="text-[9px] text-muted-foreground/40 shrink-0">%</span>
+                </div>
+
+                {/* Overall opacity */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground/60 flex-1 select-none">Opacity</span>
+                  <input type="number" min={0} max={100} value={opacity}
+                    onChange={(e) => onFieldUpdate({ opacity: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                    className={`w-10 h-6 ${INP} text-xs text-right px-1`} />
+                  <span className="text-[9px] text-muted-foreground/50 shrink-0">%</span>
+                </div>
+              </div>
+            )}
 
             {/* Text shadow */}
             <div>
@@ -886,9 +1076,19 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
               ? hexToRgba(selectedField.textShadow?.color ?? '#000000', 100)
               : pickerTarget === 'stroke'
               ? hexToRgba(selectedField.strokeColor ?? '#000000', 100)
+              : pickerTarget === 'gradStart'
+              ? hexToRgba(selectedField.gradientStartColor ?? selectedField.color, selectedField.gradientStartOpacity ?? 100)
+              : pickerTarget === 'gradEnd'
+              ? hexToRgba(selectedField.gradientEndColor ?? '#ffffff', selectedField.gradientEndOpacity ?? 100)
               : hexToRgba(selectedField.color, opacity)
           }
-          label={pickerTarget === 'shadow' ? 'Shadow Color' : pickerTarget === 'stroke' ? 'Stroke Color' : 'Color'}
+          label={
+            pickerTarget === 'shadow' ? 'Shadow Color'
+            : pickerTarget === 'stroke' ? 'Stroke Color'
+            : pickerTarget === 'gradStart' ? 'Start Color'
+            : pickerTarget === 'gradEnd' ? 'End Color'
+            : 'Color'
+          }
           initialPos={pickerInitialPos}
           onClose={() => setShowPicker(false)}
           onChange={handlePickerChange}

@@ -171,9 +171,9 @@ export function FieldLayersList({
               onContextMenu={(e) => handleContextMenu(e, field.id)}
               className={`
                 px-2 py-1.5 cursor-pointer transition-colors border-l-2
-                ${isSelected ? 'bg-muted border-l-foreground/30 border-y-border/50 border-r-border/50' : 'border-l-transparent border-border/50 hover:bg-muted/40 hover:border-l-border'}
+                ${isSelected ? 'bg-white dark:bg-neutral-800/30 border-l-neutral-300 dark:border-l-neutral-500 border-y-transparent border-r-transparent' : 'border-l-transparent border-border/50 hover:bg-white/60 dark:hover:bg-neutral-800/20 hover:border-l-neutral-200 dark:hover:border-l-neutral-600'}
                 ${isHidden ? 'opacity-40' : ''}
-                ${isDragOver ? 'bg-muted/60' : ''}
+                ${isDragOver ? 'bg-neutral-200/60 dark:bg-neutral-700/40' : ''}
               `}
               onClick={() => !isRenaming && onFieldSelect(field.id)}
             >
