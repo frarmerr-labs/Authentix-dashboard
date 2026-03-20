@@ -72,6 +72,10 @@ export interface CertificateField {
 
   // Sample/default value for preview
   sampleValue?: string;
+
+  // Canvas behaviour
+  locked?: boolean;  // Prevents drag/resize when true
+  zIndex?: number;   // Layer order (higher = on top)
 }
 
 // Template configuration

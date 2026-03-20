@@ -4,7 +4,7 @@
 // Used to prevent session restore on normal navigation (only restore on actual reload).
 let _initialLoadDone = false;
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
@@ -23,6 +23,8 @@ import {
   SlidersHorizontal, Maximize2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import type { SaveStatus } from './components/InfiniteCanvas';
 
 // Heavy components lazy-loaded to reduce initial bundle and speed up first render
 const CertificateCanvas  = dynamic(() => import('./components/CertificateCanvas').then(m => ({ default: m.CertificateCanvas })),  { ssr: false });
@@ -70,6 +72,10 @@ export default function GenerateCertificatePage() {
   // Asset library state (lifted from AssetLibrary to survive tab switches)
   const [libraryAssets, setLibraryAssets] = useState<Asset[]>([]);
 
+  // Canvas controls lifted for RightPanel
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [fitTrigger, setFitTrigger] = useState(0);
+
   // Left floating panel
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [leftPanelPos, setLeftPanelPos] = useState({ x: 16, y: 24 });
@@ -92,6 +98,45 @@ export default function GenerateCertificatePage() {
   const [panelReady, setPanelReady] = useState(false);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const panelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
+
+  // ── Undo / Redo ───────────────────────────────────────────────────────────
+  const historyRef = useRef<CertificateField[][]>([]);
+  const futureRef  = useRef<CertificateField[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const pushToHistory = useCallback((snapshot: CertificateField[]) => {
+    historyRef.current = [...historyRef.current.slice(-49), snapshot];
+    futureRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    const prev = historyRef.current[historyRef.current.length - 1] ?? [];
+    futureRef.current = [fields, ...futureRef.current.slice(0, 49)];
+    historyRef.current = historyRef.current.slice(0, -1);
+    setFields(prev);
+    setCanUndo(historyRef.current.length > 0);
+    setCanRedo(true);
+  }, [fields]);
+
+  const redo = useCallback(() => {
+    if (futureRef.current.length === 0) return;
+    const next = futureRef.current[0] ?? [];
+    historyRef.current = [...historyRef.current, fields];
+    futureRef.current = futureRef.current.slice(1);
+    setFields(next);
+    setCanUndo(true);
+    setCanRedo(futureRef.current.length > 0);
+  }, [fields]);
+
+  // ── Autosave status ────────────────────────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+
+  // ── Navigation guard ───────────────────────────────────────────────────────
+  const [showNavGuard, setShowNavGuard] = useState(false);
 
   // Template resize tracking — used to scale fields proportionally
   const templateResizeOrigin = useRef<{ w: number; h: number; fields: CertificateField[] }>({ w: 0, h: 0, fields: [] });
@@ -521,6 +566,7 @@ export default function GenerateCertificatePage() {
   };
 
   const handleAddField = (field: CertificateField) => {
+    pushToHistory(fields);
     setFields((prev) => [...prev, field]);
     setSelectedFieldId(field.id);
     setRightPanelVisible(true);
@@ -533,17 +579,60 @@ export default function GenerateCertificatePage() {
   };
 
   const handleDeleteField = (fieldId: string) => {
+    pushToHistory(fields);
     setFields((prev) => prev.filter((field) => field.id !== fieldId));
-    if (selectedFieldId === fieldId) {
-      setSelectedFieldId(null);
-    }
+    if (selectedFieldId === fieldId) setSelectedFieldId(null);
+  };
+
+  const handleFieldsDelete = (fieldIds: string[]) => {
+    pushToHistory(fields);
+    const idSet = new Set(fieldIds);
+    setFields((prev) => prev.filter((f) => !idSet.has(f.id)));
+    if (selectedFieldId && idSet.has(selectedFieldId)) setSelectedFieldId(null);
   };
 
   const handleFieldDuplicate = (field: CertificateField) => {
+    pushToHistory(fields);
     const newField: CertificateField = { ...field, id: crypto.randomUUID() };
     setFields((prev) => [...prev, newField]);
     setSelectedFieldId(newField.id);
   };
+
+  const handleFieldReorder = (fieldId: string, direction: 'front' | 'back') => {
+    pushToHistory(fields);
+    setFields((prev) => {
+      const idx = prev.findIndex(f => f.id === fieldId);
+      if (idx < 0) return prev;
+      const maxZ = Math.max(...prev.map(f => f.zIndex ?? 0));
+      const minZ = Math.min(...prev.map(f => f.zIndex ?? 0));
+      return prev.map(f =>
+        f.id === fieldId
+          ? { ...f, zIndex: direction === 'front' ? maxZ + 1 : minZ - 1 }
+          : f
+      );
+    });
+  };
+
+  const handleFieldLock = (fieldId: string, locked: boolean) => {
+    setFields((prev) => prev.map(f => f.id === fieldId ? { ...f, locked } : f));
+  };
+
+  const handleFieldRename = (fieldId: string, label: string) => {
+    setFields((prev) => prev.map(f => f.id === fieldId ? { ...f, label } : f));
+  };
+
+  const handleFieldLayerReorder = (orderedIds: string[]) => {
+    pushToHistory(fields);
+    setFields((prev) => {
+      const map = new Map(prev.map(f => [f.id, f]));
+      return orderedIds.map(id => map.get(id)).filter(Boolean) as CertificateField[];
+    });
+  };
+
+  // Snapshot current fields before a drag (called by DraggableField onDragStart)
+  const handleFieldDragStart = useCallback(() => {
+    pushToHistory(fields);
+  }, [fields, pushToHistory]);
 
   const handleFieldSelect = (fieldId: string) => {
     if (previewOpen) return; // don't open right panel in preview mode
@@ -608,6 +697,7 @@ export default function GenerateCertificatePage() {
     
     if (!templateId || !versionId || fields.length === 0) return;
 
+    setSaveStatus('saving');
     const timeoutId = setTimeout(async () => {
       // Track field_keys to ensure uniqueness
       const usedFieldKeys = new Set<string>();
@@ -782,6 +872,8 @@ export default function GenerateCertificatePage() {
         });
 
         await api.templates.saveFields(templateId, versionId, fieldsToSave);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
         console.log('[Generate] Fields auto-saved to certificate_template_fields', {
           templateId,
           versionId,
@@ -794,6 +886,8 @@ export default function GenerateCertificatePage() {
         
         // Only log if it's not a network error (network errors are expected if backend is down)
         const isNetworkError = errorCode === 'NETWORK_ERROR';
+        setSaveStatus(isNetworkError ? 'idle' : 'error');
+        if (saveStatus === 'error') setTimeout(() => setSaveStatus('idle'), 3000);
         if (!isNetworkError) {
           console.warn('[Generate] Failed to autosave fields (non-fatal):', {
             error: errorMessage,
@@ -931,9 +1025,13 @@ export default function GenerateCertificatePage() {
               onClick={() => {
                 const canNavigate = step.completed || isActive || index === steps.findIndex(s => s.id === currentStep) + 1;
                 if (!canNavigate) return;
-                // Going back to template selection — clear active template so a fresh one can be picked
+                // Going back to template selection — warn if fields exist
+                if (step.id === 'template' && currentStep !== 'template' && fields.length > 0) {
+                  setShowNavGuard(true);
+                  return;
+                }
                 if (step.id === 'template' && currentStep !== 'template') {
-                  selectRequestRef.current++; // cancel any in-flight template load
+                  selectRequestRef.current++;
                   setTemplate(null);
                   setFields([]);
                   setSelectedFieldId(null);
@@ -1089,6 +1187,7 @@ export default function GenerateCertificatePage() {
           {/* Editing canvas — fills remaining width */}
           <div className="flex-1 relative overflow-hidden min-w-0" ref={canvasAreaRef}>
             {useInfiniteCanvas ? (
+              <ErrorBoundary fallbackLabel="Canvas failed to load">
               <InfiniteCanvas
                 fileUrl={template.fileUrl}
                 fileType={template.fileType}
@@ -1119,7 +1218,20 @@ export default function GenerateCertificatePage() {
                   }
                 }}
                 previewOpen={previewOpen}
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                saveStatus={saveStatus}
+                onFieldsDelete={handleFieldsDelete}
+                onFieldReorder={handleFieldReorder}
+                onFieldLock={handleFieldLock}
+                onFieldDragStart={handleFieldDragStart}
+                snapToGrid={snapToGrid}
+                onSnapToggle={() => setSnapToGrid(v => !v)}
+                fitTrigger={fitTrigger}
               />
+              </ErrorBoundary>
             ) : (
               <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8">
                 <CertificateCanvas
@@ -1232,6 +1344,7 @@ export default function GenerateCertificatePage() {
                       </div>
                       <div className="pb-4">
                         <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Layers</p>
+                        <ErrorBoundary fallbackLabel="Layers panel error">
                         <FieldLayersList
                           fields={fields}
                           selectedFieldId={selectedFieldId}
@@ -1239,7 +1352,12 @@ export default function GenerateCertificatePage() {
                           onFieldSelect={handleFieldSelect}
                           onFieldDelete={handleDeleteField}
                           onToggleVisibility={handleToggleVisibility}
+                          onFieldReorder={handleFieldLayerReorder}
+                          onFieldLock={handleFieldLock}
+                          onFieldRename={handleFieldRename}
+                          onFieldDuplicate={handleFieldDuplicate}
                         />
+                        </ErrorBoundary>
                       </div>
                     </TabsContent>
 
@@ -1304,6 +1422,13 @@ export default function GenerateCertificatePage() {
                     onFieldUpdate={(updates) => {
                       if (selectedFieldId) handleUpdateField(selectedFieldId, updates);
                     }}
+                    scale={canvasScale}
+                    onScaleChange={setCanvasScale}
+                    onFitToScreen={() => setFitTrigger(t => t + 1)}
+                    snapToGrid={snapToGrid}
+                    onSnapToggle={() => setSnapToGrid(v => !v)}
+                    pdfWidth={template?.pdfWidth}
+                    pdfHeight={template?.pdfHeight}
                   />
                 </div>
               </div>
@@ -1363,6 +1488,46 @@ export default function GenerateCertificatePage() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* ── Navigation guard dialog ── */}
+      {showNavGuard && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Go back to template selection?</h3>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                You have {fields.length} field{fields.length !== 1 ? 's' : ''} placed. Going back will clear all of them and cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted transition-colors"
+                onClick={() => setShowNavGuard(false)}
+              >
+                Stay here
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={() => {
+                  setShowNavGuard(false);
+                  selectRequestRef.current++;
+                  setTemplate(null);
+                  setFields([]);
+                  setSelectedFieldId(null);
+                  setPanelReady(false);
+                  historyRef.current = [];
+                  futureRef.current = [];
+                  setCanUndo(false);
+                  setCanRedo(false);
+                  setCurrentStep('template');
+                }}
+              >
+                Clear & go back
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

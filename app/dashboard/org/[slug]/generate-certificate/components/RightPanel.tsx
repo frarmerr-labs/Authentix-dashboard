@@ -3,7 +3,7 @@
 import { createPortal } from 'react-dom';
 import { CertificateField, FontWeight, CERTIFICATE_FONTS, PRESET_COLORS, DATE_FORMATS } from '@/lib/types/certificate';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2 } from 'lucide-react';
 import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect } from 'react';
 
@@ -272,14 +272,24 @@ function QRLogoUploader({
 
 // ── Props & Main Component ─────────────────────────────────────────────────────
 
+const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
 interface RightPanelProps {
   selectedField: CertificateField | undefined;
   onFieldUpdate: (updates: Partial<CertificateField>) => void;
+  // Canvas controls (shown when no field is selected)
+  scale?: number;
+  onScaleChange?: (s: number) => void;
+  onFitToScreen?: () => void;
+  snapToGrid?: boolean;
+  onSnapToggle?: () => void;
+  pdfWidth?: number;
+  pdfHeight?: number;
 }
 
 type EffectType = 'none' | 'drop_shadow' | 'layer_blur' | 'background_blur';
 
-export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
+export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange, onFitToScreen, snapToGrid, onSnapToggle, pdfWidth, pdfHeight }: RightPanelProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<ColorTarget>('main');
   const [pickerInitialPos, setPickerInitialPos] = useState({ x: 0, y: 0 });
@@ -310,7 +320,116 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
     document.head.appendChild(link);
   }, [selectedField?.fontFamily]);
 
-  if (!selectedField) return null;
+  const pct = Math.round((scale ?? 1) * 100);
+  const clampScale = (s: number) => Math.min(8, Math.max(0.05, s));
+
+  // Always-visible canvas controls (zoom + snap + template dims)
+  const canvasControls = (
+    <>
+      <div className="px-3 py-2.5 border-t border-border/30">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-3 select-none">Canvas</p>
+        <div className="space-y-3">
+          {/* Zoom controls */}
+          <div>
+            <p className="text-[9px] text-muted-foreground/50 mb-1.5 select-none">Zoom</p>
+            <div className="flex items-center gap-1.5">
+              <button
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={() => onScaleChange?.(clampScale((scale ?? 1) - 0.1))}
+                title="Zoom out"
+              >
+                <ZoomOut className="w-3 h-3" />
+              </button>
+              <div className="relative flex-1">
+                <select
+                  value={ZOOM_STEPS.includes(scale ?? 1) ? (scale ?? 1) : ''}
+                  onChange={(e) => e.target.value && onScaleChange?.(parseFloat(e.target.value))}
+                  className="w-full h-7 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-center outline-none cursor-pointer appearance-none"
+                  title="Zoom presets"
+                >
+                  {!ZOOM_STEPS.includes(scale ?? 1) && (
+                    <option value="">{pct}%</option>
+                  )}
+                  {ZOOM_STEPS.map(s => (
+                    <option key={s} value={s}>{Math.round(s * 100)}%</option>
+                  ))}
+                </select>
+                <span className="absolute left-0 right-0 top-0 bottom-0 flex items-center justify-center pointer-events-none text-xs font-medium text-foreground/70">
+                  {pct}%
+                </span>
+              </div>
+              <button
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={() => onScaleChange?.(clampScale((scale ?? 1) + 0.1))}
+                title="Zoom in"
+              >
+                <ZoomIn className="w-3 h-3" />
+              </button>
+              <button
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={onFitToScreen}
+                title="Fit to screen"
+              >
+                <Maximize2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Snap to grid */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Magnet className="w-3 h-3 text-muted-foreground/50" />
+              <p className="text-[11px] text-foreground/70 select-none">Snap to Grid</p>
+            </div>
+            <button
+              className="relative rounded-full transition-colors shrink-0"
+              style={{ width: '28px', height: '14px', backgroundColor: snapToGrid ? 'var(--primary)' : 'var(--border)' }}
+              onClick={onSnapToggle}
+            >
+              <span className="absolute bg-white rounded-full shadow-sm transition-all"
+                style={{ width: '10px', height: '10px', top: '2px', left: snapToGrid ? 'calc(100% - 12px)' : '2px' }} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Template dimensions */}
+      {(pdfWidth || pdfHeight) && (
+        <div className="px-3 py-2.5 border-t border-border/30">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 select-none">Template</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded h-7 px-2 gap-1">
+              <span className="text-[10px] text-muted-foreground/60 shrink-0 select-none">W</span>
+              <span className="flex-1 text-xs text-foreground">{Math.round(pdfWidth ?? 0)}</span>
+              <span className="text-[9px] text-muted-foreground/50 shrink-0">px</span>
+            </div>
+            <div className="flex items-center bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded h-7 px-2 gap-1">
+              <span className="text-[10px] text-muted-foreground/60 shrink-0 select-none">H</span>
+              <span className="flex-1 text-xs text-foreground">{Math.round(pdfHeight ?? 0)}</span>
+              <span className="text-[9px] text-muted-foreground/50 shrink-0">px</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (!selectedField) {
+    return (
+      <div className="flex flex-col">
+        {canvasControls}
+        {/* Tip */}
+        <div className="px-4 py-6 flex flex-col items-center gap-2 text-center">
+          <div className="w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center">
+            <MousePointer2 className="w-4 h-4 text-muted-foreground/50" />
+          </div>
+          <p className="text-[11px] text-muted-foreground/60 leading-relaxed max-w-[160px]">
+            Click a field on the canvas to edit its properties
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const isDateField = selectedField.type === 'start_date' || selectedField.type === 'end_date';
   const isQRCode = selectedField.type === 'qr_code';
@@ -367,6 +486,9 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
           <NumBox label="Y" value={selectedField.y} onChange={(v) => onFieldUpdate({ y: v })} icon={<MoveVertical className="w-3 h-3" />} />
         </div>
       </Section>
+
+      {/* ── Canvas controls (always visible) ── */}
+      {canvasControls}
 
       {/* ── Dimensions ── */}
       <Section label="Dimensions">

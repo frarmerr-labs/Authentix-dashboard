@@ -380,7 +380,6 @@ export function CertificateCanvas({
                     e.stopPropagation(); // Prevent canvas pan start
                     onFieldSelect(field.id);
                 }}
-                onDelete={() => onFieldDelete(field.id)}
               />
               </div>
             ))}

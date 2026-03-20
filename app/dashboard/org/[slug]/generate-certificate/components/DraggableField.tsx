@@ -153,7 +153,9 @@ interface DraggableFieldProps {
   field: CertificateField;
   scale: number;
   isSelected: boolean;
+  isMultiSelected?: boolean;
   onDrag: (deltaX: number, deltaY: number) => void;
+  onDragStart?: () => void;
   onResize: (width: number, height: number) => void;
   onSelect: (e: React.MouseEvent) => void;
 }
@@ -162,7 +164,9 @@ export function DraggableField({
   field,
   scale,
   isSelected,
+  isMultiSelected = false,
   onDrag,
+  onDragStart,
   onResize,
   onSelect,
 }: DraggableFieldProps) {
@@ -238,11 +242,14 @@ export function DraggableField({
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect(e);
+    if (field.locked) return;
+    onDragStart?.();
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
   };
   
   const handleResizeStart = (e: React.MouseEvent) => {
+    if (field.locked) return;
     e.stopPropagation();
     setIsResizing(true);
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -281,7 +288,7 @@ export function DraggableField({
       className={`
         absolute pointer-events-auto group
         ${isSelected ? 'z-50' : 'z-10'}
-        ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}
+        ${field.locked ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'cursor-grab'}
       `}
       style={{
         left: scaledX,
@@ -302,9 +309,12 @@ export function DraggableField({
         justifyContent: field.type === 'image' ? 'center' : (field.textAlign === 'center' ? 'center' : field.textAlign === 'right' ? 'flex-end' : 'flex-start'),
         outline: isSelected
           ? '1.5px dashed #d4d4d4'
+          : isMultiSelected
+          ? '1.5px dashed var(--primary)'
           : undefined,
-        outlineOffset: isSelected ? '1px' : '0px',
+        outlineOffset: (isSelected || isMultiSelected) ? '1px' : '0px',
         borderRadius: field.type === 'image' ? (field.cornerRadius ? `${field.cornerRadius}px` : '2px') : '2px',
+        opacity: field.locked ? 0.75 : 1,
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => {
