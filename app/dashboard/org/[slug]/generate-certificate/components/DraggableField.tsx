@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
 import { CertificateField } from '@/lib/types/certificate';
-import { GripVertical, Trash2 } from 'lucide-react';
 import QRCodeLib from 'qrcode';
 
 // ── Real QR code preview using qrcode package ────────────────────────────────
@@ -157,7 +156,6 @@ interface DraggableFieldProps {
   onDrag: (deltaX: number, deltaY: number) => void;
   onResize: (width: number, height: number) => void;
   onSelect: (e: React.MouseEvent) => void;
-  onDelete: () => void;
 }
 
 export function DraggableField({
@@ -167,7 +165,6 @@ export function DraggableField({
   onDrag,
   onResize,
   onSelect,
-  onDelete,
 }: DraggableFieldProps) {
   const fieldRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -282,8 +279,8 @@ export function DraggableField({
     <div
       ref={fieldRef}
       className={`
-        absolute cursor-move pointer-events-auto transition-shadow group
-        ${isSelected ? 'ring-1 ring-primary ring-offset-1 shadow-lg z-50' : 'hover:ring-1 hover:ring-primary/50 z-10'}
+        absolute pointer-events-auto group
+        ${isSelected ? 'z-50' : 'z-10'}
         ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}
       `}
       style={{
@@ -303,12 +300,10 @@ export function DraggableField({
         display: 'flex',
         alignItems: 'center',
         justifyContent: field.type === 'image' ? 'center' : (field.textAlign === 'center' ? 'center' : field.textAlign === 'right' ? 'flex-end' : 'flex-start'),
-        backgroundColor: field.type === 'image'
-          ? (isSelected ? 'rgba(62,207,142,0.06)' : 'transparent')
-          : (isSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.04)'),
-        border: field.type === 'image'
-          ? (isSelected ? '1px solid rgba(62,207,142,0.7)' : '1px solid transparent')
-          : (isSelected ? '1px solid rgb(59, 130, 246)' : '1px dashed rgba(59, 130, 246, 0.4)'),
+        outline: isSelected
+          ? '1.5px dashed #d4d4d4'
+          : undefined,
+        outlineOffset: isSelected ? '1px' : '0px',
         borderRadius: field.type === 'image' ? (field.cornerRadius ? `${field.cornerRadius}px` : '2px') : '2px',
       }}
       onMouseDown={handleMouseDown}
@@ -317,29 +312,6 @@ export function DraggableField({
         onSelect(e);
       }}
     >
-      {/* Delete Button - Display only when selected, positioned on right side */}
-      {isSelected && (
-        <div className="absolute -right-9 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-background shadow-sm border rounded p-0.5 pointer-events-auto">
-           <button 
-             className="p-1 hover:bg-destructive/10 text-destructive/60 hover:text-destructive/80 rounded-sm transition-colors"
-             onClick={(e) => {
-               e.stopPropagation();
-               onDelete();
-             }}
-             onMouseDown={(e) => e.stopPropagation()}
-             title="Delete Field"
-           >
-             <Trash2 className="w-3 h-3" />
-           </button>
-        </div>
-      )}
-      
-      {/* Drag Handle */}
-      {isSelected && (
-        <div className="absolute -left-3 top-1/2 -translate-y-1/2 h-8 flex items-center cursor-move opacity-50 hover:opacity-100">
-          <GripVertical className="w-4 h-4 text-primary" />
-        </div>
-      )}
 
       {/* Field Content */}
       {field.type === 'qr_code' ? (
@@ -374,22 +346,13 @@ export function DraggableField({
         </div>
       )}
 
-      {/* Coordinates Display (when selected) */}
-      {isSelected && (
-        <div className="absolute -bottom-6 left-0 text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded whitespace-nowrap shadow-sm pointer-events-none">
-          x: {Math.round(field.x)}, y: {Math.round(field.y)} • {Math.round(field.width)} × {Math.round(field.height)}
-        </div>
-      )}
-
       {/* Resize Handles (when selected) */}
       {isSelected && (
-        <>
-          {/* Bottom-Right Corner - Standard Resize */}
-          <div
-            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-primary border-2 border-white rounded-[2px] cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
-            onMouseDown={handleResizeStart}
-          />
-        </>
+        <div
+          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 rounded-[2px] cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
+          style={{ borderColor: 'var(--primary)' }}
+          onMouseDown={handleResizeStart}
+        />
       )}
     </div>
   );

@@ -504,7 +504,7 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
               <p className="text-[9px] text-muted-foreground/50 select-none">Transparent Background</p>
               <button
                 className="relative rounded-full transition-colors shrink-0"
-                style={{ width: '28px', height: '14px', backgroundColor: selectedField.qrTransparentBg ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+                style={{ width: '28px', height: '14px', backgroundColor: selectedField.qrTransparentBg ? 'var(--primary)' : 'var(--border)' }}
                 onClick={() => onFieldUpdate({ qrTransparentBg: !selectedField.qrTransparentBg })}
               >
                 <span className="absolute bg-white rounded-full shadow-sm transition-all"
@@ -557,7 +557,7 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
                   <p className="text-[9px] text-muted-foreground/50 select-none">Text Shadow</p>
                   <button
                     className="relative rounded-full transition-colors shrink-0"
-                    style={{ width: '28px', height: '14px', backgroundColor: selectedField.textShadow ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+                    style={{ width: '28px', height: '14px', backgroundColor: selectedField.textShadow ? 'var(--primary)' : 'var(--border)' }}
                     onClick={() => onFieldUpdate({ textShadow: selectedField.textShadow ? null : { offsetX: 2, offsetY: 2, blur: 4, color: '#000000' } })}
                   >
                     <span className="absolute bg-white rounded-full shadow-sm transition-all"
@@ -597,7 +597,7 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
               <p className="text-[9px] text-muted-foreground/50 select-none">Stroke</p>
               <button
                 className="relative rounded-full transition-colors shrink-0"
-                style={{ width: '28px', height: '14px', backgroundColor: selectedField.strokeWidth ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+                style={{ width: '28px', height: '14px', backgroundColor: selectedField.strokeWidth ? 'var(--primary)' : 'var(--border)' }}
                 onClick={() => onFieldUpdate({ strokeWidth: selectedField.strokeWidth ? 0 : 2, strokeColor: selectedField.strokeColor || '#000000', strokePosition: selectedField.strokePosition || 'center' })}
               >
                 <span className="absolute bg-white rounded-full shadow-sm transition-all"
@@ -671,7 +671,7 @@ export function RightPanel({ selectedField, onFieldUpdate }: RightPanelProps) {
                   <p className="text-[9px] text-muted-foreground/50 select-none">Drop Shadow</p>
                   <button
                     className="relative rounded-full transition-colors"
-                    style={{ width: '28px', height: '14px', backgroundColor: selectedField.dropShadow ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+                    style={{ width: '28px', height: '14px', backgroundColor: selectedField.dropShadow ? 'var(--primary)' : 'var(--border)' }}
                     onClick={() => onFieldUpdate({ dropShadow: selectedField.dropShadow ? null : { offsetX: 4, offsetY: 4, blur: 8, spread: 0, color: '#00000066' } })}
                   >
                     <span className="absolute bg-white rounded-full shadow-sm transition-all"

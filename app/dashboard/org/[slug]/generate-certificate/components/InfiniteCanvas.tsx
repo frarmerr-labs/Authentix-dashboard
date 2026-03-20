@@ -41,6 +41,7 @@ interface InfiniteCanvasProps {
   onAssetDrop?: (url: string, name: string, x: number, y: number) => void;
   onPreviewToggle?: () => void;
   previewOpen?: boolean;
+  onFieldDuplicate?: (field: CertificateField) => void;
 }
 
 const SNAP_SIZE = 8;
@@ -74,6 +75,7 @@ export function InfiniteCanvas({
   onAssetDrop,
   onPreviewToggle,
   previewOpen,
+  onFieldDuplicate,
 }: InfiniteCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +103,9 @@ export function InfiniteCanvas({
   // Visual dims during template resize — keeps PDF stable while dragging
   const [visualDims, setVisualDims] = useState<{ w: number; h: number } | null>(null);
   const latestResizeDims = useRef<{ w: number; h: number } | null>(null);
+
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<CertificateField | null>(null);
 
   // Panning refs
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -202,20 +207,55 @@ export function InfiniteCanvas({
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const mod = e.ctrlKey || e.metaKey;
 
+      // Space → pan mode
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
         setIsSpacePressed(true);
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+
+      // Delete / Backspace → delete selected field
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !mod && selectedFieldId) {
+        e.preventDefault();
+        onFieldDelete(selectedFieldId);
+        return;
+      }
+
+      // Cmd/Ctrl+C → copy selected field to clipboard
+      if (mod && e.key === 'c' && selectedFieldId) {
+        const field = fields.find(f => f.id === selectedFieldId);
+        if (field) clipboardRef.current = field;
+        return;
+      }
+
+      // Cmd/Ctrl+V → paste from clipboard (offset by 20px)
+      if (mod && e.key === 'v' && clipboardRef.current && onFieldDuplicate) {
+        e.preventDefault();
+        const src = clipboardRef.current;
+        onFieldDuplicate({ ...src, x: src.x + 20, y: src.y + 20 });
+        return;
+      }
+
+      // Cmd/Ctrl+D → duplicate selected field (offset by 20px)
+      if (mod && e.key === 'd' && selectedFieldId && onFieldDuplicate) {
+        e.preventDefault();
+        const field = fields.find(f => f.id === selectedFieldId);
+        if (field) onFieldDuplicate({ ...field, x: field.x + 20, y: field.y + 20 });
+        return;
+      }
+
+      // Zoom shortcuts
+      if (mod && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         onScaleChange(clamp(scale + 0.1, MIN_SCALE, MAX_SCALE));
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      if (mod && e.key === '-') {
         e.preventDefault();
         onScaleChange(clamp(scale - 0.1, MIN_SCALE, MAX_SCALE));
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      if (mod && e.key === '0') {
         e.preventDefault();
         fitToScreen();
       }
@@ -233,7 +273,7 @@ export function InfiniteCanvas({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [scale, onScaleChange, fitToScreen]);
+  }, [scale, onScaleChange, fitToScreen, selectedFieldId, fields, onFieldDelete, onFieldDuplicate]);
 
   // ── Mouse panning ─────────────────────────────────────────────────────────
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -558,7 +598,6 @@ export function InfiniteCanvas({
                   onDrag={(dx, dy) => handleFieldDrag(field.id, dx, dy)}
                   onResize={(w, h) => handleFieldResize(field.id, w, h)}
                   onSelect={e => { e.stopPropagation(); onFieldSelect(field.id); }}
-                  onDelete={() => onFieldDelete(field.id)}
                 />
               </div>
             ))}
@@ -760,7 +799,7 @@ export function InfiniteCanvas({
 
       {/* ── Keyboard hint (bottom-right) ── */}
       <div className="absolute bottom-3 right-3 z-40 text-[9px] text-muted-foreground/30 select-none pointer-events-none text-right leading-relaxed">
-        Scroll to pan · Pinch / Ctrl+Scroll to zoom · Space+Drag to pan
+        Del to delete · ⌘C copy · ⌘V paste · ⌘D duplicate · Scroll to pan · Pinch/Ctrl+Scroll to zoom
       </div>
     </div>
   );

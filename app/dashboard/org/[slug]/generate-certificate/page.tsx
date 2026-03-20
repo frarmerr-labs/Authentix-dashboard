@@ -539,6 +539,12 @@ export default function GenerateCertificatePage() {
     }
   };
 
+  const handleFieldDuplicate = (field: CertificateField) => {
+    const newField: CertificateField = { ...field, id: crypto.randomUUID() };
+    setFields((prev) => [...prev, newField]);
+    setSelectedFieldId(newField.id);
+  };
+
   const handleFieldSelect = (fieldId: string) => {
     if (previewOpen) return; // don't open right panel in preview mode
     setSelectedFieldId(fieldId);
@@ -1102,6 +1108,7 @@ export default function GenerateCertificatePage() {
                 onTemplateResizeStart={handleTemplateResizeStart}
                 onPageChange={(page) => setCurrentPage(page - 1)}
                 onAssetDrop={(url, name, x, y) => handleAddAssetField(url, name, x, y)}
+                onFieldDuplicate={handleFieldDuplicate}
                 onPreviewToggle={() => {
                   const opening = !previewOpen;
                   setPreviewOpen(opening);
