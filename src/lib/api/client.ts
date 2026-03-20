@@ -50,7 +50,7 @@ export interface ImportJob {
   certificate_subcategory?: string;
   certificate_template_id?: string;
   reusable: boolean;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
   total_rows?: number;
   mapping?: Record<string, string>;
   error_message?: string;
@@ -97,23 +97,27 @@ export interface InProgressTemplate {
 export interface Certificate {
   id: string;
   organization_id: string;
-  certificate_template_id: string | null;
+  generation_job_id: string | null;
+  template_id: string | null;
+  template_version_id: string | null;
+  category_id: string | null;
+  subcategory_id: string | null;
   recipient_name: string;
   recipient_email: string | null;
   recipient_phone: string | null;
-  course_name: string | null;
-  issue_date: string;
-  expiry_date: string | null;
+  recipient_data: Record<string, unknown> | null;
   certificate_number: string;
-  storage_path: string;
-  preview_url: string | null;
-  verification_code: string;
-  verification_token: string | null;
-  status: 'issued' | 'revoked' | 'expired';
-  issued_by: string | null;
+  issued_at: string;
+  expires_at: string | null;
+  status: 'active' | 'revoked' | 'expired';
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  verification_path: string | null;
+  qr_payload_url: string | null;
   created_at: string;
-  updated_at: string;
-  // Joined fields from template
+  // Computed/joined fields
+  download_url: string | null;
+  preview_url: string | null;
   template?: {
     id: string;
     title: string;
@@ -228,26 +232,10 @@ async function apiRequest<T>(
   try {
     if (contentType?.includes("application/json")) {
       const responseText = await response.text();
-      console.log(`[API] Raw response for ${endpoint}:`, {
-        status: response.status,
-        contentType,
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 500), // First 500 chars
-      });
-      
       try {
         data = JSON.parse(responseText) as ApiResponse<T>;
-        console.log(`[API] Parsed JSON for ${endpoint}:`, {
-          success: data.success,
-          hasError: !!data.error,
-          hasData: !!data.data,
-          errorType: typeof data.error,
-          dataKeys: data.data ? Object.keys(data.data) : [],
-          fullData: JSON.stringify(data, null, 2),
-        });
       } catch (parseError) {
         console.error(`[API] JSON parse error for ${endpoint}:`, parseError);
-        console.error(`[API] Response text that failed to parse:`, responseText);
         throw new ApiError(
           "PARSE_ERROR",
           `Failed to parse JSON response`,
@@ -278,7 +266,6 @@ async function apiRequest<T>(
   }
 
   if (!response.ok || !data.success) {
-    // Extract error details for better logging
     const errorObj = typeof data.error === 'object' && data.error !== null
       ? data.error
       : typeof data.error === 'string'
@@ -287,18 +274,11 @@ async function apiRequest<T>(
 
     console.error(`[API] Request failed for ${endpoint}:`, {
       status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      dataSuccess: data.success,
       errorCode: 'code' in errorObj ? errorObj.code : 'UNKNOWN',
       errorMessage: errorObj.message || 'Unknown error',
-      errorDetails: 'details' in errorObj ? errorObj.details : {},
-      fullResponse: JSON.stringify(data, null, 2),
     });
 
-    // Handle 401 by potentially redirecting to login
     if (response.status === 401) {
-      // Session expired - could trigger refresh here
       throw new ApiError("UNAUTHORIZED", "Session expired. Please sign in again.");
     }
 
@@ -318,7 +298,6 @@ async function apiRequest<T>(
 
     // Preserve status code for 409 (ORG_INDUSTRY_REQUIRED) and other specific errors
     const apiError = new ApiError(errorCode, errorMessage, errorDetails);
-    // Attach status to error object for checking
     Object.defineProperty(apiError, 'status', {
       value: response.status,
       writable: false,
@@ -326,14 +305,6 @@ async function apiRequest<T>(
     });
     throw apiError;
   }
-
-  console.log(`[API] Request successful for ${endpoint}:`, {
-    success: data.success,
-    hasData: !!data.data,
-    dataType: typeof data.data,
-    dataKeys: data.data ? Object.keys(data.data) : [],
-    fullData: JSON.stringify(data, null, 2),
-  });
 
   return data;
 }
@@ -385,7 +356,7 @@ export const api = {
 
     bootstrap: async () => {
       const response = await apiRequest<{
-        organization: { id: string; name?: string; logo?: string | null };
+        organization: { id: string; name?: string; slug?: string; logo?: string | null };
         membership?: { id: string; role?: string };
       }>("/auth/bootstrap", {
         method: "POST",
@@ -627,27 +598,6 @@ export const api = {
       formData.append("category_id", params.category_id);
       formData.append("subcategory_id", params.subcategory_id);
 
-      // Debug: Log what we're sending
-      console.log('[API] Creating template with FormData:', {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        title: params.title.trim(),
-        titleLength: params.title.trim().length,
-        category_id: params.category_id,
-        subcategory_id: params.subcategory_id,
-        formDataKeys: Array.from(formData.keys()),
-        url: `${API_BASE_URL}/templates`,
-      });
-
-      // Verify FormData values (can't directly read, but can check what we set)
-      console.log('[API] FormData values set:', {
-        hasFile: !!file,
-        titleValue: params.title.trim(),
-        categoryIdValue: params.category_id,
-        subcategoryIdValue: params.subcategory_id,
-      });
-
       // Create AbortController with longer timeout for file uploads (120 seconds)
       const uploadController = new AbortController();
       const uploadTimeoutId = setTimeout(() => {
@@ -686,12 +636,6 @@ export const api = {
       }
       
       const responseContentType = response.headers.get("content-type");
-      console.log('[API] Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        contentType: responseContentType,
-        ok: response.ok,
-      });
 
       // Check if response is JSON
       let data: ApiResponse<{
@@ -1203,11 +1147,13 @@ export const api = {
    */
   verification: {
     verify: async (token: string) => {
-      const response = await fetch(`${API_BASE_URL}/verification/${token}`, {
-        method: "GET",
+      // Backend: POST /verification/verify  body: { token }
+      const response = await fetch(`${API_BASE_URL}/verification/verify`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ token }),
       });
 
       const data = (await response.json()) as ApiResponse;
@@ -1238,7 +1184,6 @@ export const api = {
      * May return 409 with ORG_INDUSTRY_REQUIRED if organization industry is not set
      */
     getCategories: async () => {
-      console.log('[API] Fetching categories from /catalog/categories');
       const response = await apiRequest<{
         groups: Array<{
           group_key: string;
@@ -1256,10 +1201,6 @@ export const api = {
           key: string;
         }>;
       }>("/catalog/categories");
-      console.log('[API] Categories response:', JSON.stringify(response, null, 2));
-      console.log('[API] Categories data:', response.data);
-      console.log('[API] Returning response.data:', response.data);
-      // response.data should be { groups: [...], flat: [...] }
       return response.data!;
     },
 
@@ -1294,6 +1235,7 @@ export const api = {
           pendingJobs?: number;
           verificationsToday?: number;
           revokedCertificates?: number;
+          verificationEventsTotal?: number;
         };
         recentImports?: Array<{
           id: string;
@@ -1315,6 +1257,20 @@ export const api = {
             recipient_name?: string | null;
             course_name?: string | null;
           } | null;
+        }>;
+        /** Last 90 UTC days from backend; issued/revoked per day */
+        certificatesDaily?: Array<{
+          date: string;
+          issued: number;
+          revoked: number;
+          verificationScans?: number;
+        }>;
+        certificateCategoryMix?: Array<{
+          categoryId: string | null;
+          subcategoryId: string | null;
+          categoryName: string;
+          subcategoryName: string;
+          count: number;
         }>;
       }>("/dashboard/stats");
       return response.data!;
@@ -1341,12 +1297,7 @@ export const api = {
         postal_code: string | null;
         gst_number: string | null;
         cin_number: string | null;
-        // Logo fields from backend - supports multiple structures
-        logo_file_id?: string | null;
-        logo_bucket?: string | null;
-        logo_path?: string | null;
         logo_url?: string | null;
-        // Nested structure: logo.bucket/path
         logo?: {
           bucket?: string | null;
           path?: string | null;

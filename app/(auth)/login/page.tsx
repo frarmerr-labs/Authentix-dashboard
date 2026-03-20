@@ -11,7 +11,6 @@ import Link from "next/link";
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { loginAction, type LoginState } from "./actions";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import Image from "next/image";
 
 /**

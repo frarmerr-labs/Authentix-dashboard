@@ -52,7 +52,7 @@ interface OrganizationData {
 
 interface DashboardShellProps {
   children: React.ReactNode;
-  orgId: string;
+  slug: string;
   initialUser: UserData | null;
   initialCompany: OrganizationData | null;
 }
@@ -92,13 +92,13 @@ const THEME_CYCLE: Record<Theme, Theme> = {
 // ============================================================================
 
 interface SidebarNavProps {
-  readonly orgId: string;
+  readonly slug: string;
   readonly pathname: string;
   readonly expanded: boolean;
 }
 
-function SidebarNav({ orgId, pathname, expanded }: SidebarNavProps) {
-  const basePath = `/dashboard/org/${orgId}`;
+function SidebarNav({ slug, pathname, expanded }: SidebarNavProps) {
+  const basePath = `/dashboard/org/${slug}`;
 
   return (
     <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
@@ -164,7 +164,7 @@ interface UserMenuProps {
   readonly profileName: string;
   readonly organizationName: string;
   readonly organizationLogo: string | null;
-  readonly orgId: string;
+  readonly slug: string;
   readonly onLogout: () => void;
   readonly mounted: boolean;
 }
@@ -174,7 +174,7 @@ function UserMenu({
   profileName,
   organizationName,
   organizationLogo,
-  orgId,
+  slug,
   onLogout,
   mounted,
 }: UserMenuProps) {
@@ -219,7 +219,7 @@ function UserMenu({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/org/${orgId}/organization`}>
+          <Link href={`/dashboard/org/${slug}/organization`}>
             <Building2 className="mr-2 h-4 w-4" />
             Organization
           </Link>
@@ -240,7 +240,7 @@ function UserMenu({
 
 export function DashboardShell({
   children,
-  orgId,
+  slug,
   initialUser,
   initialCompany,
 }: DashboardShellProps) {
@@ -306,14 +306,14 @@ export function DashboardShell({
   }, [router]);
 
   return (
-    <OrgProvider orgId={orgId}>
+    <OrgProvider slug={slug}>
       <div className="min-h-screen bg-background">
         <OnboardingModal />
 
         {/* Sidebar */}
         <aside
           className={cn(
-            "fixed top-0 left-0 z-40 h-screen bg-card border-r transition-all duration-300",
+            "fixed top-0 left-0 z-[60] h-screen bg-card border-r transition-all duration-300",
             sidebarExpanded ? "w-52" : "w-14"
           )}
           onMouseEnter={() => setSidebarExpanded(true)}
@@ -323,7 +323,7 @@ export function DashboardShell({
             {/* Logo */}
             <div className="h-16 flex items-center justify-center border-b px-2">
               <Link
-                href={`/dashboard/org/${orgId}`}
+                href={`/dashboard/org/${slug}`}
                 className="flex items-center gap-2"
               >
                 <div className="w-8 h-8 rounded-lg bg-card border flex items-center justify-center shrink-0">
@@ -345,7 +345,7 @@ export function DashboardShell({
 
             {/* Navigation */}
             <SidebarNav
-              orgId={orgId}
+              slug={slug}
               pathname={pathname}
               expanded={sidebarExpanded}
             />
@@ -399,7 +399,7 @@ export function DashboardShell({
                   profileName={profileName}
                   organizationName={organizationName}
                   organizationLogo={organizationLogo}
-                  orgId={orgId}
+                  slug={slug}
                   onLogout={handleLogout}
                   mounted={mounted}
                 />

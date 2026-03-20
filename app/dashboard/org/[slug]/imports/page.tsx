@@ -134,11 +134,12 @@ export default function ImportsPage() {
   const getStatusBadge = (status: ImportJob["status"]) => {
     const variants: Record<ImportJob["status"], { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
       completed: { variant: "default", label: "Completed" },
+      queued: { variant: "secondary", label: "Queued" },
       pending: { variant: "secondary", label: "Pending" },
       processing: { variant: "outline", label: "Processing" },
       failed: { variant: "destructive", label: "Failed" },
     };
-    const config = variants[status] || variants.pending;
+    const config = variants[status] ?? variants.queued;
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 

@@ -72,7 +72,7 @@ export async function loginAction(
     try {
       console.log("[Login] Calling bootstrap endpoint...");
       const bootstrapResult = await serverApiRequest<{
-        organization: { id: string };
+        organization: { id: string; slug?: string };
       }>("/auth/bootstrap", {
         method: "POST",
       });
@@ -85,11 +85,12 @@ export async function loginAction(
         fullResponse: bootstrapResult,
       }, null, 2));
 
-      const orgId = bootstrapResult.data?.organization?.id;
+      // Use slug for URL if available, fall back to id
+      const orgSlug = bootstrapResult.data?.organization?.slug ?? bootstrapResult.data?.organization?.id;
 
       // Only redirect after bootstrap succeeds
-      if (orgId) {
-        redirect(`/dashboard/org/${orgId}`);
+      if (orgSlug) {
+        redirect(`/dashboard/org/${orgSlug}`);
       } else {
         // Fallback to dashboard if org id is missing (should not happen)
         redirect("/dashboard");

@@ -1,6 +1,6 @@
 # AGENTS.md — AI Agent Rules for Authentix Platform
 
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-20
 **Applies to:** Claude Code, Cursor, and any AI agent working in this repository
 
 ---
@@ -31,7 +31,7 @@
 - **Never add Supabase client library to frontend** — no direct DB access from browser
 - **All data fetches go through `/api/proxy/*`** or Next.js Route Handlers
 - **Never store tokens in localStorage or sessionStorage** — HttpOnly cookies only
-- **All new pages must be created under `app/dashboard/org/[orgId]/`** for protected routes
+- **All new pages must be created under `app/dashboard/org/[slug]/`** for protected routes
 - **Server Components are preferred** for initial data loading (RSC pattern)
 - **Client Components (`"use client"`)** only when interactivity is required
 - **Server Actions (`"use server"`)** for form submissions (login, signup, etc.)
@@ -52,7 +52,7 @@
 ## Security Rules
 
 ### Secrets & Credentials
-- **Never expose `SUPABASE_SERVICE_ROLE_KEY` to frontend code**
+- **Never expose `SUPABASE_SECRET_KEY` (service role) to frontend code** — env var renamed from `SUPABASE_SERVICE_ROLE_KEY` per Supabase 2025 dashboard
 - **Never expose `BACKEND_API_URL` to browser** (server-only env var)
 - **Never commit `.env.local` or `.env`** to version control
 - **Never log tokens, API keys, or passwords** — use PII redaction
@@ -111,7 +111,7 @@ After ANY code change, update the relevant memory file:
 
 ### Adding a New Feature (Frontend)
 1. Read `projectmemory.md`
-2. Create page under `app/dashboard/org/[orgId]/[feature]/`
+2. Create page under `app/dashboard/org/[slug]/[feature]/`
 3. Add proxy allowlist entry if new backend route needed
 4. Add to `src/lib/api/client.ts` api object
 5. Update `projectmemory.md` → API Endpoints + Recent Changes
@@ -132,6 +132,25 @@ After ANY code change, update the relevant memory file:
 
 ---
 
+## API Contract Rules
+
+### Response Envelope
+- **Always use `ApiResponse<T>` envelope:** `{ success: boolean, data: T, error?: { code, message }, meta?: { request_id, timestamp } }`
+- **Never return raw Supabase/DB structures** — always transform to frontend-compatible shape
+- **Strip internal IDs from responses** — `*_file_id`, `*_bucket`, `*_path` DB fields stay server-side unless explicitly needed by client
+- **Slug is for routing only** — never use slug for authorization; always use `organizationId` from JWT context
+
+### Type Safety
+- **Validate all request/response shapes with Zod** — no raw `any` or implicit `unknown` casts
+- **Client method signatures must match backend contract** — method (GET/POST/PUT), path, and body shape
+- **Status enums must be complete** — if backend adds a new status value, update frontend type immediately
+
+### Logging
+- **Never log full response bodies** on success paths — only log `status`, `errorCode`, and `errorMessage` on failures
+- **No sensitive data in console** — tokens, user PII, API keys must never appear in browser console
+
+---
+
 ## Anti-Patterns (DO NOT DO)
 
 - Do NOT add Supabase client to frontend (`@supabase/supabase-js` in dashboard)
@@ -142,6 +161,13 @@ After ANY code change, update the relevant memory file:
 - Do NOT make async cert generation work for >50 without implementing the worker
 - Do NOT return raw Supabase errors to frontend (sanitize first)
 - Do NOT use `unsafe-eval` in CSP unless explicitly needed by a library
+- Do NOT use `getPublicUrl()` for Supabase Storage — all buckets are private; always use `createSignedUrl()`
+- Do NOT query `certificate_templates.status` — column does not exist in live DB
+- Do NOT use `row_number` for `file_import_rows` — column is `row_index`
+- Do NOT filter `file_import_rows` by `organization_id` or `is_deleted` — those columns don't exist
+- Do NOT insert into `file_import_jobs` with old columns (`file_name`, `storage_path`, `total_rows`, `source_type`, `reusable`, `data_persisted`, `failure_count`) — use `source_file_id`, `source_format`, `row_count`
+- Do NOT use `certificate.status = 'issued'` — correct value is `'active'`
+- Do NOT reference `certificate.issue_date`/`expiry_date` — correct columns are `issued_at`/`expires_at`
 
 ---
 

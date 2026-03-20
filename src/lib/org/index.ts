@@ -14,5 +14,5 @@
  * const orgPath = useOrgPath();
  */
 
-export { OrgProvider, useOrg, useOrgId, useOrgPath } from "./context";
+export { OrgProvider, useOrg, useOrgId, useOrgSlug, useOrgPath } from "./context";
 export type { OrgContextValue } from "./context";

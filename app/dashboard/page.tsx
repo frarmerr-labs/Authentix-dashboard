@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Dashboard resolver - redirects to /dashboard/org/[orgId]
+ * Dashboard resolver - redirects to /dashboard/org/[slug]
  */
 export default function DashboardResolver() {
   const router = useRouter();
@@ -36,7 +36,7 @@ export default function DashboardResolver() {
             data?: {
               authenticated: boolean;
               user: { id: string; email: string } | null;
-              organization?: { id: string; name?: string } | null;
+              organization?: { id: string; name?: string; slug?: string } | null;
             };
           };
         });
@@ -54,7 +54,7 @@ export default function DashboardResolver() {
           return;
         }
 
-        const orgId = me.data?.organization?.id;
+        const orgId = me.data?.organization?.slug ?? me.data?.organization?.id;
         console.log("[DashboardResolver] Organization check:", JSON.stringify({
           hasOrgId: !!orgId,
           orgId: orgId,
@@ -84,8 +84,8 @@ export default function DashboardResolver() {
               response: bootstrapData,
             }, null, 2));
 
-            if (bootstrapResponse.ok && bootstrapData.data?.organization?.id) {
-              const newOrgId = bootstrapData.data.organization.id;
+            if (bootstrapResponse.ok && (bootstrapData.data?.organization?.slug ?? bootstrapData.data?.organization?.id)) {
+              const newOrgId = bootstrapData.data.organization.slug ?? bootstrapData.data.organization.id;
               console.log("[DashboardResolver] Bootstrap succeeded, redirecting to org:", newOrgId);
               // Bootstrap succeeded - redirect to new org
               router.replace(`/dashboard/org/${newOrgId}`);
@@ -105,10 +105,10 @@ export default function DashboardResolver() {
                   
                   if (retryMeResponse.ok) {
                     const retryMeData = await retryMeResponse.json();
-                    const retryOrgId = retryMeData.data?.organization?.id;
-                    
-                    console.log(`[DashboardResolver] Retry ${attempt}/3 - orgId:`, retryOrgId);
-                    
+                    const retryOrgId = retryMeData.data?.organization?.slug ?? retryMeData.data?.organization?.id;
+
+                    console.log(`[DashboardResolver] Retry ${attempt}/3 - slug:`, retryOrgId);
+
                     if (retryOrgId) {
                       router.replace(`/dashboard/org/${retryOrgId}`);
                       return;

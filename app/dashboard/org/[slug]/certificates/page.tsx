@@ -182,11 +182,11 @@ export default function CertificatesPage() {
 
   const getStatusBadge = (status: Certificate["status"]) => {
     const variants: Record<Certificate["status"], { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-      issued: { variant: "default", label: "Issued" },
+      active: { variant: "default", label: "Active" },
       revoked: { variant: "destructive", label: "Revoked" },
       expired: { variant: "secondary", label: "Expired" },
     };
-    const config = variants[status] || variants.issued;
+    const config = variants[status] || variants.active;
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
@@ -393,8 +393,8 @@ export default function CertificatesPage() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium">{cert.recipient_name}</p>
-                        {cert.course_name && (
-                          <p className="text-xs text-muted-foreground">{cert.course_name}</p>
+                        {cert.template?.subcategory?.name && (
+                          <p className="text-xs text-muted-foreground">{cert.template.subcategory.name}</p>
                         )}
                       </div>
                     </td>
@@ -442,16 +442,16 @@ export default function CertificatesPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span>{format(new Date(cert.issue_date), "MMM d, yyyy")}</span>
+                        <span>{format(new Date(cert.issued_at), "MMM d, yyyy")}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {cert.expiry_date ? (
+                      {cert.expires_at ? (
                         <span className={cn(
                           "text-sm",
-                          new Date(cert.expiry_date) < new Date() && "text-destructive"
+                          new Date(cert.expires_at) < new Date() && "text-destructive"
                         )}>
-                          {format(new Date(cert.expiry_date), "MMM d, yyyy")}
+                          {format(new Date(cert.expires_at), "MMM d, yyyy")}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">Never</span>
@@ -476,16 +476,16 @@ export default function CertificatesPage() {
                             <Download className="h-4 w-4 mr-2" />
                             Download
                           </DropdownMenuItem>
-                          {cert.verification_token && (
+                          {cert.verification_path && (
                             <DropdownMenuItem
-                              onClick={() => window.open(`/verify/${cert.verification_token}`, "_blank")}
+                              onClick={() => window.open(cert.verification_path!, "_blank")}
                             >
                               <QrCode className="h-4 w-4 mr-2" />
                               Verify Link
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
-                            onClick={() => window.open(`/verify/${cert.verification_code}`, "_blank")}
+                            onClick={() => cert.verification_path && window.open(cert.verification_path, "_blank")}
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />
                             Public Page
@@ -567,14 +567,14 @@ export default function CertificatesPage() {
                 <div>
                   <p className="text-muted-foreground">Issue Date</p>
                   <p className="font-medium">
-                    {format(new Date(previewCertificate.issue_date), "MMMM d, yyyy")}
+                    {format(new Date(previewCertificate.issued_at), "MMMM d, yyyy")}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Expiry Date</p>
                   <p className="font-medium">
-                    {previewCertificate.expiry_date
-                      ? format(new Date(previewCertificate.expiry_date), "MMMM d, yyyy")
+                    {previewCertificate.expires_at
+                      ? format(new Date(previewCertificate.expires_at), "MMMM d, yyyy")
                       : "Never"}
                   </p>
                 </div>
@@ -595,8 +595,8 @@ export default function CertificatesPage() {
                   <div className="mt-1">{getStatusBadge(previewCertificate.status)}</div>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Verification Code</p>
-                  <p className="font-medium font-mono">{previewCertificate.verification_code}</p>
+                  <p className="text-muted-foreground">Verification Link</p>
+                  <p className="font-medium font-mono text-xs break-all">{previewCertificate.verification_path ?? '-'}</p>
                 </div>
               </div>
 
@@ -608,7 +608,8 @@ export default function CertificatesPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => window.open(`/verify/${previewCertificate.verification_code}`, "_blank")}
+                  onClick={() => previewCertificate.verification_path && window.open(previewCertificate.verification_path, "_blank")}
+                  disabled={!previewCertificate.verification_path}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Open Public Page

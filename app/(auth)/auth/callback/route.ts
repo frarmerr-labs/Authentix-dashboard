@@ -120,15 +120,15 @@ export async function GET(request: NextRequest) {
       try {
         const { serverApiRequest } = await import("@/lib/api/server");
         const bootstrapResult = await serverApiRequest<{
-          organization: { id: string };
+          organization: { id: string; slug?: string };
         }>("/auth/bootstrap", {
           method: "POST",
         });
 
-        const orgId = bootstrapResult.data?.organization?.id;
-        if (orgId) {
+        const orgSlug = bootstrapResult.data?.organization?.slug ?? bootstrapResult.data?.organization?.id;
+        if (orgSlug) {
           // Bootstrap successful - redirect directly to org dashboard
-          return NextResponse.redirect(new URL(`/dashboard/org/${orgId}`, request.url));
+          return NextResponse.redirect(new URL(`/dashboard/org/${orgSlug}`, request.url));
         }
       } catch (bootstrapError) {
         // Bootstrap failed - log but continue to dashboard (it will handle the error)

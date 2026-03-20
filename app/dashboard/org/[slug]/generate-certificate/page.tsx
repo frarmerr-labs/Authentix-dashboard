@@ -1,9 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+// Module-level flag: false after a hard page reload, true after any SPA navigation.
+// Used to prevent session restore on normal navigation (only restore on actual reload).
+let _initialLoadDone = false;
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
+import type { Asset } from './components/AssetLibrary';
 import { api } from '@/lib/api/client';
 import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 import { getPdfLib, getXlsx } from '@/lib/utils/dynamic-imports';
@@ -13,9 +18,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Sparkles, Upload, Image as ImageIcon, FileText, Download,
-  CheckCircle2, Circle, Layers, Palette, Database, Wand2
+  CheckCircle2, Circle, Layers, Palette, Database, Wand2,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, GripHorizontal, X, Eye,
+  SlidersHorizontal, Maximize2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import type { SaveStatus } from './components/InfiniteCanvas';
 
 // Heavy components lazy-loaded to reduce initial bundle and speed up first render
 const CertificateCanvas  = dynamic(() => import('./components/CertificateCanvas').then(m => ({ default: m.CertificateCanvas })),  { ssr: false });
@@ -27,6 +36,7 @@ const DataSelector       = dynamic(() => import('./components/DataSelector').the
 const FieldTypeSelector  = dynamic(() => import('./components/FieldTypeSelector').then(m => ({ default: m.FieldTypeSelector })),  { ssr: false });
 const FieldLayersList    = dynamic(() => import('./components/FieldLayersList').then(m => ({ default: m.FieldLayersList })),    { ssr: false });
 const ExportSection      = dynamic(() => import('./components/ExportSection').then(m => ({ default: m.ExportSection })),      { ssr: false });
+const CertificatePreview = dynamic(() => import('./components/CertificatePreview').then(m => ({ default: m.CertificatePreview })), { ssr: false });
 
 export default function GenerateCertificatePage() {
   // Get query parameters
@@ -59,17 +69,121 @@ export default function GenerateCertificatePage() {
   const [activeTab, setActiveTab] = useState('fields');
   const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
   const [useInfiniteCanvas, setUseInfiniteCanvas] = useState(true); // Toggle between canvas modes
+  // Asset library state (lifted from AssetLibrary to survive tab switches)
+  const [libraryAssets, setLibraryAssets] = useState<Asset[]>([]);
+
+  // Canvas controls lifted for RightPanel
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [fitTrigger, setFitTrigger] = useState(0);
+
+  // Left floating panel
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [leftPanelPos, setLeftPanelPos] = useState({ x: 16, y: 24 });
+
+  // Right properties panel visibility (separate from field selection so it can be minimised)
+  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+
+  // Preview panel
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Template metadata (category/subcategory for display in minimised panel)
+  const [templateMeta, setTemplateMeta] = useState({ category: '', subcategory: '' });
+  const leftPanelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
+
+  // Stepper bottom bar
+  const [stepperExpanded, setStepperExpanded] = useState(true);
+
+  // Draggable properties panel
+  const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
+  const [panelReady, setPanelReady] = useState(false);
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const panelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
+
+  // ── Undo / Redo ───────────────────────────────────────────────────────────
+  const historyRef = useRef<CertificateField[][]>([]);
+  const futureRef  = useRef<CertificateField[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const pushToHistory = useCallback((snapshot: CertificateField[]) => {
+    historyRef.current = [...historyRef.current.slice(-49), snapshot];
+    futureRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    const prev = historyRef.current[historyRef.current.length - 1] ?? [];
+    futureRef.current = [fields, ...futureRef.current.slice(0, 49)];
+    historyRef.current = historyRef.current.slice(0, -1);
+    setFields(prev);
+    setCanUndo(historyRef.current.length > 0);
+    setCanRedo(true);
+  }, [fields]);
+
+  const redo = useCallback(() => {
+    if (futureRef.current.length === 0) return;
+    const next = futureRef.current[0] ?? [];
+    historyRef.current = [...historyRef.current, fields];
+    futureRef.current = futureRef.current.slice(1);
+    setFields(next);
+    setCanUndo(true);
+    setCanRedo(futureRef.current.length > 0);
+  }, [fields]);
+
+  // ── Autosave status ────────────────────────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+
+  // ── Navigation guard ───────────────────────────────────────────────────────
+  const [showNavGuard, setShowNavGuard] = useState(false);
+
+  // Template resize tracking — used to scale fields proportionally
+  const templateResizeOrigin = useRef<{ w: number; h: number; fields: CertificateField[] }>({ w: 0, h: 0, fields: [] });
+
+  // Race-condition guard: cancel stale handleTemplateSelect calls
+  const selectRequestRef = useRef(0);
 
   // Multi-page PDF support
   const [currentPage, setCurrentPage] = useState(0); // 0-indexed page number
   const [totalPages, setTotalPages] = useState(1);
 
+  // ── Session persistence ────────────────────────────────────────────────────
+  // Track whether initial mount has passed so we don't wipe the session on first render.
+  const sessionInitRef = useRef(false);
+
+  useEffect(() => {
+    if (currentStep === 'design' && template?.id) {
+      sessionInitRef.current = true; // session is now actively managed
+      try {
+        sessionStorage.setItem('gencert_session', JSON.stringify({
+          templateId: template.id,
+          fields,
+          currentPage,
+          canvasScale,
+          templateVersionId,
+        }));
+      } catch { /* quota exceeded – ignore */ }
+    } else if (currentStep === 'template' && sessionInitRef.current) {
+      // Only clear when the user deliberately navigates back to template selection,
+      // not on the initial mount where currentStep starts as 'template'.
+      sessionStorage.removeItem('gencert_session');
+    }
+  }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
+
+  // Reset right-panel position when a new template is loaded or preview opens/closes
+  useEffect(() => {
+    setPanelReady(false);
+  }, [template?.id, previewOpen]);
+
   // Load saved templates and imports
   useEffect(() => {
-    loadSavedData();
+    const isInitialMount = !_initialLoadDone;
+    _initialLoadDone = true;
+    loadSavedData(isInitialMount);
   }, []);
 
-  const loadSavedData = async () => {
+  const loadSavedData = async (isInitialMount = false) => {
     try {
       // Load templates and recent usage in parallel
       const [templatesResponse, recentUsageResponse] = await Promise.all([
@@ -120,6 +234,32 @@ export default function GenerateCertificatePage() {
         console.warn('[Generate] Error loading imports:', error);
         // Continue without imports - user can still proceed
         setSavedImports([]);
+      }
+
+      // ── Restore session on page RELOAD only ───────────────────────────────
+      // Only restore when the user hard-reloaded (F5/Ctrl+R) on the first mount.
+      // _initialLoadDone guards against re-running after SPA navigation, where
+      // performance.getEntriesByType may still report 'reload' from the original load.
+      const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
+      const isReload = isInitialMount && navType === 'reload';
+
+      if (isReload && !new URLSearchParams(window.location.search).get('template')) {
+        try {
+          const saved = sessionStorage.getItem('gencert_session');
+          if (saved) {
+            const { templateId, fields: savedFields, currentPage: savedPage, canvasScale: savedScale, templateVersionId: savedVersionId } = JSON.parse(saved);
+            if (templateId && savedFields?.length >= 0) {
+              const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateId) || { id: templateId };
+              await handleTemplateSelect(templateObj);
+              setFields(savedFields);
+              if (savedPage !== undefined) setCurrentPage(savedPage);
+              if (savedScale) setCanvasScale(savedScale);
+              if (savedVersionId) setTemplateVersionId(savedVersionId);
+            }
+          }
+        } catch {
+          sessionStorage.removeItem('gencert_session');
+        }
       }
     } catch (error) {
       console.error('[Generate] Error loading saved data:', error);
@@ -173,7 +313,7 @@ export default function GenerateCertificatePage() {
         fontSize: (field.style as any)?.fontSize || 16,
         fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
         color: (field.style as any)?.color || '#000000',
-        fontWeight: (field.style as any)?.fontWeight || 'normal',
+        fontWeight: (field.style as any)?.fontWeight || '400',
         fontStyle: (field.style as any)?.fontStyle || 'normal',
         textAlign: (field.style as any)?.textAlign || 'left',
         dateFormat: (field.style as any)?.dateFormat,
@@ -191,7 +331,11 @@ export default function GenerateCertificatePage() {
 
   // Handlers
   const handleTemplateSelect = async (selectedTemplate: any) => {
+    // Increment request ID — any previous in-flight call will see a stale ID and bail out
+    const requestId = ++selectRequestRef.current;
+
     // Reset state for new template to prevent stale data
+    setTemplate(null);
     setTotalPages(1);
     setCurrentPage(0);
     setFields([]);
@@ -240,6 +384,11 @@ export default function GenerateCertificatePage() {
 
     // If dimensions are missing, calculate them
     if (!pdfWidth || !pdfHeight) {
+        if (!fileUrl) {
+            // No file URL available, use defaults
+            pdfWidth = 800;
+            pdfHeight = 600;
+        } else
         try {
             console.log("Template missing dimensions, calculating...");
             const response = await fetch(fileUrl);
@@ -320,13 +469,16 @@ export default function GenerateCertificatePage() {
       fontSize: (field.style as any)?.fontSize || 16,
       fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
       color: (field.style as any)?.color || '#000000',
-      fontWeight: (field.style as any)?.fontWeight || 'normal',
+      fontWeight: (field.style as any)?.fontWeight || '400',
       fontStyle: (field.style as any)?.fontStyle || 'normal',
       textAlign: (field.style as any)?.textAlign || 'left',
       dateFormat: (field.style as any)?.dateFormat,
       prefix: (field.style as any)?.prefix,
       suffix: (field.style as any)?.suffix,
     })) || selectedTemplate.fields || [];
+
+    // If the user already clicked a different template, discard this result
+    if (selectRequestRef.current !== requestId) return;
 
     setTemplate({
       id: selectedTemplate.id,
@@ -337,6 +489,10 @@ export default function GenerateCertificatePage() {
       pdfHeight: pdfHeight || 600,
       pageCount,
       fields: mappedFields,
+    });
+    setTemplateMeta({
+      category: selectedTemplate.category_name || '',
+      subcategory: selectedTemplate.subcategory_name || '',
     });
     setFields(mappedFields);
     setCurrentStep('design');
@@ -410,8 +566,10 @@ export default function GenerateCertificatePage() {
   };
 
   const handleAddField = (field: CertificateField) => {
+    pushToHistory(fields);
     setFields((prev) => [...prev, field]);
     setSelectedFieldId(field.id);
+    setRightPanelVisible(true);
   };
 
   const handleUpdateField = (fieldId: string, updates: Partial<CertificateField>) => {
@@ -421,18 +579,111 @@ export default function GenerateCertificatePage() {
   };
 
   const handleDeleteField = (fieldId: string) => {
+    pushToHistory(fields);
     setFields((prev) => prev.filter((field) => field.id !== fieldId));
-    if (selectedFieldId === fieldId) {
-      setSelectedFieldId(null);
-    }
+    if (selectedFieldId === fieldId) setSelectedFieldId(null);
   };
 
+  const handleFieldsDelete = (fieldIds: string[]) => {
+    pushToHistory(fields);
+    const idSet = new Set(fieldIds);
+    setFields((prev) => prev.filter((f) => !idSet.has(f.id)));
+    if (selectedFieldId && idSet.has(selectedFieldId)) setSelectedFieldId(null);
+  };
+
+  const handleFieldDuplicate = (field: CertificateField) => {
+    pushToHistory(fields);
+    const newField: CertificateField = { ...field, id: crypto.randomUUID() };
+    setFields((prev) => [...prev, newField]);
+    setSelectedFieldId(newField.id);
+  };
+
+  const handleFieldReorder = (fieldId: string, direction: 'front' | 'back') => {
+    pushToHistory(fields);
+    setFields((prev) => {
+      const idx = prev.findIndex(f => f.id === fieldId);
+      if (idx < 0) return prev;
+      const maxZ = Math.max(...prev.map(f => f.zIndex ?? 0));
+      const minZ = Math.min(...prev.map(f => f.zIndex ?? 0));
+      return prev.map(f =>
+        f.id === fieldId
+          ? { ...f, zIndex: direction === 'front' ? maxZ + 1 : minZ - 1 }
+          : f
+      );
+    });
+  };
+
+  const handleFieldLock = (fieldId: string, locked: boolean) => {
+    setFields((prev) => prev.map(f => f.id === fieldId ? { ...f, locked } : f));
+  };
+
+  const handleFieldRename = (fieldId: string, label: string) => {
+    setFields((prev) => prev.map(f => f.id === fieldId ? { ...f, label } : f));
+  };
+
+  const handleFieldLayerReorder = (orderedIds: string[]) => {
+    pushToHistory(fields);
+    setFields((prev) => {
+      const map = new Map(prev.map(f => [f.id, f]));
+      return orderedIds.map(id => map.get(id)).filter(Boolean) as CertificateField[];
+    });
+  };
+
+  // Snapshot current fields before a drag (called by DraggableField onDragStart)
+  const handleFieldDragStart = useCallback(() => {
+    pushToHistory(fields);
+  }, [fields, pushToHistory]);
+
   const handleFieldSelect = (fieldId: string) => {
+    if (previewOpen) return; // don't open right panel in preview mode
     setSelectedFieldId(fieldId);
+    setRightPanelVisible(true);
+  };
+
+  const handleTemplateResizeStart = (width: number, height: number) => {
+    templateResizeOrigin.current = { w: width, h: height, fields: [...fields] };
   };
 
   const handleTemplateResize = (width: number, height: number) => {
+    const { w: ow, h: oh, fields: origFields } = templateResizeOrigin.current;
+    if (ow > 0 && oh > 0 && origFields.length > 0) {
+      const sx = width / ow;
+      const sy = height / oh;
+      setFields(origFields.map(f => ({
+        ...f,
+        x: f.x * sx,
+        y: f.y * sy,
+        width: f.width * sx,
+        height: f.height * sy,
+      })));
+    }
     setTemplate(prev => prev ? { ...prev, pdfWidth: width, pdfHeight: height } : null);
+  };
+
+  const handleAddAssetField = (url: string, name: string, x?: number, y?: number) => {
+    const defaultSize = template
+      ? Math.max(200, Math.round(Math.min(template.pdfWidth, template.pdfHeight) * 0.25))
+      : 200;
+    const newField: CertificateField = {
+      id: crypto.randomUUID(),
+      type: 'image',
+      label: name,
+      imageUrl: url,
+      x: x !== undefined ? x - defaultSize / 2 : (template ? (template.pdfWidth - defaultSize) / 2 : 100),
+      y: y !== undefined ? y - defaultSize / 2 : (template ? (template.pdfHeight - defaultSize) / 2 : 100),
+      width: defaultSize,
+      height: defaultSize,
+      pageNumber: currentPage,
+      fontSize: 0,
+      fontFamily: 'Arial',
+      color: '#000000',
+      fontWeight: '400',
+      fontStyle: 'normal',
+      textAlign: 'left',
+      opacity: 100,
+      cornerRadius: 0,
+    };
+    handleAddField(newField);
   };
 
   // Note: Dimensions are not stored on template in new schema
@@ -446,6 +697,7 @@ export default function GenerateCertificatePage() {
     
     if (!templateId || !versionId || fields.length === 0) return;
 
+    setSaveStatus('saving');
     const timeoutId = setTimeout(async () => {
       // Track field_keys to ensure uniqueness
       const usedFieldKeys = new Set<string>();
@@ -529,7 +781,7 @@ export default function GenerateCertificatePage() {
             fontSize: field.fontSize || 16,
             fontFamily: field.fontFamily || 'Helvetica',
             color: field.color || '#000000',
-            fontWeight: field.fontWeight || 'normal',
+            fontWeight: field.fontWeight || '400',
             fontStyle: field.fontStyle || 'normal',
             textAlign: field.textAlign || 'left',
             originalFieldId: field.id, // Store original ID for field mapping
@@ -620,6 +872,8 @@ export default function GenerateCertificatePage() {
         });
 
         await api.templates.saveFields(templateId, versionId, fieldsToSave);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
         console.log('[Generate] Fields auto-saved to certificate_template_fields', {
           templateId,
           versionId,
@@ -632,6 +886,8 @@ export default function GenerateCertificatePage() {
         
         // Only log if it's not a network error (network errors are expected if backend is down)
         const isNetworkError = errorCode === 'NETWORK_ERROR';
+        setSaveStatus(isNetworkError ? 'idle' : 'error');
+        if (saveStatus === 'error') setTimeout(() => setSaveStatus('idle'), 3000);
         if (!isNetworkError) {
           console.warn('[Generate] Failed to autosave fields (non-fatal):', {
             error: errorMessage,
@@ -767,15 +1023,23 @@ export default function GenerateCertificatePage() {
           <div key={step.id} className="flex items-center">
             <button
               onClick={() => {
-                // Allow navigation to completed steps or next step if current is completed
-                if (step.completed || isActive) {
-                  setCurrentStep(step.id as any);
-                } else if (index === steps.findIndex(s => s.id === currentStep) + 1) {
-                  // Allow moving to next step even if not completed
-                  setCurrentStep(step.id as any);
+                const canNavigate = step.completed || isActive || index === steps.findIndex(s => s.id === currentStep) + 1;
+                if (!canNavigate) return;
+                // Going back to template selection — warn if fields exist
+                if (step.id === 'template' && currentStep !== 'template' && fields.length > 0) {
+                  setShowNavGuard(true);
+                  return;
                 }
+                if (step.id === 'template' && currentStep !== 'template') {
+                  selectRequestRef.current++;
+                  setTemplate(null);
+                  setFields([]);
+                  setSelectedFieldId(null);
+                  setPanelReady(false);
+                }
+                setCurrentStep(step.id as any);
               }}
-              disabled={!step.completed && !isActive && index !== steps.findIndex(s => s.id === currentStep) + 1}
+              disabled={!step.completed && !isActive && index !== steps.findIndex(s => s.id === currentStep) + 1 && step.id !== 'template'}
               className={`
                 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all
                 ${isActive 
@@ -813,169 +1077,460 @@ export default function GenerateCertificatePage() {
     </div>
   );
 
+  // Position the panel in the upper-right of the canvas area on first show
+  const initPanelPos = () => {
+    if (panelReady) return;
+    const rect = canvasAreaRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPanelPos({ x: rect.width - 304, y: 16 }); // 288px panel + 16px margin
+      setPanelReady(true);
+    }
+  };
+
+  const handlePanelDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    panelDragOrigin.current = { mx: e.clientX, my: e.clientY, px: panelPos.x, py: panelPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!panelDragOrigin.current) return;
+      const { mx, px } = panelDragOrigin.current;
+      setPanelPos(prev => ({ ...prev, x: px + ev.clientX - mx }));
+    };
+    const onUp = () => {
+      panelDragOrigin.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const handleLeftPanelDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    leftPanelDragOrigin.current = { mx: e.clientX, my: e.clientY, px: leftPanelPos.x, py: leftPanelPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!leftPanelDragOrigin.current) return;
+      const { mx, px } = leftPanelDragOrigin.current;
+      setLeftPanelPos(prev => ({ ...prev, x: px + ev.clientX - mx }));
+    };
+    const onUp = () => {
+      leftPanelDragOrigin.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)]">
-      {mounted && typeof document !== 'undefined' && document.getElementById('header-portal') && createPortal(
-        stepperContent,
-        document.getElementById('header-portal')!
-      )}
-      {mounted && typeof document !== 'undefined' && document.getElementById('header-left-portal') && createPortal(
-        titleContent,
-        document.getElementById('header-left-portal')!
-      )}
-      
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Step Content */}
-        {currentStep === 'template' && (
-          <div className="flex-1 p-8 overflow-y-auto">
-            <TemplateSelector
-              savedTemplates={savedTemplates}
-              onSelectTemplate={handleTemplateSelect}
-              onNewUpload={handleNewTemplateUpload}
-              recentGenerated={recentGenerated}
-              inProgress={inProgressTemplates}
-              recentLoading={recentLoading}
-              onSelectRecentTemplate={handleRecentTemplateSelect}
-            />
-          </div>
+    <>
+      {/* Normal flow layout (template / data / export steps) */}
+      <div className="flex flex-col h-[calc(100vh-7rem)]">
+        {mounted && currentStep !== 'design' && typeof document !== 'undefined' && document.getElementById('header-portal') && createPortal(
+          stepperContent,
+          document.getElementById('header-portal')!
+        )}
+        {mounted && typeof document !== 'undefined' && document.getElementById('header-left-portal') && createPortal(
+          titleContent,
+          document.getElementById('header-left-portal')!
         )}
 
-        {currentStep === 'design' && template && (
-          <>
-            {/* Left Sidebar - Design Tools */}
-            <div className="w-64 border-r bg-card flex flex-col">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-                <div className="px-4 pt-4 pb-2">
-                   <TabsList className="w-full grid grid-cols-2">
-                    <TabsTrigger value="fields" className="flex items-center gap-2">
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Fields</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="assets" className="flex items-center gap-2">
-                      <ImageIcon className="w-3.5 h-3.5" />
-                      <span>Assets</span>
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <TabsContent value="fields" className="p-4 mt-0 space-y-6 h-full">
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Add Fields</h3>
-                      <FieldTypeSelector
-                        onAddField={handleAddField}
-                        pdfWidth={template.pdfWidth}
-                        pdfHeight={template.pdfHeight}
-                        currentPage={currentPage}
-                      />
-                    </div>
-
-                    <div className="pb-4">
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Layers</h3>
-                      <FieldLayersList
-                        fields={fields}
-                        selectedFieldId={selectedFieldId}
-                        hiddenFields={hiddenFields}
-                        onFieldSelect={handleFieldSelect}
-                        onFieldDelete={handleDeleteField}
-                        onToggleVisibility={handleToggleVisibility}
-                      />
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="assets" className="p-4 mt-0 h-full">
-                    <AssetLibrary />
-                  </TabsContent>
-                </div>
-              </Tabs>
+        <div className="flex-1 flex overflow-hidden">
+          {currentStep === 'template' && (
+            <div className="flex-1 p-8 overflow-y-auto">
+              <TemplateSelector
+                savedTemplates={savedTemplates}
+                onSelectTemplate={handleTemplateSelect}
+                onNewUpload={handleNewTemplateUpload}
+                recentGenerated={recentGenerated}
+                inProgress={inProgressTemplates}
+                recentLoading={recentLoading}
+                onSelectRecentTemplate={handleRecentTemplateSelect}
+              />
             </div>
+          )}
 
-            {/* Center Canvas */}
-            <div className="flex-1 bg-muted/20 flex flex-col overflow-hidden relative">
-              {useInfiniteCanvas ? (
-                <InfiniteCanvas
+          {currentStep === 'data' && (
+            <div className="flex-1 p-8 overflow-y-auto">
+              <DataSelector
+                fields={fields}
+                savedImports={savedImports}
+                importedData={importedData}
+                fieldMappings={fieldMappings}
+                onDataImport={handleDataImport}
+                onMappingChange={setFieldMappings}
+                onLoadImport={handleLoadImport}
+                onContinueToGenerate={handleContinueToGenerate}
+              />
+            </div>
+          )}
+
+          {currentStep === 'export' && (
+            <div className="flex-1 p-8 overflow-y-auto">
+              <ExportSection
+                template={template}
+                fields={fields}
+                importedData={importedData}
+                fieldMappings={fieldMappings}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Full-screen design overlay ── */}
+      {currentStep === 'design' && template && (
+        <div className="fixed top-0 left-14 right-0 bottom-0 z-50 bg-background flex flex-col">
+
+          {/* Canvas area + optional preview — flex row */}
+          <div className="flex-1 flex overflow-hidden">
+
+          {/* Editing canvas — fills remaining width */}
+          <div className="flex-1 relative overflow-hidden min-w-0" ref={canvasAreaRef}>
+            {useInfiniteCanvas ? (
+              <ErrorBoundary fallbackLabel="Canvas failed to load">
+              <InfiniteCanvas
+                fileUrl={template.fileUrl}
+                fileType={template.fileType}
+                pdfWidth={template.pdfWidth}
+                pdfHeight={template.pdfHeight}
+                fields={fields.filter(f => (f.pageNumber ?? 0) === currentPage)}
+                selectedFieldId={selectedFieldId}
+                hiddenFields={hiddenFields}
+                scale={canvasScale}
+                currentPage={currentPage + 1}
+                totalPages={totalPages}
+                onFieldUpdate={handleUpdateField}
+                onFieldSelect={handleFieldSelect}
+                onScaleChange={setCanvasScale}
+                onFieldDelete={handleDeleteField}
+                onTemplateResize={handleTemplateResize}
+                onTemplateResizeStart={handleTemplateResizeStart}
+                onPageChange={(page) => setCurrentPage(page - 1)}
+                onAssetDrop={(url, name, x, y) => handleAddAssetField(url, name, x, y)}
+                onFieldDuplicate={handleFieldDuplicate}
+                onPreviewToggle={() => {
+                  const opening = !previewOpen;
+                  setPreviewOpen(opening);
+                  if (opening) {
+                    setLeftPanelVisible(false);
+                    setRightPanelVisible(false);
+                    setSelectedFieldId(null);
+                  }
+                }}
+                previewOpen={previewOpen}
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                saveStatus={saveStatus}
+                onFieldsDelete={handleFieldsDelete}
+                onFieldReorder={handleFieldReorder}
+                onFieldLock={handleFieldLock}
+                onFieldDragStart={handleFieldDragStart}
+                snapToGrid={snapToGrid}
+                onSnapToggle={() => setSnapToGrid(v => !v)}
+                fitTrigger={fitTrigger}
+              />
+              </ErrorBoundary>
+            ) : (
+              <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8">
+                <CertificateCanvas
                   fileUrl={template.fileUrl}
                   fileType={template.fileType}
                   pdfWidth={template.pdfWidth}
                   pdfHeight={template.pdfHeight}
-                  fields={fields.filter(f => (f.pageNumber ?? 0) === currentPage)}
+                  fields={fields}
                   selectedFieldId={selectedFieldId}
                   hiddenFields={hiddenFields}
                   scale={canvasScale}
-                  currentPage={currentPage + 1}
-                  totalPages={totalPages}
                   onFieldUpdate={handleUpdateField}
                   onFieldSelect={handleFieldSelect}
                   onScaleChange={setCanvasScale}
                   onFieldDelete={handleDeleteField}
                   onTemplateResize={handleTemplateResize}
-                  onPageChange={(page) => setCurrentPage(page - 1)}
-                />
-              ) : (
-                <div className="flex-1 overflow-auto flex items-center justify-center p-8">
-                  <CertificateCanvas
-                    fileUrl={template.fileUrl}
-                    fileType={template.fileType}
-                    pdfWidth={template.pdfWidth}
-                    pdfHeight={template.pdfHeight}
-                    fields={fields}
-                    selectedFieldId={selectedFieldId}
-                    hiddenFields={hiddenFields}
-                    scale={canvasScale}
-                    onFieldUpdate={handleUpdateField}
-                    onFieldSelect={handleFieldSelect}
-                    onScaleChange={setCanvasScale}
-                    onFieldDelete={handleDeleteField}
-                    onTemplateResize={handleTemplateResize}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Right Sidebar - Properties (Only shown when field selected) */}
-            {selectedField && (
-              <div className="w-72 border-l bg-card overflow-y-auto">
-                <RightPanel
-                  selectedField={selectedField}
-                  onFieldUpdate={(updates) => {
-                    if (selectedFieldId) {
-                      handleUpdateField(selectedFieldId, updates);
-                    }
-                  }}
                 />
               </div>
             )}
-          </>
-        )}
 
-        {currentStep === 'data' && (
-          <div className="flex-1 p-8 overflow-y-auto">
-            <DataSelector
-              fields={fields}
-              savedImports={savedImports}
-              importedData={importedData}
-              fieldMappings={fieldMappings}
-              onDataImport={handleDataImport}
-              onMappingChange={setFieldMappings}
-              onLoadImport={handleLoadImport}
-              onContinueToGenerate={handleContinueToGenerate}
-            />
-          </div>
-        )}
+            {/* ── Left panel collapsed card (wide, short) ── */}
+            {!leftPanelVisible && (
+              <div
+                className="absolute z-40 flex items-center gap-2.5 bg-card border border-border/50 rounded-xl shadow-md px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors select-none"
+                style={{ left: leftPanelPos.x, top: 16, width: 256 }}
+                onClick={() => setLeftPanelVisible(true)}
+                title="Expand layers panel"
+              >
+                <SlidersHorizontal className="w-4 h-4 text-muted-foreground/70 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  {template ? (
+                    <>
+                      <p className="text-[10px] font-semibold text-foreground truncate leading-tight">{template.templateName}</p>
+                      {(templateMeta.category || templateMeta.subcategory) && (
+                        <p className="text-[9px] text-muted-foreground truncate leading-tight">
+                          {[templateMeta.category, templateMeta.subcategory].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">Layers</p>
+                  )}
+                </div>
+                <Maximize2 className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+              </div>
+            )}
 
-        {currentStep === 'export' && (
-          <div className="flex-1 p-8 overflow-y-auto">
-            <ExportSection
-              template={template}
-              fields={fields}
-              importedData={importedData}
-              fieldMappings={fieldMappings}
-            />
+            {/* ── Left floating panel ── */}
+            {leftPanelVisible && (
+              <div
+                className="absolute z-40 w-64 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
+                style={{
+                  left: leftPanelPos.x,
+                  top: 16,
+                  height: 'calc(100% - 32px)',
+                }}
+              >
+                {/* Drag handle header */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border/40 cursor-grab active:cursor-grabbing shrink-0 select-none"
+                  onMouseDown={handleLeftPanelDragStart}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium text-foreground flex-1">Layers</span>
+                  <button
+                    onClick={() => setLeftPanelVisible(false)}
+                    className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors"
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Scrollable tab content */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
+                    <div className="px-3 pt-2 pb-1 shrink-0">
+                      <div className="flex items-center bg-muted rounded-lg p-1 gap-1 h-8">
+                        <button
+                          onClick={() => setActiveTab('fields')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all ${
+                            activeTab === 'fields' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Layers className="w-3 h-3" />
+                          Fields
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('assets')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all ${
+                            activeTab === 'assets' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <ImageIcon className="w-3 h-3" />
+                          Assets
+                        </button>
+                      </div>
+                    </div>
+
+                    <TabsContent value="fields" className="p-3 mt-0 space-y-5">
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Add Fields</p>
+                        <FieldTypeSelector
+                          onAddField={handleAddField}
+                          onAddImageField={handleAddAssetField}
+                          pdfWidth={template.pdfWidth}
+                          pdfHeight={template.pdfHeight}
+                          currentPage={currentPage}
+                        />
+                      </div>
+                      <div className="pb-4">
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Layers</p>
+                        <ErrorBoundary fallbackLabel="Layers panel error">
+                        <FieldLayersList
+                          fields={fields}
+                          selectedFieldId={selectedFieldId}
+                          hiddenFields={hiddenFields}
+                          onFieldSelect={handleFieldSelect}
+                          onFieldDelete={handleDeleteField}
+                          onToggleVisibility={handleToggleVisibility}
+                          onFieldReorder={handleFieldLayerReorder}
+                          onFieldLock={handleFieldLock}
+                          onFieldRename={handleFieldRename}
+                          onFieldDuplicate={handleFieldDuplicate}
+                        />
+                        </ErrorBoundary>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="assets" className="p-3 mt-0">
+                      <AssetLibrary
+                        assets={libraryAssets}
+                        onAssetsChange={setLibraryAssets}
+                        onAddAsset={handleAddAssetField}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </div>
+            )}
+
+            {/* ── Top-right: panel restore only (preview is in toolbar) ── */}
+            <div className="absolute top-4 right-4 z-41 flex flex-col gap-2">
+              {/* Properties restore — only when right panel hidden, field selected, not in preview */}
+              {selectedField && !rightPanelVisible && !previewOpen && (
+                <button
+                  className="w-8 h-8 flex items-center justify-center bg-card border border-border/50 rounded-lg shadow-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setRightPanelVisible(true)}
+                  title="Show properties panel"
+                >
+                  <Palette className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* ── Right properties panel (draggable floating popout) ── */}
+            {selectedField && rightPanelVisible && (
+              <div
+                className="absolute z-40 w-72 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
+                style={{
+                  left: panelPos.x,
+                  top: 16,
+                  height: 'calc(100% - 32px)',
+                }}
+                ref={(el) => { if (el && !panelReady) initPanelPos(); }}
+              >
+                {/* Drag handle header */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border/40 cursor-grab active:cursor-grabbing shrink-0 select-none"
+                  onMouseDown={handlePanelDragStart}
+                >
+                  <GripHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium text-foreground flex-1">Properties</span>
+                  <button
+                    onClick={() => setRightPanelVisible(false)}
+                    className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    title="Minimise panel"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Scrollable content */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <RightPanel
+                    selectedField={selectedField}
+                    onFieldUpdate={(updates) => {
+                      if (selectedFieldId) handleUpdateField(selectedFieldId, updates);
+                    }}
+                    scale={canvasScale}
+                    onScaleChange={setCanvasScale}
+                    onFitToScreen={() => setFitTrigger(t => t + 1)}
+                    snapToGrid={snapToGrid}
+                    onSnapToggle={() => setSnapToGrid(v => !v)}
+                    pdfWidth={template?.pdfWidth}
+                    pdfHeight={template?.pdfHeight}
+                  />
+                </div>
+              </div>
+            )}
+          </div>{/* end editing canvas */}
+
+          {/* ── Preview panel ── */}
+          {previewOpen && (
+            <div className="flex-1 flex flex-col border-l border-border/40 min-w-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border/30 bg-card/80 backdrop-blur-sm shrink-0">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-xs font-semibold">Preview</span>
+                  <span className="text-[10px] text-muted-foreground/60">· sample values</span>
+                </div>
+                <button
+                  onClick={() => setPreviewOpen(false)}
+                  className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors"
+                  title="Close preview"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {/* Preview content */}
+              <div className="flex-1 overflow-hidden">
+                <CertificatePreview
+                  template={template}
+                  fields={fields}
+                  currentPage={currentPage}
+                />
+              </div>
+            </div>
+          )}
+
+          </div>{/* end flex row */}
+
+          {/* ── Stepper bottom bar ── */}
+          <div className="shrink-0 border-t border-border/40 bg-card/95 backdrop-blur-sm">
+            <div className="flex items-center px-4 py-2 gap-2">
+              <div className="flex-1 flex justify-center">
+                {stepperExpanded ? (
+                  stepperContent
+                ) : (
+                  <span className="text-xs font-medium text-muted-foreground select-none">
+                    {steps.find(s => s.id === currentStep)?.label ?? 'Design Fields'}
+                  </span>
+                )}
+              </div>
+              <button
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                onClick={() => setStepperExpanded(v => !v)}
+                title={stepperExpanded ? 'Collapse steps' : 'Expand steps'}
+              >
+                {stepperExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-    </div>
+
+        </div>
+      )}
+
+      {/* ── Navigation guard dialog ── */}
+      {showNavGuard && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Go back to template selection?</h3>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                You have {fields.length} field{fields.length !== 1 ? 's' : ''} placed. Going back will clear all of them and cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted transition-colors"
+                onClick={() => setShowNavGuard(false)}
+              >
+                Stay here
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={() => {
+                  setShowNavGuard(false);
+                  selectRequestRef.current++;
+                  setTemplate(null);
+                  setFields([]);
+                  setSelectedFieldId(null);
+                  setPanelReady(false);
+                  historyRef.current = [];
+                  futureRef.current = [];
+                  setCanUndo(false);
+                  setCanRedo(false);
+                  setCurrentStep('template');
+                }}
+              >
+                Clear & go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

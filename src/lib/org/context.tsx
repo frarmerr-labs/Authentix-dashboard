@@ -10,7 +10,7 @@ import {
 
 /**
  * Organization context for URL-based multi-tenant routing
- * 
+ *
  * Pattern: Context with minimal state, derived from URL params
  * This is a modern React 19 pattern - context for static config,
  * not for fetched data (which should use Server Components or hooks)
@@ -18,9 +18,9 @@ import {
 
 /** Organization context value type */
 export interface OrgContextValue {
-  /** Current organization ID from URL */
-  readonly orgId: string;
-  /** Base path for current org: /dashboard/org/[orgId] */
+  /** Current organization slug from URL */
+  readonly slug: string;
+  /** Base path for current org: /dashboard/org/[slug] */
   readonly basePath: string;
   /** Generate a path within the current org - memoized */
   orgPath: (path: string) => string;
@@ -30,24 +30,24 @@ const OrgContext = createContext<OrgContextValue | null>(null);
 
 interface OrgProviderProps {
   readonly children: ReactNode;
-  readonly orgId: string;
+  readonly slug: string;
 }
 
 /**
  * Provider for organization context
- * 
+ *
  * @example
  * // In layout.tsx
- * <OrgProvider orgId={orgId}>
+ * <OrgProvider slug={slug}>
  *   {children}
  * </OrgProvider>
- * 
+ *
  * // In child components
  * const { orgPath } = useOrg();
  * <Link href={orgPath("/templates")}>Templates</Link>
  */
-export function OrgProvider({ children, orgId }: OrgProviderProps) {
-  const basePath = `/dashboard/org/${orgId}` as const;
+export function OrgProvider({ children, slug }: OrgProviderProps) {
+  const basePath = `/dashboard/org/${slug}` as const;
 
   const orgPath = useCallback(
     (path: string): string => {
@@ -62,8 +62,8 @@ export function OrgProvider({ children, orgId }: OrgProviderProps) {
 
   // Memoize context value to prevent unnecessary re-renders
   const value = useMemo<OrgContextValue>(
-    () => ({ orgId, basePath, orgPath }),
-    [orgId, basePath, orgPath]
+    () => ({ slug, basePath, orgPath }),
+    [slug, basePath, orgPath]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
@@ -72,9 +72,9 @@ export function OrgProvider({ children, orgId }: OrgProviderProps) {
 /**
  * Hook to access organization context
  * @throws Error if used outside OrgProvider
- * 
+ *
  * @example
- * const { orgId, orgPath } = useOrg();
+ * const { slug, orgPath } = useOrg();
  */
 export function useOrg(): OrgContextValue {
   const context = useContext(OrgContext);
@@ -88,11 +88,18 @@ export function useOrg(): OrgContextValue {
 }
 
 /**
- * Hook to get just the orgId
- * Use this when you only need the ID for simpler components
+ * Hook to get just the org slug
+ * Use this when you only need the slug for simpler components
+ */
+export function useOrgSlug(): string {
+  return useOrg().slug;
+}
+
+/**
+ * @deprecated Use useOrgSlug() instead
  */
 export function useOrgId(): string {
-  return useOrg().orgId;
+  return useOrg().slug;
 }
 
 /**
