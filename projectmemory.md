@@ -106,6 +106,10 @@ Not implemented in frontend runtime:
 - Do not bypass proxy allowlist rules when introducing new endpoints.
 - Keep certificate schema fields aligned (`issued_at`, `expires_at`, `active/revoked/expired`).
 - Keep manual data-entry callbacks split (`onDataChange` vs `onDataSubmit`) to avoid auto-navigation regressions.
+- `--primary` CSS variable is `oklch()` — never use `hsl(var(--primary))`. Use `#3ECF8E` directly for inline styles or canvas/SVG.
+- React StrictMode double-mounts effects. Any `useEffect` that sets a ref must reset it in the effect body, not just clean up in the return. Pattern: `useEffect(() => { ref.current = true; return () => { ref.current = false; }; }, [])`.
+- Multi-flag async state (`isA + isB + isC + useEffect`) is fragile. Prefer a single state enum for mutually exclusive UI phases.
+- Dragger/fill sync: if two DOM siblings share a CSS transition, they will drift. Make the dragger a child of the fill element so a single `width` transition moves both.
 
 ---
 
@@ -119,3 +123,4 @@ Not implemented in frontend runtime:
 - **2026-03-20** | Certificate schema alignment | Updated certificate interfaces and UI usage for live backend fields.
 - **2026-03-21** | Generate-certificate UX and bug fixes | Improved template selection flow, preview/download UX, data-entry behavior, and field resizing/selection behavior.
 - **2026-03-21** | Documentation modernization refresh | Reorganized core docs (`README.md`, `AGENTS.md`, `projectmemory.md`) and added `SYSTEM_OVERVIEW.md` and `FILE_INDEX.md` for onboarding and navigation.
+- **2026-03-22** | ExportSection generation overlay overhaul | Replaced fragile `isGenerating+isShowingSuccess+generationComplete` trio with single `overlayState` enum (`hidden|generating|success`). Fixed StrictMode `isMountedRef` bug (effect body now resets ref to `true` on remount). Replaced `useEffect`-based success trigger with direct `setTimeout` in `handleGenerate`. Fixed brand color invisibility (`--primary` is oklch, not HSL — must use `#3ECF8E` directly). Fixed dragger/fill sync by making dragger a child element of fill div. Raised progress cap from ~83% to ~98%. Added CSS-only generation animation (orbiting dots, document lines) and success animation (`ShieldCheck` + floating `BadgeCheck`) with keyframes hoisted to always-rendered `<style>` tag.

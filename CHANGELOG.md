@@ -6,11 +6,38 @@ All notable changes to this project are documented here.
 
 | Release | Date | Focus |
 |---|---|---|
+| Unreleased | 2026-03-22 | ExportSection generation overlay rework — state model, StrictMode fix, brand color, dragger sync, progress cap, success icons |
 | Unreleased | 2026-03-21 | Generate-certificate UX fixes, ManualDataEntry fixes |
 | Unreleased | 2026-03-20 | Auth/login cleanup, certificate schema alignment |
 | Unreleased | 2026-03-19 | Slug routing migration, API contract alignment |
 | Historical | 2026-01-14 | Signup and verification flow improvements |
 | Historical | 2026-01-13 | Bootstrap and dashboard guard groundwork |
+
+---
+
+## [Unreleased] - 2026-03-22
+
+### Changes
+
+| Type | Area | Summary | Key Files |
+|---|---|---|---|
+| Fixed | ExportSection | Replaced `isGenerating + isShowingSuccess + generationComplete` trio with single `overlayState: 'hidden' \| 'generating' \| 'success'` enum — eliminates multi-flag race conditions and `useEffect` dependency fragility | `ExportSection.tsx` |
+| Fixed | ExportSection | React StrictMode `isMountedRef` bug: effect body now sets `isMountedRef.current = true` on mount. Without this, double-mount cleanup left ref permanently `false`, silently aborting the success path | `ExportSection.tsx` |
+| Fixed | ExportSection | Success now triggered via direct `setOverlayState('success')` + `setTimeout` inside `handleGenerate` — not a `useEffect` watching state deps | `ExportSection.tsx` |
+| Fixed | ExportSection | Brand color: `--primary` is `oklch()` not HSL. `hsl(var(--primary))` renders as nothing. All generation/success UI now uses `#3ECF8E` directly | `ExportSection.tsx` |
+| Fixed | ExportSection | Dragger/fill sync: dragger dot is now a child of the fill `<div>` at `right: -7px`. Single `width` transition moves both — physically impossible to drift | `ExportSection.tsx` |
+| Improved | ExportSection | Progress simulation cap raised from ~83% to ~98%: `Math.min(elapsed/estimatedMs, 0.98) * share * 0.98` — crawls up to 98% while API is in-flight, jumps to 100% on completion | `ExportSection.tsx` |
+| Fixed | ExportSection | All CSS keyframes hoisted to a single always-rendered `<style>` tag — previously some keyframes were inside conditional branches and missing from DOM when animations started | `ExportSection.tsx` |
+| Improved | ExportSection | CSS-only generation animation: orbiting dots at 3 radii + document skeleton lines + pulsing center — no external assets | `ExportSection.tsx` |
+| Improved | ExportSection | Success icons: `ShieldCheck` (96px) with `genShieldPop` entry + `genShieldGlow` loop; floating `BadgeCheck` overlay with `genBadgePop` entry + `genBadgeFloat` loop | `ExportSection.tsx` |
+
+### Notes
+
+| Item | Detail |
+|---|---|
+| Root cause | StrictMode double-mount + `isMountedRef` with no body reset was the persistent stuck-at-100% root cause across multiple fix attempts. |
+| CSS variable gotcha | `--primary` in this project is `oklch()`. Never use `hsl(var(--primary))` in inline styles or canvas — use `#3ECF8E` directly. |
+| State model lesson | Multi-flag async state (`isA + isB + isC + useEffect`) is fragile for sequential UI phases. Single enum is the correct pattern. |
 
 ---
 

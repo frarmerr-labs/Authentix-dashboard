@@ -14,6 +14,7 @@ import { format, isValid } from 'date-fns';
 import {
   Download, Loader2, CheckCircle2, AlertCircle, Calendar, Plus, X,
   FileText, ChevronDown, ChevronUp, Settings2, Eye, ChevronLeft, ChevronRight,
+  ShieldCheck, BadgeCheck,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ExpiryDateSelector, type ExpiryType } from './ExpiryDateSelector';
@@ -383,8 +384,8 @@ export function ExportSection({
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
       progressTimerRef.current = setInterval(() => {
         elapsed += tickMs;
-        const frac = Math.min(elapsed / estimatedMs, 0.92);
-        const within = frac * templateProgressShare * 0.9;
+        const frac = Math.min(elapsed / estimatedMs, 0.98);
+        const within = frac * templateProgressShare * 0.98;
         setProgress(Math.round(templateBaseProgress + within));
         setSimulatedCount(Math.max(1, Math.round(frac * totalRows)));
       }, tickMs);
@@ -467,7 +468,10 @@ export function ExportSection({
         <style>{`
           @keyframes genZoomIn    { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
           @keyframes genRipple    { 0%{transform:scale(1);opacity:0.65} 100%{transform:scale(2.6);opacity:0} }
-          @keyframes genOrbRing   { 0%{transform:translate(-50%,-50%) scale(1);opacity:0.8} 100%{transform:translate(-50%,-50%) scale(2.8);opacity:0} }
+          @keyframes genShieldPop { 0%{opacity:0;transform:scale(0.4) rotate(-12deg)} 65%{transform:scale(1.12) rotate(4deg)} 100%{opacity:1;transform:scale(1) rotate(0deg)} }
+          @keyframes genBadgePop  { 0%{opacity:0;transform:scale(0) rotate(20deg)} 70%{transform:scale(1.18) rotate(-6deg)} 100%{opacity:1;transform:scale(1) rotate(0deg)} }
+          @keyframes genBadgeFloat{ 0%,100%{transform:translateY(0px) rotate(-6deg)} 50%{transform:translateY(-6px) rotate(-2deg)} }
+          @keyframes genShieldGlow{ 0%,100%{filter:drop-shadow(0 0 8px #3ECF8E55)} 50%{filter:drop-shadow(0 0 22px #3ECF8Eaa)} }
           @keyframes genPulse     { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
           @keyframes genSpin      { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
           @keyframes genSpinRev   { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
@@ -488,18 +492,43 @@ export function ExportSection({
         <div className="flex flex-col items-center gap-10">
           {overlayState === 'success' ? (
             /* ── Success ── */
-            <div className="flex flex-col items-center gap-6" style={{ animation: 'genZoomIn 0.4s ease-out' }}>
-              <div className="relative flex items-center justify-center">
-                <div className="absolute w-40 h-40 rounded-full" style={{ border: '2px solid #3ECF8E66', animation: 'genRipple 1.4s ease-out infinite' }} />
-                <div className="absolute w-40 h-40 rounded-full" style={{ border: '2px solid #3ECF8E44', animation: 'genRipple 1.4s ease-out 0.45s infinite' }} />
-                <div className="absolute w-40 h-40 rounded-full" style={{ border: '1px solid #3ECF8E22', animation: 'genRipple 1.4s ease-out 0.9s infinite' }} />
-                <div className="w-36 h-36 rounded-full flex items-center justify-center" style={{ background: '#3ECF8E18', border: '1.5px solid #3ECF8E55' }}>
-                  <CheckCircle2 className="w-16 h-16" style={{ color: '#3ECF8E' }} />
+            <div className="flex flex-col items-center gap-10">
+              {/* Icon cluster */}
+              <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
+                {/* Ripple rings */}
+                <div className="absolute w-48 h-48 rounded-full" style={{ border: '2px solid #3ECF8E55', animation: 'genRipple 1.6s ease-out infinite' }} />
+                <div className="absolute w-48 h-48 rounded-full" style={{ border: '1.5px solid #3ECF8E33', animation: 'genRipple 1.6s ease-out 0.5s infinite' }} />
+                <div className="absolute w-48 h-48 rounded-full" style={{ border: '1px solid #3ECF8E1a', animation: 'genRipple 1.6s ease-out 1s infinite' }} />
+
+                {/* Glow backdrop */}
+                <div className="absolute w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle, #3ECF8E22 0%, transparent 70%)' }} />
+
+                {/* Main shield */}
+                <ShieldCheck
+                  style={{
+                    width: 96, height: 96,
+                    color: '#3ECF8E',
+                    animation: 'genShieldPop 0.55s cubic-bezier(0.34,1.56,0.64,1) both, genShieldGlow 2s ease-in-out 0.6s infinite',
+                  }}
+                />
+
+                {/* Floating badge — top right */}
+                <div style={{
+                  position: 'absolute', top: 14, right: 10,
+                  animation: 'genBadgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.2s both',
+                }}>
+                  <div style={{
+                    animation: 'genBadgeFloat 2.8s ease-in-out 0.7s infinite',
+                  }}>
+                    <BadgeCheck style={{ width: 36, height: 36, color: '#3ECF8E' }} />
+                  </div>
                 </div>
               </div>
-              <div className="text-center space-y-1.5" style={{ animation: 'genFadeSlide 0.5s ease-out 0.2s both' }}>
-                <p className="text-3xl font-bold">All done!</p>
-                <p className="text-base text-muted-foreground">
+
+              {/* Text */}
+              <div className="text-center" style={{ animation: 'genFadeSlide 0.5s ease-out 0.35s both' }}>
+                <p className="text-4xl font-bold mb-4">All done!</p>
+                <p className="text-lg text-muted-foreground">
                   {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
                 </p>
               </div>
@@ -583,34 +612,31 @@ export function ExportSection({
 
               {/* Progress bar */}
               <div style={{ width: 480 }} className="space-y-2">
-                <div className="relative rounded-full" style={{ height: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                <div className="relative rounded-full overflow-visible" style={{ height: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  {/* Fill — dragger is a child so it moves with the bar, always in sync */}
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out"
+                    className="absolute inset-y-0 left-0 rounded-full"
                     style={{
                       width: `${progress}%`,
                       background: '#3ECF8E',
                       boxShadow: progress > 0 ? '0 0 10px #3ECF8E88' : 'none',
                       minWidth: progress > 0 ? 10 : 0,
+                      transition: 'width 600ms linear',
                     }}
-                  />
-                  {/* Leading orb */}
-                  {progress > 0 && progress < 100 && (
-                    <div style={{ position: 'absolute', left: `${Math.min(progress, 97)}%`, top: '50%', zIndex: 10 }}>
+                  >
+                    {/* Dragger dot — pinned to right edge of fill, always perfectly in sync */}
+                    {progress > 0 && progress < 100 && (
                       <div style={{
-                        position: 'absolute', width: 20, height: 20, borderRadius: '50%',
-                        border: '1.5px solid #3ECF8E',
-                        top: '50%', left: '50%',
-                        animation: 'genOrbRing 1.4s ease-out infinite',
-                      }} />
-                      <div style={{
-                        width: 12, height: 12, borderRadius: '50%',
+                        position: 'absolute',
+                        right: -7,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 14, height: 14, borderRadius: '50%',
                         background: 'white',
-                        boxShadow: '0 0 0 2.5px #3ECF8E',
-                        transform: 'translate(-50%, -50%)',
-                        position: 'relative',
+                        boxShadow: '0 0 0 2.5px #3ECF8E, 0 0 8px #3ECF8E66',
                       }} />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between px-0.5">
                   <span className="text-sm font-bold tabular-nums" style={{ color: '#3ECF8E' }}>{progress}%</span>
