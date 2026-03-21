@@ -1,31 +1,119 @@
-# Authentix
+# Authentix Dashboard
 
-Enterprise certificate generation, management, and verification platform.
+Frontend dashboard for Authentix: a certificate issuance, management, and verification platform for organizations.
 
-## Quick Start
+## Project Overview
 
-### Prerequisites
+This repository contains the Next.js dashboard used by authenticated organization users to:
+- create and manage certificate templates
+- import recipient data
+- generate certificates
+- track billing, usage, and verification events
+- manage organization settings and API credentials
 
-- **Node.js** ≥ 24.0.0 (LTS)
-- **npm** ≥ 10.0.0
-- Backend API running (see [Backend Setup](#backend-setup))
+Why this architecture exists:
+- keeps browser clients away from direct backend and database access
+- centralizes security controls in Next.js route handlers and proxying
+- enforces org-scoped routing with `/dashboard/org/[slug]`
 
-### Installation
+## Tech Stack
+
+- Framework: Next.js 16 (App Router)
+- UI: React 19 + Tailwind CSS 4 + Radix UI primitives
+- Language: TypeScript (strict mode)
+- Data/Files: `xlsx`, `csv-stringify`, `jszip`
+- Certificate tooling: `pdf-lib`, `react-pdf`, `pdfjs-dist`, `qrcode`
+- Charts/analytics: `recharts`
+
+Key config references:
+- `package.json`
+- `next.config.ts`
+- `tsconfig.json`
+- `eslint.config.mjs`
+- `tailwind.config.ts`
+
+## Architecture Summary
+
+The dashboard follows a BFF-style pattern:
+- browser requests app pages and internal APIs from Next.js
+- frontend code calls `/api/proxy/*` and `/api/auth/*`
+- Next.js server forwards validated requests to the backend API
+- JWTs are stored in HttpOnly cookies and forwarded server-side
+
+High-level path:
+- Browser -> Next App Router -> Next route handlers/proxy -> backend API
+
+Core security expectations:
+- no direct Supabase client for DB access in frontend
+- no token storage in `localStorage` or `sessionStorage`
+- proxy path allowlist and path traversal protections remain enforced
+
+## Folder Structure
+
+```text
+app/
+  (auth)/                         Auth pages and server actions
+  api/
+    auth/                         Auth route handlers (login, refresh, session, me, etc.)
+    proxy/[...path]/              Hardened backend proxy with allowlist
+    templates/with-previews/      BFF aggregation endpoint for template previews
+  dashboard/
+    page.tsx                      Dashboard resolver -> redirects to org slug route
+    org/[slug]/                   Protected org-scoped app shell and feature pages
+  verify/[token]/                 Public verification page
+
+src/
+  components/                     UI and feature components
+  features/templates/             Feature-sliced template APIs/hooks/types
+  lib/
+    api/                          Client/server API wrappers
+    config/env.ts                 Backend URL environment resolution
+    org/                          Org context and helpers
+    hooks/                        Shared data hooks
+    utils/                        Utility modules (guards, retry, etc.)
+
+proxy.ts                          Route protection and redirect middleware-style proxy
+projectmemory.md                  Living frontend memory and historical changes
+AGENTS.md                         Agent operating rules and safety constraints
+```
+
+See also:
+- `SYSTEM_OVERVIEW.md`
+- `FILE_INDEX.md`
+
+## Setup (Step-by-Step)
+
+### 1) Prerequisites
+
+- Node.js `24.x` (repo contains `.nvmrc` with `24.0.0`)
+- npm 10+
+- Running Authentix backend API
+
+### 2) Install dependencies
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd authentix
-
-# Install dependencies
 npm install
-
-# Copy environment file
-cp .env.example .env.local
-
-# Configure environment variables
-# Edit .env.local and set BACKEND_API_URL
 ```
+
+### 3) Configure environment
+
+Copy env template:
+
+```bash
+cp .env.example .env.local
+```
+
+The runtime environment resolver currently reads:
+- `BACKEND_ENV` (`local` | `test` | `prod`)
+- `BACKEND_URL_LOCAL`
+- `BACKEND_URL_TEST`
+- `BACKEND_URL_PROD`
+
+`src/lib/config/env.ts` also contains defaults if variables are omitted.
+
+⚠️ Needs clarification: some historical docs mention `BACKEND_API_URL`. Current runtime code uses the env set above via `src/lib/config/env.ts`.
+
+## Running the Project
 
 ### Development
 
@@ -33,175 +121,96 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Build & Deploy
+### Production build + run
 
 ```bash
-# Type check
 npm run typecheck
-
-# Lint
 npm run lint
-
-# Production build
 npm run build
-
-# Start production server
 npm start
 ```
 
-## Environment Variables
+## Common Commands
 
-Create a `.env.local` file in the root directory:
+- `npm run dev` - start local dev server (Turbopack)
+- `npm run typecheck` - run TypeScript checks
+- `npm run lint` - run ESLint
+- `npm run build` - create production build
+- `npm start` - run production server
 
-```bash
-# Required: Backend API URL (server-only, never exposed to browser)
-BACKEND_API_URL=https://api.authentix.com/api/v1
-```
+## Key Internal Workflows
 
-> ⚠️ **Security Note**: `BACKEND_API_URL` must NOT start with `NEXT_PUBLIC_`. It's server-only.
+### 1) Authentication and Route Protection
 
-## Tech Stack
+- login/signup pages submit via server actions
+- auth cookies (`auth_access_token`, `auth_refresh_token`, `auth_expires_at`) are set server-side
+- `proxy.ts` protects non-public routes and redirects unauthenticated users
+- `/dashboard` resolves and redirects users to `/dashboard/org/[slug]`
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| [Next.js](https://nextjs.org) | 16.1.1 | React framework with App Router |
-| [React](https://react.dev) | 19.2.3 | UI library with Server Components |
-| [TypeScript](https://www.typescriptlang.org) | 5.9.3 | Type safety |
-| [Tailwind CSS](https://tailwindcss.com) | 4.1.18 | Utility-first CSS |
+### 2) Organization-Scoped Dashboard Rendering
 
-## Project Structure
+- org layout (`app/dashboard/org/[slug]/layout.tsx`) performs server-side auth/profile checks
+- slug mismatch redirects users to their real organization slug
+- shell context is injected via `DashboardShell` and org context providers
 
-```
-authentix/
-├── app/                      # Next.js App Router
-│   ├── (auth)/               # Auth pages (login, signup)
-│   ├── api/                  # API Route Handlers (BFF)
-│   │   ├── auth/             # Auth endpoints
-│   │   └── proxy/            # Backend proxy
-│   └── dashboard/            # Protected dashboard routes
-│       └── org/[orgId]/      # Organization-scoped pages
-├── src/
-│   ├── components/           # React components
-│   │   └── ui/               # shadcn/ui components
-│   ├── features/             # Feature modules
-│   └── lib/                  # Utilities and API clients
-├── proxy.ts                  # Next.js middleware (auth/routing)
-└── .env.example              # Environment template
-```
+### 3) Certificate Generation
 
-## Architecture
+- choose template
+- place/map fields in certificate designer
+- import or enter recipient data
+- call generation endpoint via `/api/proxy/certificates/generate`
+- preview and export generated certificates
 
-### Authentication
+⚠️ Needs clarification: async generation for very large batches is documented as incomplete in project memory and should be treated as a known limitation.
 
-All authentication uses **HttpOnly cookies** - tokens are never accessible via JavaScript.
+## Contribution Guidelines
 
-```
-Browser → /api/proxy/* → Backend API
-              ↑
-         Cookies sent automatically
-```
+- Prefer Server Components for initial data loading
+- Use Client Components only when interaction is required
+- Route new protected features under `app/dashboard/org/[slug]/`
+- Keep API access behind Next route handlers (`/api/proxy/*`, `/api/auth/*`)
+- Run `npm run typecheck && npm run lint && npm run build` before PR
+- Update docs when architecture, routes, contracts, or workflows change
 
-### URL Structure
+## Documentation Rules
 
-```
-/login                          # Sign in
-/signup                         # Register
-/dashboard                      # Redirects to org dashboard
-/dashboard/org/[orgId]          # Organization dashboard
-/dashboard/org/[orgId]/templates
-/dashboard/org/[orgId]/certificates
-/dashboard/org/[orgId]/billing
-```
+This repo has three canonical maintenance docs:
+- `README.md` (developer onboarding and usage)
+- `AGENTS.md` (AI/automation operating constraints and safety rules)
+- `projectmemory.md` (persistent system memory and change history)
 
-### Data Flow
+### When to update docs
 
-1. **Server Components** fetch data on the server
-2. **Client Components** handle interactivity only
-3. **Streaming** with `loading.tsx` for instant feedback
+Update documentation in the same PR whenever any of the following changes:
+- routes/pages/layout structure
+- API endpoints, contracts, or auth flows
+- env variables, setup process, or scripts
+- key business workflows (template, import, generation, billing, verification)
+- security constraints or anti-pattern rules
 
-## Scripts
+### What to update
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server with Turbopack |
-| `npm run build` | Create production build |
-| `npm start` | Start production server |
-| `npm run typecheck` | Run TypeScript type checking |
-| `npm run lint` | Run ESLint |
+- Update `README.md` for onboarding-impact changes (setup, architecture summary, workflows, commands)
+- Update `AGENTS.md` for rule changes, safety boundaries, or file ownership guidance
+- Update `projectmemory.md` for persistent decisions, limitations, and append-only recent changes
 
-## Documentation
+### How to structure updates
 
-- [Changelog](./CHANGELOG.md) - All notable changes by version/date
-- [Frontend Architecture](./architecture-design/FRONTEND_DOCUMENTATION.md) - Detailed architecture documentation
-- [Email Templates](./email-templates/README.md) - Email template setup guide
+- Keep sections skimmable (short headings + concise bullets)
+- Prefer code-backed statements over assumptions
+- Mark uncertain items explicitly as `⚠️ Needs clarification`
+- Maintain terminology consistency (`[slug]`, organization naming, proxy/BFF boundaries)
+- Cross-link docs when a topic spans multiple files
 
-## Development Guidelines
+### Responsibility guidelines
 
-### Code Style
+- Author of the code change updates the docs in the same change set
+- Reviewers verify docs for accuracy and consistency before merge
+- AI agents must read `projectmemory.md` and `AGENTS.md` before making substantive edits
 
-- **Server Components** by default for data fetching
-- **`"use client"`** only for interactive components
-- **TypeScript strict mode** enabled
-- **ESLint + Prettier** for code formatting
+## Additional Documentation
 
-### Naming Conventions
-
-| Type | Convention | Example |
-|------|------------|---------|
-| Folders | kebab-case | `generate-certificate/` |
-| Components | PascalCase | `DashboardShell.tsx` |
-| Hooks | camelCase with `use` prefix | `useOrg.ts` |
-| Utilities | camelCase | `formatDate.ts` |
-
-### Security Practices
-
-- ✅ HttpOnly cookies for authentication
-- ✅ Server-side token validation
-- ✅ API proxy to hide backend URL
-- ✅ CSP headers configured
-- ✅ No sensitive data in client code
-
-## Backend Setup
-
-This frontend requires a backend API. Configure `BACKEND_API_URL` in your `.env.local` file.
-
-### Expected API Endpoints
-
-```
-POST /auth/login
-POST /auth/signup
-POST /auth/logout
-POST /auth/refresh
-GET  /auth/session
-GET  /templates
-GET  /companies/:id
-GET  /users/me
-...
-```
-
-## Troubleshooting
-
-### "BACKEND_API_URL not configured"
-
-Ensure `.env.local` exists with `BACKEND_API_URL` set.
-
-### "Session expired" errors
-
-Clear browser cookies and sign in again.
-
-### Build fails with type errors
-
-Run `npm run typecheck` to see detailed errors.
-
-## Contributing
-
-1. Create a feature branch
-2. Make changes following the guidelines above
-3. Run `npm run typecheck && npm run lint && npm run build`
-4. Submit a pull request
-
-## License
-
-Proprietary - All rights reserved.
+- `SYSTEM_OVERVIEW.md` - end-to-end runtime and data flow
+- `FILE_INDEX.md` - where-to-look guide for major modules/files
+- `CHANGELOG.md` - chronological change log
+- `email-templates/README.md` - email template reference

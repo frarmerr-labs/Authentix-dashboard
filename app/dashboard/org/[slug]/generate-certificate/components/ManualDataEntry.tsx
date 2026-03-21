@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format, parse, isValid } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import {
   Plus,
   Trash2,
@@ -24,7 +24,10 @@ import { cn } from '@/lib/utils';
 
 interface ManualDataEntryProps {
   fields: CertificateField[];
+  /** Called when the user explicitly clicks "Confirm Data" — triggers navigation to preview */
   onDataSubmit: (data: ImportedData) => void;
+  /** Called whenever committed rows change (live sync) — does NOT trigger navigation */
+  onDataChange?: (data: ImportedData) => void;
   initialData?: ImportedData;
   className?: string;
 }
@@ -40,12 +43,12 @@ const EMAIL_COLUMN = { key: 'email', label: 'Email', required: true, isDate: fal
 // Field types that are semantically unique per person — only one column needed even across multiple templates
 const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
 
-export function ManualDataEntry({ fields, onDataSubmit, initialData, className }: ManualDataEntryProps) {
+export function ManualDataEntry({ fields, onDataSubmit, onDataChange, initialData, className }: ManualDataEntryProps) {
   const [editingRow, setEditingRow] = useState<RecipientRow | null>(null);
+  // Tracks which date column's popover is open (by col.key); null = all closed
+  const [openDatePicker, setOpenDatePicker] = useState<string | null>(null);
 
   // Build columns: template fields first (in order), then Email last.
-  // Semantic types (name, course, start_date, end_date) are deduped by type across all templates
-  // so the user only enters each piece of data once even in multi-template mode.
   const getColumns = () => {
     const templateCols: typeof EMAIL_COLUMN[] = [];
     const seenTypes = new Set<string>();
@@ -53,7 +56,6 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
     fields
       .filter((f) => f.type !== 'qr_code' && f.type !== 'image')
       .forEach((field) => {
-        // For semantic types, only show the first occurrence regardless of label
         if (SEMANTIC_TYPES.has(field.type)) {
           if (seenTypes.has(field.type)) return;
           seenTypes.add(field.type);
@@ -69,7 +71,6 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
         }
       });
 
-    // Email always at the end (skip if a template field already has key 'email')
     if (!templateCols.find((c) => c.key === 'email')) {
       templateCols.push(EMAIL_COLUMN);
     }
@@ -136,6 +137,15 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
       )
     );
     setEditingRow(null);
+    setOpenDatePicker(null);
+  };
+
+  // Save edit with explicit updated data (avoids stale closure when field + save happen together)
+  const handleSaveEditWithData = (key: string, value: string) => {
+    if (!editingRow) return;
+    const updatedRow = { ...editingRow, data: { ...editingRow.data, [key]: value }, isEditing: false };
+    setRows(rows.map((r) => r.id === editingRow.id ? updatedRow : r));
+    setEditingRow(null);
   };
 
   // Cancel edit
@@ -145,6 +155,7 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
       setRows(rows.filter((r) => r.id !== editingRow.id || !r.isEditing));
     }
     setEditingRow(null);
+    setOpenDatePicker(null);
   };
 
   // Update field in editing row
@@ -163,16 +174,31 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
       .every((c) => row.data[c.key]?.trim());
   };
 
-  // Check if all rows are valid
-  const allRowsValid = rows.length > 0 && rows.every(isRowValid);
+  // Use live editingRow data for the row currently being edited so validation reflects what's typed
+  const getEffectiveRow = (row: RecipientRow): RecipientRow =>
+    editingRow?.id === row.id ? editingRow : row;
 
-  // Submit data
+  // Check if all rows are valid — uses live editingRow data so the error clears as you type
+  const allRowsValid = rows.length > 0 && rows.every((r) => isRowValid(getEffectiveRow(r)));
+
+  // Submit data — auto-commits any open editing row, then triggers navigation
   const handleSubmit = () => {
-    if (!allRowsValid) return;
+    // Commit the open editing row first (auto-save)
+    let effectiveRows = rows;
+    if (editingRow) {
+      if (!isRowValid(editingRow)) return;
+      effectiveRows = rows.map((r) =>
+        r.id === editingRow.id ? { ...editingRow, isEditing: false } : r
+      );
+      setRows(effectiveRows);
+      setEditingRow(null);
+      setOpenDatePicker(null);
+    }
 
-    // Convert rows to ImportedData format
+    if (!effectiveRows.every(isRowValid)) return;
+
     const headers = columns.map((c) => c.label);
-    const dataRows = rows.map((row) => {
+    const dataRows = effectiveRows.map((row) => {
       const rowData: Record<string, unknown> = {};
       columns.forEach((col) => {
         rowData[col.label] = row.data[col.key] || '';
@@ -180,18 +206,17 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
       return rowData;
     });
 
-    const importedData: ImportedData = {
+    onDataSubmit({
       fileName: 'Manual Entry',
       headers,
       rows: dataRows,
       rowCount: dataRows.length,
-    };
-
-    onDataSubmit(importedData);
+    });
   };
 
-  // Auto-apply data to parent whenever committed rows change
+  // Live sync to parent whenever committed rows change — uses onDataChange (no navigation)
   useEffect(() => {
+    if (!onDataChange) return;
     const committedRows = rows.filter(r => r.id !== editingRow?.id);
     if (committedRows.length === 0) return;
 
@@ -202,7 +227,7 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
       return rowData;
     });
 
-    onDataSubmit({
+    onDataChange({
       fileName: 'Manual Entry',
       headers,
       rows: dataRows,
@@ -242,7 +267,7 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
                 <tr>
                   <th className="w-12 px-4 py-3 text-left font-medium text-muted-foreground">#</th>
                   {columns.map((col) => (
-                    <th key={col.key} className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
+                    <th key={col.key} className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap min-w-[140px]">
                       {col.label}
                       {col.required && <span className="text-destructive ml-1">*</span>}
                     </th>
@@ -268,10 +293,13 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
                         {idx + 1}
                       </td>
                       {columns.map((col) => (
-                        <td key={col.key} className="px-4 py-3">
+                        <td key={col.key} className="px-4 py-3 min-w-[140px]">
                           {isEditing ? (
                             col.isDate ? (
-                              <Popover>
+                              <Popover
+                                open={openDatePicker === col.key}
+                                onOpenChange={(open) => setOpenDatePicker(open ? col.key : null)}
+                              >
                                 <PopoverTrigger asChild>
                                   <Button
                                     variant="outline"
@@ -294,8 +322,10 @@ export function ManualDataEntry({ fields, onDataSubmit, initialData, className }
                                         : undefined
                                     }
                                     onSelect={(d) => {
+                                      // Update the field in editingRow and close the popover
+                                      // Row stays in edit mode so user can fill remaining fields
                                       handleFieldChange(col.key, d ? format(d, 'PPP') : '');
-                                      handleSaveEdit();
+                                      setOpenDatePicker(null);
                                     }}
                                     defaultMonth={
                                       currentData[col.key]

@@ -26,6 +26,8 @@ export interface GeneratedCertificate {
   expires_at: string | null;
   download_url: string | null;
   preview_url: string | null;
+  category?: string | null;
+  subcategory?: string | null;
 }
 
 interface CertificateTableProps {
@@ -194,6 +196,9 @@ export function CertificateTable({
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recipient</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Certificate #</th>
+              {paginatedCertificates.some(c => c.category) && (
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Category</th>
+              )}
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Issue Date</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expiry</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
@@ -214,6 +219,18 @@ export function CertificateTable({
                     {cert.certificate_number}
                   </Badge>
                 </td>
+                {paginatedCertificates.some(c => c.category) && (
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-0.5">
+                      {cert.category && (
+                        <Badge variant="secondary" className="text-xs w-fit">{cert.category}</Badge>
+                      )}
+                      {cert.subcategory && (
+                        <span className="text-xs text-muted-foreground">{cert.subcategory}</span>
+                      )}
+                    </div>
+                  </td>
+                )}
                 <td className="px-4 py-3">{formatDate(cert.issued_at)}</td>
                 <td className="px-4 py-3">
                   {cert.expires_at ? (

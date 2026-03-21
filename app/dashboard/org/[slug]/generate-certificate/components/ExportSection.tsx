@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { CertificateTemplate, CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import { api } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
@@ -176,7 +176,8 @@ export function ExportSection({
   additionalConfigs = [],
   onAdditionalConfigsChange,
 }: ExportSectionProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  // 'hidden' = not generating, 'generating' = in progress, 'success' = done animation
+  const [overlayState, setOverlayState] = useState<'hidden' | 'generating' | 'success'>('hidden');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [simulatedCount, setSimulatedCount] = useState(0);
@@ -188,6 +189,9 @@ export function ExportSection({
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewImageLoaded, setPreviewImageLoaded] = useState(false);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
+
 
   // Expiry settings
   const [expiryType, setExpiryType] = useState<ExpiryType>('year');
@@ -330,7 +334,7 @@ export function ExportSection({
   const handleGenerate = async () => {
     if (!template || !importedData || !template.id) return;
 
-    setIsGenerating(true);
+    setOverlayState('generating');
     setGenerationStatus('generating');
     setProgress(0);
     setSimulatedCount(0);
@@ -394,6 +398,7 @@ export function ExportSection({
         });
 
         if (result.certificates?.length) {
+          const savedTpl = savedTemplates.find((t: any) => t.id === cfg.template.id);
           const certs: GeneratedCertificate[] = result.certificates.map((cert: any) => ({
             id: cert.id,
             certificate_number: cert.certificate_number,
@@ -403,6 +408,8 @@ export function ExportSection({
             expires_at: cert.expires_at || null,
             download_url: cert.download_url || null,
             preview_url: cert.preview_url || null,
+            category: savedTpl?.certificate_category || null,
+            subcategory: savedTpl?.certificate_subcategory || null,
           }));
           allCerts.push(...certs);
           summary.push({ label: cfg.label, count: certs.length });
@@ -421,13 +428,25 @@ export function ExportSection({
       setProgress(Math.round(((i + 1) / configsToRun.length) * 100));
     }
 
+    if (!isMountedRef.current) return;
+
+    // Commit results and snap bar to 100%
+    setProgress(100);
+    setSimulatedCount(totalRows);
     setProgressLabel('');
     setGeneratedCertificates(allCerts);
     setTotalGenerated(allCerts.length);
     setGenerationSummary(summary);
     setDownloadUrl(lastZipUrl);
     setGenerationStatus(allCerts.length > 0 ? 'completed' : 'error');
-    setIsGenerating(false);
+
+    // Show success animation, then dismiss overlay.
+    // Direct setTimeout — no useEffect, no state-change dependency, always fires.
+    setOverlayState('success');
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setOverlayState('hidden');
+    }, 2500);
   };
 
   const handleExpiryChange = (type: ExpiryType, customDate?: string) => {
@@ -441,81 +460,168 @@ export function ExportSection({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  // Generation animation — clean modern card stack
-  if (isGenerating) {
+  // Full-screen generation overlay
+  if (overlayState !== 'hidden') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 select-none">
-        {/* Stacked certificate cards */}
-        <div className="relative w-56 h-36">
-          {/* Back cards */}
-          {[2, 1].map((i) => (
-            <div
-              key={i}
-              className="absolute inset-0 rounded-2xl border bg-card"
-              style={{
-                transform: `translate(${i * 5}px, ${i * 5}px) rotate(${i * 2}deg)`,
-                opacity: 0.5 - i * 0.1,
-              }}
-            />
-          ))}
-          {/* Front card — animates content */}
-          <div className="absolute inset-0 rounded-2xl border border-primary/30 bg-card shadow-xl overflow-hidden">
-            {/* Shimmer sweep */}
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/8 to-transparent"
-              style={{
-                transform: `translateX(${(progress / 100) * 200 - 100}%)`,
-                transition: 'transform 0.5s ease-out',
-              }}
-            />
-            <div className="p-5 space-y-2.5">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                  <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background select-none overflow-hidden">
+        <style>{`
+          @keyframes genZoomIn    { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
+          @keyframes genRipple    { 0%{transform:scale(1);opacity:0.65} 100%{transform:scale(2.6);opacity:0} }
+          @keyframes genOrbRing   { 0%{transform:translate(-50%,-50%) scale(1);opacity:0.8} 100%{transform:translate(-50%,-50%) scale(2.8);opacity:0} }
+          @keyframes genPulse     { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
+          @keyframes genSpin      { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+          @keyframes genSpinRev   { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
+          @keyframes genOrbit     { from{transform:rotate(0deg) translateX(90px) rotate(0deg)} to{transform:rotate(360deg) translateX(90px) rotate(-360deg)} }
+          @keyframes genOrbit2    { from{transform:rotate(120deg) translateX(70px) rotate(-120deg)} to{transform:rotate(480deg) translateX(70px) rotate(-480deg)} }
+          @keyframes genOrbit3    { from{transform:rotate(240deg) translateX(110px) rotate(-240deg)} to{transform:rotate(600deg) translateX(110px) rotate(-600deg)} }
+          @keyframes genDocLine   { 0%,100%{opacity:0.25} 50%{opacity:0.7} }
+          @keyframes genFadeSlide { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        `}</style>
+
+        {/* Bottom notice */}
+        {overlayState === 'generating' && (
+          <div className="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none">
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Please keep this page open until generation completes</p>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center gap-10">
+          {overlayState === 'success' ? (
+            /* ── Success ── */
+            <div className="flex flex-col items-center gap-6" style={{ animation: 'genZoomIn 0.4s ease-out' }}>
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-40 h-40 rounded-full" style={{ border: '2px solid #3ECF8E66', animation: 'genRipple 1.4s ease-out infinite' }} />
+                <div className="absolute w-40 h-40 rounded-full" style={{ border: '2px solid #3ECF8E44', animation: 'genRipple 1.4s ease-out 0.45s infinite' }} />
+                <div className="absolute w-40 h-40 rounded-full" style={{ border: '1px solid #3ECF8E22', animation: 'genRipple 1.4s ease-out 0.9s infinite' }} />
+                <div className="w-36 h-36 rounded-full flex items-center justify-center" style={{ background: '#3ECF8E18', border: '1.5px solid #3ECF8E55' }}>
+                  <CheckCircle2 className="w-16 h-16" style={{ color: '#3ECF8E' }} />
                 </div>
-                <div className="h-2 bg-muted rounded-full animate-pulse flex-1" />
               </div>
-              <div className="h-1.5 bg-muted/70 rounded-full animate-pulse" style={{ width: '75%', animationDelay: '0.1s' }} />
-              <div className="h-1.5 bg-muted/50 rounded-full animate-pulse" style={{ width: '55%', animationDelay: '0.2s' }} />
-              <div className="mt-3 flex gap-2">
-                <div className="h-1.5 bg-primary/20 rounded-full animate-pulse flex-1" style={{ animationDelay: '0.3s' }} />
-                <div className="h-1.5 bg-primary/20 rounded-full animate-pulse flex-1" style={{ animationDelay: '0.4s' }} />
+              <div className="text-center space-y-1.5" style={{ animation: 'genFadeSlide 0.5s ease-out 0.2s both' }}>
+                <p className="text-3xl font-bold">All done!</p>
+                <p className="text-base text-muted-foreground">
+                  {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+                </p>
               </div>
             </div>
-            {/* Progress fill from bottom */}
-            <div
-              className="absolute bottom-0 left-0 right-0 bg-primary/10 transition-all duration-500 ease-out"
-              style={{ height: `${progress}%` }}
-            />
-          </div>
-          {/* Progress badge */}
-          <div className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-primary flex items-center justify-center shadow-lg ring-2 ring-background">
-            <span className="text-[11px] font-bold text-primary-foreground tabular-nums">{progress}%</span>
-          </div>
-        </div>
+          ) : (
+            /* ── Generating animation ── */
+            <>
+              {/* Central animated visual */}
+              <div className="relative flex items-center justify-center" style={{ width: 260, height: 260 }}>
 
-        {/* Labels */}
-        <div className="text-center space-y-1.5">
-          <p className="text-sm font-semibold">{progressLabel || 'Generating certificates…'}</p>
-          <p className="text-xs text-muted-foreground">
-            {simulatedCount > 0
-              ? `${simulatedCount} of ${importedData?.rowCount ?? '?'} processed`
-              : 'Starting generation…'}
-          </p>
-        </div>
+                {/* Outermost slow-spinning dashed ring */}
+                <div className="absolute inset-0 rounded-full pointer-events-none" style={{
+                  border: '1px dashed rgba(62,207,142,0.25)',
+                  animation: 'genSpin 18s linear infinite',
+                }} />
 
-        {/* Progress bar */}
-        <div className="w-full max-w-xs space-y-1.5">
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-[11px] text-muted-foreground/60 tabular-nums">
-            <span>{progress}%</span>
-            <span>Please keep this page open</span>
-          </div>
+                {/* Mid spinning ring */}
+                <div className="absolute rounded-full pointer-events-none" style={{
+                  inset: 18,
+                  border: '1.5px dashed rgba(62,207,142,0.35)',
+                  animation: 'genSpinRev 12s linear infinite',
+                }} />
+
+                {/* Inner glowing ring */}
+                <div className="absolute rounded-full pointer-events-none" style={{
+                  inset: 38,
+                  border: '2px solid rgba(62,207,142,0.45)',
+                  boxShadow: '0 0 18px rgba(62,207,142,0.15) inset',
+                  animation: 'genPulse 2.4s ease-in-out infinite',
+                }} />
+
+                {/* Orbiting dot 1 */}
+                <div style={{ position: 'absolute', top: '50%', left: '50%', animation: 'genOrbit 4s linear infinite' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3ECF8E', boxShadow: '0 0 8px #3ECF8E' }} />
+                </div>
+                {/* Orbiting dot 2 */}
+                <div style={{ position: 'absolute', top: '50%', left: '50%', animation: 'genOrbit2 3s linear infinite' }}>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#3ECF8Eaa' }} />
+                </div>
+                {/* Orbiting dot 3 */}
+                <div style={{ position: 'absolute', top: '50%', left: '50%', animation: 'genOrbit3 6s linear infinite' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3ECF8E77', boxShadow: '0 0 6px #3ECF8E55' }} />
+                </div>
+
+                {/* Centre: document icon */}
+                <div className="relative flex flex-col items-center justify-center rounded-2xl" style={{
+                  width: 100, height: 120,
+                  background: 'rgba(62,207,142,0.08)',
+                  border: '1.5px solid rgba(62,207,142,0.4)',
+                  boxShadow: '0 0 32px rgba(62,207,142,0.12)',
+                  animation: 'genPulse 2.4s ease-in-out infinite',
+                }}>
+                  {/* Folded corner */}
+                  <div style={{
+                    position: 'absolute', top: 0, right: 0,
+                    width: 0, height: 0,
+                    borderStyle: 'solid',
+                    borderWidth: '0 18px 18px 0',
+                    borderColor: 'transparent rgba(62,207,142,0.5) transparent transparent',
+                  }} />
+                  {/* Doc lines */}
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} style={{
+                      height: 3,
+                      borderRadius: 2,
+                      background: 'rgba(62,207,142,0.5)',
+                      width: i === 0 ? 52 : i === 3 ? 32 : 64,
+                      marginBottom: i < 3 ? 8 : 0,
+                      animation: `genDocLine 1.8s ease-in-out ${i * 0.18}s infinite`,
+                    }} />
+                  ))}
+                  {/* Seal dot */}
+                  <div style={{
+                    position: 'absolute', bottom: 12, right: 12,
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: 'rgba(62,207,142,0.2)',
+                    border: '1.5px solid rgba(62,207,142,0.6)',
+                  }} />
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ width: 480 }} className="space-y-2">
+                <div className="relative rounded-full" style={{ height: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${progress}%`,
+                      background: '#3ECF8E',
+                      boxShadow: progress > 0 ? '0 0 10px #3ECF8E88' : 'none',
+                      minWidth: progress > 0 ? 10 : 0,
+                    }}
+                  />
+                  {/* Leading orb */}
+                  {progress > 0 && progress < 100 && (
+                    <div style={{ position: 'absolute', left: `${Math.min(progress, 97)}%`, top: '50%', zIndex: 10 }}>
+                      <div style={{
+                        position: 'absolute', width: 20, height: 20, borderRadius: '50%',
+                        border: '1.5px solid #3ECF8E',
+                        top: '50%', left: '50%',
+                        animation: 'genOrbRing 1.4s ease-out infinite',
+                      }} />
+                      <div style={{
+                        width: 12, height: 12, borderRadius: '50%',
+                        background: 'white',
+                        boxShadow: '0 0 0 2.5px #3ECF8E',
+                        transform: 'translate(-50%, -50%)',
+                        position: 'relative',
+                      }} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between px-0.5">
+                  <span className="text-sm font-bold tabular-nums" style={{ color: '#3ECF8E' }}>{progress}%</span>
+                  <span className="text-xs text-muted-foreground">{progressLabel || 'Generating certificates…'}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {simulatedCount > 0 ? `${simulatedCount} / ${importedData?.rowCount ?? '?'}` : '—'}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -749,7 +855,7 @@ export function ExportSection({
 
           {/* Generate + Preview row */}
           <div className="flex gap-2">
-            {canGenerate && !isGenerating && (
+            {canGenerate && overlayState === 'hidden' && (
               <Button
                 variant="outline"
                 size="lg"
@@ -765,10 +871,10 @@ export function ExportSection({
             <Button
               className="flex-1"
               size="lg"
-              disabled={!canGenerate || isGenerating}
+              disabled={!canGenerate || overlayState !== 'hidden'}
               onClick={handleGenerate}
             >
-              {isGenerating ? (
+              {overlayState !== 'hidden' ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Generating…
@@ -808,9 +914,9 @@ export function ExportSection({
 
       {/* ── Preview Modal ── */}
       <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
-        <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-black/95 border-border/40 [&>button:last-child]:hidden">
+        <DialogContent className={`w-full p-0 overflow-hidden bg-black/95 border-border/40 [&>button:last-child]:hidden ${template && template.pdfWidth > template.pdfHeight ? 'max-w-5xl' : 'max-w-3xl'}`}>
           <DialogTitle className="sr-only">Certificate Preview</DialogTitle>
-          <div className="relative flex flex-col items-center justify-center min-h-[60vh]">
+          <div className="relative flex flex-col items-center justify-center" style={{ minHeight: template && template.pdfWidth > template.pdfHeight ? '40vh' : '60vh' }}>
             {/* Close button */}
             <button
               onClick={() => setPreviewModalOpen(false)}
@@ -839,7 +945,8 @@ export function ExportSection({
                   key={previewUrls[previewIndex]}
                   src={previewUrls[previewIndex]}
                   alt="Certificate preview"
-                  className={`max-w-full max-h-[80vh] object-contain transition-opacity duration-300 ${previewImageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  className={`w-full object-contain transition-opacity duration-300 ${previewImageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  style={{ maxHeight: '85vh' }}
                   onLoad={() => setPreviewImageLoaded(true)}
                 />
               </div>

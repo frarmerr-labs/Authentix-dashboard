@@ -178,10 +178,12 @@ async function authApiRequest<T>(
 /**
  * Make authenticated API request to backend
  * Cookies are automatically included via credentials: 'include'
+ * @param _retry internal flag — true when this is a post-refresh retry (prevents loops)
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  _retry = false
 ): Promise<ApiResponse<T>> {
   // Only add Content-Type header if there's a body
   const headers: HeadersInit = {
@@ -279,6 +281,16 @@ async function apiRequest<T>(
     });
 
     if (response.status === 401) {
+      // Attempt a token refresh once, then retry the original request.
+      // Skip if this is already a retry to prevent infinite loops.
+      if (!_retry) {
+        try {
+          await authApiRequest<void>("/auth/refresh", { method: "POST" });
+          return apiRequest<T>(endpoint, options, true);
+        } catch {
+          // Refresh failed — fall through to throw session-expired error
+        }
+      }
       throw new ApiError("UNAUTHORIZED", "Session expired. Please sign in again.");
     }
 

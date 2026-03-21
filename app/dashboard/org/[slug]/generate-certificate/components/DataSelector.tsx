@@ -232,9 +232,16 @@ export function DataSelector({
     onMappingChange(autoMappings);
   };
 
-  // Columns that are mapped to more than one field (duplicate mapping)
+  // Columns that are mapped to more than one field (duplicate mapping).
+  // In multi-template mode, semantic fields are intentionally fanned out to all same-type fields
+  // across templates — exclude them from the duplication check so no false-positive warning.
+  const semanticFieldIds = templateGroups
+    ? new Set(fields.filter(f => SEMANTIC_TYPES.has(f.type)).map(f => f.id))
+    : new Set<string>();
   const columnUsageCount = fieldMappings.reduce<Record<string, number>>((acc, m) => {
-    if (m.columnName) acc[m.columnName] = (acc[m.columnName] ?? 0) + 1;
+    if (m.columnName && !semanticFieldIds.has(m.fieldId)) {
+      acc[m.columnName] = (acc[m.columnName] ?? 0) + 1;
+    }
     return acc;
   }, {});
   const duplicatedColumns = new Set(Object.entries(columnUsageCount).filter(([, count]) => count > 1).map(([col]) => col));
@@ -399,7 +406,12 @@ export function DataSelector({
           ) : (
             <ManualDataEntry
               fields={fields}
+              onDataChange={(data) => {
+                // Live sync: keep parent importedData current without navigating to preview
+                onDataImport(data);
+              }}
               onDataSubmit={(data) => {
+                // Explicit confirm: navigate to data preview
                 setManualEditSeed(undefined);
                 handleManualDataSubmit(data);
               }}

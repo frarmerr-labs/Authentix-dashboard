@@ -1,198 +1,148 @@
-# AGENTS.md — AI Agent Rules for Authentix Platform
+# AGENTS.md - Authentix Dashboard Agent Guide
 
-**Last Updated:** 2026-03-21
-**Applies to:** Claude Code, Cursor, and any AI agent working in this repository
+**Last Updated:** 2026-03-21  
+**Scope:** `Authentix-dashboard` frontend repository
 
----
+This document is optimized for AI agents and automation tooling. Read this before code edits.
 
-## Mandatory Pre-Flight (BEFORE ANY CODE CHANGE)
+## Mandatory Pre-Flight
 
-1. **Always read `projectmemory.md` first** — located at repo root and in backend repo
-2. **Never assume architecture** — read actual code before suggesting changes
-3. **Never overwrite memory files blindly** — compare with current code, update only what changed
-4. **Write UNCLEAR if unsure** — do not hallucinate missing logic
-
----
+1. Read `projectmemory.md` first.
+2. Verify behavior in code before proposing changes.
+3. Do not overwrite memory/history sections blindly.
+4. If uncertain, write `⚠️ Needs clarification` instead of inferring.
 
 ## Repository Context
 
-| Repo | Purpose | URL |
-|---|---|---|
-| `Authentix-dashboard` | Next.js frontend (App Router) | This repo |
-| `Authentix-backend` | Fastify REST API | `/Users/harshitsaxena/Documents/GitHub/Authentix-backend` |
-| Supabase | Database + Auth + Storage | Project: `brkyyeropjslfzwnhxcw` |
+- Frontend repo: `Authentix-dashboard` (Next.js App Router)
+- Backend repo: `Authentix-backend` (Fastify API)
+- Database/auth/storage: Supabase project `brkyyeropjslfzwnhxcw`
 
----
+Backend dependency is required for most frontend runtime paths.
 
-## Architecture Rules
+## High-Level Architecture
 
-### Frontend (Authentix-dashboard)
+- Pattern: BFF/proxy frontend
+- Browser talks to Next route handlers (`/api/auth/*`, `/api/proxy/*`)
+- Next server forwards to backend API
+- Auth uses HttpOnly cookies
+- Protected routes are organization-scoped via `/dashboard/org/[slug]`
 
-- **Never add Supabase client library to frontend** — no direct DB access from browser
-- **All data fetches go through `/api/proxy/*`** or Next.js Route Handlers
-- **Never store tokens in localStorage or sessionStorage** — HttpOnly cookies only
-- **All new pages must be created under `app/dashboard/org/[slug]/`** for protected routes
-- **Server Components are preferred** for initial data loading (RSC pattern)
-- **Client Components (`"use client"`)** only when interactivity is required
-- **Server Actions (`"use server"`)** for form submissions (login, signup, etc.)
-- **Proxy allowlist must be updated** when new backend routes are exposed via proxy
+Primary flow:
+- Browser -> Next App Router + Route Handlers -> backend API
 
-### Backend (Authentix-backend)
+## Entry Points and Critical Files
 
-- **Keep business logic in `domains/`** — routes in `api/v1/` are thin wrappers only
-- **All Supabase queries MUST filter by `organization_id`** — no cross-tenant data leaks
-- **Never skip auth middleware** unless route is explicitly public (verify, health, webhooks)
-- **Razorpay webhook must remain HMAC-SHA256 verified** — never skip signature check
-- **Idempotency on destructive/financial operations** — use idempotency middleware
-- **Use Zod schemas for all request/response validation** — no raw `any` types
-- **New domain = new directory** under `src/domains/` with service + handler pattern
+### Runtime and security
 
----
+- `proxy.ts`  
+  Route gating, public/protected checks, legacy redirect logic.
 
-## Security Rules
+- `app/api/proxy/[...path]/route.ts`  
+  Hardened proxy: allowlist, path safety checks, method restrictions, timeout handling, sanitized errors.
 
-### Secrets & Credentials
-- **Never expose `SUPABASE_SECRET_KEY` (service role) to frontend code** — env var renamed from `SUPABASE_SERVICE_ROLE_KEY` per Supabase 2025 dashboard
-- **Never expose `BACKEND_API_URL` to browser** (server-only env var)
-- **Never commit `.env.local` or `.env`** to version control
-- **Never log tokens, API keys, or passwords** — use PII redaction
+- `app/api/auth/*/route.ts`  
+  Auth wrappers and cookie/session lifecycle endpoints.
 
-### Authentication
-- **HttpOnly cookies only** for JWT storage
-- **Bearer token in Authorization header** for backend-to-external calls
-- **5-minute refresh buffer** before expiry (already implemented — maintain this)
-- **Never bypass `authMiddleware`** on protected backend routes
+### API access layers
 
-### Input Validation
-- **Validate at system boundaries** — user input, file uploads, webhook payloads
-- **Backend is the source of truth** — frontend validation is UX only
-- **Path traversal prevention is in proxy** — do not loosen allowlist without review
+- `src/lib/api/client.ts`  
+  Client-side API surface (templates, certificates, imports, billing, organizations, users, dashboard).
 
----
+- `src/lib/api/server.ts`  
+  Server-side API calls, auth cookie access, and error sanitization.
 
-## Code Quality Rules
+- `src/lib/config/env.ts`  
+  Backend environment URL resolution and fallback behavior.
 
-- **TypeScript strict mode is ON** — do not use `any` without justification
-- **No raw SQL** — use Supabase JS SDK query builder
-- **No N+1 queries** — batch with `Promise.all` or join at DB level
-- **Error messages must be sanitized** before sending to frontend
-- **Production-only actions** must use `assertProductionOnly()` guard
+### Dashboard and org routing
 
----
+- `app/dashboard/page.tsx`  
+  Resolver that redirects users into org slug routes.
 
-## Memory Update Rules
+- `app/dashboard/org/[slug]/layout.tsx`  
+  Server-side auth/profile validation and org-access checks.
 
-After ANY code change, update the relevant memory file:
+- `src/lib/org/context.tsx`  
+  Org context utilities used by dashboard pages/components.
 
-### When to update `projectmemory.md` (frontend)
-- New route added or removed
-- New API endpoint connected
-- Auth flow changed
-- New dependency added
-- Environment variable added/changed
-- Business logic changed
+### Core business area
 
-### When to update `projectmemory.md` (backend)
-- New endpoint added or removed
-- New domain added
-- Supabase schema changed
-- Razorpay integration changed
-- Caching strategy changed
-- Security configuration changed
+- `app/dashboard/org/[slug]/generate-certificate/*`  
+  Template selection, field design, data mapping, generation, preview/export.
 
-### Memory Update Format (append to "Recent Changes")
-```
-- **YYYY-MM-DD** | Brief description of change | Impact on system
-```
+## Business Logic Hotspots
 
----
+- Authentication bootstrap and session checks
+- Organization slug resolution and access validation
+- Template upload/editor/field persistence
+- Import job flows and data mapping
+- Certificate generation request construction and export handling
+- Billing/invoice retrieval and payment-link handoff
 
-## Patterns to Follow
+## Patterns and Conventions
 
-### Adding a New Feature (Frontend)
-1. Read `projectmemory.md`
-2. Create page under `app/dashboard/org/[slug]/[feature]/`
-3. Add proxy allowlist entry if new backend route needed
-4. Add to `src/lib/api/client.ts` api object
-5. Update `projectmemory.md` → API Endpoints + Recent Changes
+- Prefer Server Components for initial data fetching.
+- Use Client Components only for interactive UI.
+- Use server actions for auth form submissions.
+- Keep protected page routes under `app/dashboard/org/[slug]/`.
+- Keep all backend calls behind Next handlers/proxy.
+- Keep TypeScript strict; avoid `any` unless justified.
 
-### Adding a New API Endpoint (Backend)
-1. Read `projectmemory.md`
-2. Create handler in `src/domains/[feature]/`
-3. Register route in `src/api/v1/[feature].ts`
-4. Add Zod schema for request/response
-5. Attach appropriate auth middleware
-6. Update `projectmemory.md` → API Endpoints + Recent Changes
+## Naming Conventions
 
-### Adding a New Supabase Table
-1. Create SQL migration in `database/migrations/`
-2. Update `projectmemory.md` → Supabase Schema
-3. Apply tenant isolation (`organization_id` filter on every query)
-4. Document in both repo memory files
+- Route segments: kebab-case
+- Components: PascalCase
+- Hooks/utils: camelCase (`useX`)
+- Org route parameter: `slug` (not legacy `orgId` UUID)
+- Authorization source of truth: backend JWT context, not URL slug
 
----
+## Never Modify Blindly
 
-## API Contract Rules
+- `proxy.ts` and proxy allowlist logic
+- `app/api/proxy/[...path]/route.ts` security controls
+- Auth cookie handling in `src/lib/api/server.ts`
+- API contracts in `src/lib/api/client.ts`
+- Org validation in `app/dashboard/org/[slug]/layout.tsx`
+- Any docs/history file append-only sections (`projectmemory.md` recent changes)
 
-### Response Envelope
-- **Always use `ApiResponse<T>` envelope:** `{ success: boolean, data: T, error?: { code, message }, meta?: { request_id, timestamp } }`
-- **Never return raw Supabase/DB structures** — always transform to frontend-compatible shape
-- **Strip internal IDs from responses** — `*_file_id`, `*_bucket`, `*_path` DB fields stay server-side unless explicitly needed by client
-- **Slug is for routing only** — never use slug for authorization; always use `organizationId` from JWT context
+## Safe Areas for Automated Changes
 
-### Type Safety
-- **Validate all request/response shapes with Zod** — no raw `any` or implicit `unknown` casts
-- **Client method signatures must match backend contract** — method (GET/POST/PUT), path, and body shape
-- **Status enums must be complete** — if backend adds a new status value, update frontend type immediately
+- Presentational UI components (`src/components/ui/*`) when behavior is unchanged
+- Feature-specific UX refinements in leaf page components
+- Non-breaking documentation updates (`README.md`, `FILE_INDEX.md`, `SYSTEM_OVERVIEW.md`)
+- Typed refactors that preserve endpoint/method/path contracts
+- Testless cleanup only when runtime behavior is unchanged and verified
 
-### Logging
-- **Never log full response bodies** on success paths — only log `status`, `errorCode`, and `errorMessage` on failures
-- **No sensitive data in console** — tokens, user PII, API keys must never appear in browser console
+## Hard Constraints
 
----
+- Never add direct Supabase DB client usage in frontend.
+- Never expose service-role secrets to browser code.
+- Never store auth tokens in `localStorage` or `sessionStorage`.
+- Never bypass `/api/proxy/*` and call backend from browser using private URLs.
+- Never loosen proxy path validation or allowlist without explicit review.
+- Never return internal backend/raw storage identifiers to UI unless required.
 
-## Anti-Patterns (DO NOT DO)
+## Anti-Patterns To Avoid
 
-- Do NOT add Supabase client to frontend (`@supabase/supabase-js` in dashboard)
-- Do NOT store JWT in cookie without HttpOnly flag
-- Do NOT call backend routes directly from frontend (bypass proxy)
-- Do NOT add new business logic to route handlers (`api/v1/*.ts` on backend)
-- Do NOT skip Zod validation on incoming requests
-- Do NOT make async cert generation work for >50 without implementing the worker
-- Do NOT return raw Supabase errors to frontend (sanitize first)
-- Do NOT use `unsafe-eval` in CSP unless explicitly needed by a library
-- Do NOT use `getPublicUrl()` for Supabase Storage — all buckets are private; always use `createSignedUrl()`
-- Do NOT query `certificate_templates.status` — column does not exist in live DB
-- Do NOT use `row_number` for `file_import_rows` — column is `row_index`
-- Do NOT filter `file_import_rows` by `organization_id` or `is_deleted` — those columns don't exist
-- Do NOT insert into `file_import_jobs` with old columns (`file_name`, `storage_path`, `total_rows`, `source_type`, `reusable`, `data_persisted`, `failure_count`) — use `source_file_id`, `source_format`, `row_count`
-- Do NOT use `certificate.status = 'issued'` — correct value is `'active'`
-- Do NOT reference `certificate.issue_date`/`expiry_date` — correct columns are `issued_at`/`expires_at`
-- Do NOT include `image`, `custom_text`, or `qr_code` field types in "missing column" mapping warnings — these are assets, not data columns
-- Do NOT navigate to design step AFTER async template API calls — navigate immediately and show a loading overlay during the fetch (optimistic navigation pattern)
-- Do NOT use `window.open()` for certificate previews — open in a Dialog modal with carousel support
-- Do NOT use `fetch() → blob → createObjectURL → anchor.click()` for downloads — use a direct native anchor click (`a.href = url; a.click()`) for instant downloads
-- Do NOT use count-based progress simulation (`Math.floor(totalRows * 0.92)`) — use time-elapsed approach (`elapsed / estimatedMs`) so single-recipient generation also animates
-- Do NOT use hardcoded grey colours for selection outlines on the design canvas — use `var(--primary)` so outlines work in both light and dark modes
-- Do NOT scale only `x/y/width/height` in `handleTemplateResize` without also scaling `fontSize` — use `Math.round(f.fontSize * Math.sqrt(sx * sy))` (geometric mean) to keep text proportional after resize
+- Mixing live sync and explicit submit callbacks in data-entry flows.
+- Using stale schema fields (`issue_date`, `expiry_date`, `status='issued'`).
+- Downloading files through unnecessary blob-buffer roundtrips when direct links are available.
+- Re-introducing optimistic-flow regressions in generate-certificate UX.
 
----
+## Documentation Synchronization Rules
 
-## Known Incomplete Features (Check Before Extending)
+When code changes, update docs in the same change set:
+- `README.md` for onboarding/setup/workflow impact
+- `AGENTS.md` for guardrails, boundaries, and operating rules
+- `projectmemory.md` for durable decisions and append-only recent changes
 
-| Feature | Status | Location |
-|---|---|---|
-| Async certificate generation (>50) | INCOMPLETE — worker missing | `src/domains/certificates/service.ts` |
-| WhatsApp integration | NOT STARTED — guard placeholder only | `src/lib/utils/guards.ts` (frontend) |
-| Transactional email | NOT STARTED — Supabase auth only | — |
-| RLS policies | BYPASSED — app-level isolation only | All Supabase queries |
+If any statement cannot be confirmed in code, mark it as:
+- `⚠️ Needs clarification`
 
----
+## Related Docs
 
-## Contact & Resources
-
-- **Audit Document:** `~/Desktop/project_audit.md`
-- **Frontend Memory:** `/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/projectmemory.md`
-- **Backend Memory:** `/Users/harshitsaxena/Documents/GitHub/Authentix-backend/projectmemory.md`
-- **Supabase Project:** `brkyyeropjslfzwnhxcw`
-- **Backend Live URL:** `https://authentix-backend.vercel.app/api/v1`
+- `README.md`
+- `projectmemory.md`
+- `SYSTEM_OVERVIEW.md`
+- `FILE_INDEX.md`
