@@ -260,7 +260,13 @@ export function DraggableField({
     });
   };
 
-  const displayValue = field.sampleValue || field.label;
+  // Use explicit sampleValue, then fall back to type-default (so renaming a field
+  // doesn't accidentally replace "John Doe" with the new label name)
+  const TYPE_SAMPLE_DEFAULTS: Record<string, string> = {
+    name: 'John Doe', course: 'Web Development Fundamentals',
+    start_date: 'January 15, 2026', end_date: 'March 15, 2026', custom_text: 'Custom Value',
+  };
+  const displayValue = field.sampleValue || TYPE_SAMPLE_DEFAULTS[field.type] || field.label;
 
   // Gradient / shadow styles for text content
   const isGradient = field.colorMode === 'linear' || field.colorMode === 'radial';
@@ -308,9 +314,9 @@ export function DraggableField({
         alignItems: 'center',
         justifyContent: field.type === 'image' ? 'center' : (field.textAlign === 'center' ? 'center' : field.textAlign === 'right' ? 'flex-end' : 'flex-start'),
         outline: isSelected
-          ? '1.5px dashed #d4d4d4'
-          : isMultiSelected
           ? '1.5px dashed var(--primary)'
+          : isMultiSelected
+          ? '2px solid var(--primary)'
           : undefined,
         outlineOffset: (isSelected || isMultiSelected) ? '1px' : '0px',
         borderRadius: field.type === 'image' ? (field.cornerRadius ? `${field.cornerRadius}px` : '2px') : '2px',

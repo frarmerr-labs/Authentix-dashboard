@@ -74,8 +74,9 @@ export interface CertificateField {
   sampleValue?: string;
 
   // Canvas behaviour
-  locked?: boolean;  // Prevents drag/resize when true
-  zIndex?: number;   // Layer order (higher = on top)
+  locked?: boolean;           // Prevents drag/resize when true
+  zIndex?: number;            // Layer order (higher = on top)
+  lockAspectRatio?: boolean;  // For image fields: keep width/height proportional
 }
 
 // Template configuration

@@ -1,16 +1,13 @@
 'use client';
 
-// Module-level flag: false after a hard page reload, true after any SPA navigation.
-// Used to prevent session restore on normal navigation (only restore on actual reload).
-let _initialLoadDone = false;
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import type { Asset } from './components/AssetLibrary';
 import { api } from '@/lib/api/client';
 import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
+import type { CertificateConfig } from './components/ExportSection';
 import { getPdfLib, getXlsx } from '@/lib/utils/dynamic-imports';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,6 +39,13 @@ export default function GenerateCertificatePage() {
   // Get query parameters
   const searchParams = useSearchParams();
   const templateIdFromUrl = searchParams.get('template');
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Prevents the URL-param auto-select from re-firing when user deliberately goes back to template chooser
+  const skipAutoSelectRef = useRef(false);
+  // Tracks whether we've pushed a history entry for the design step (for browser-back interception)
+  const designHistoryPushedRef = useRef(false);
 
   // Template state
   const [template, setTemplate] = useState<CertificateTemplate | null>(null);
@@ -58,6 +62,23 @@ export default function GenerateCertificatePage() {
   const [savedImports, setSavedImports] = useState<any[]>([]);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
 
+  // Multi-certificate: additional templates to generate alongside the primary one
+  const [additionalCertConfigs, setAdditionalCertConfigs] = useState<CertificateConfig[]>([]);
+
+  // Multi-template mode
+  const [templateMode, setTemplateMode] = useState<'single' | 'multi'>('single');
+  // Backing store for all selected templates in multi mode (includes per-template undo/redo history)
+  const [templateConfigs, setTemplateConfigs] = useState<Array<{
+    template: CertificateTemplate;
+    fields: CertificateField[];
+    versionId: string | null;
+    history?: CertificateField[][];
+    future?: CertificateField[][];
+  }>>([]);
+  const [activeTemplateIndex, setActiveTemplateIndex] = useState(0);
+  // Cancellation ref for parallel multi-select loads
+  const multiSelectRequestRef = useRef(0);
+
   // Recent templates state
   const [recentGenerated, setRecentGenerated] = useState<RecentGeneratedTemplate[]>([]);
   const [inProgressTemplates, setInProgressTemplates] = useState<InProgressTemplate[]>([]);
@@ -65,7 +86,9 @@ export default function GenerateCertificatePage() {
 
   // UI state
   const [canvasScale, setCanvasScale] = useState(0.5);
-  const [currentStep, setCurrentStep] = useState<'template' | 'design' | 'data' | 'export'>('template');
+  // If a template ID is in the URL, skip the template chooser and go straight to the design step
+  const [currentStep, setCurrentStep] = useState<'template' | 'design' | 'data' | 'export'>(templateIdFromUrl ? 'design' : 'template');
+  const [isTemplateLoading, setIsTemplateLoading] = useState(!!templateIdFromUrl);
   const [activeTab, setActiveTab] = useState('fields');
   const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
   const [useInfiniteCanvas, setUseInfiniteCanvas] = useState(true); // Toggle between canvas modes
@@ -155,6 +178,7 @@ export default function GenerateCertificatePage() {
   useEffect(() => {
     if (currentStep === 'design' && template?.id) {
       sessionInitRef.current = true; // session is now actively managed
+      // Persist to sessionStorage for quick same-tab restore
       try {
         sessionStorage.setItem('gencert_session', JSON.stringify({
           templateId: template.id,
@@ -163,11 +187,17 @@ export default function GenerateCertificatePage() {
           canvasScale,
           templateVersionId,
         }));
-      } catch { /* quota exceeded – ignore */ }
+      } catch { /* quota exceeded */ }
+      // Persist template ID to localStorage so it survives browser close / system shutdown.
+      // Fields are in the DB (auto-saved), so only the ID is needed.
+      try {
+        localStorage.setItem('gencert_last_template_id', template.id);
+      } catch { /* storage unavailable */ }
     } else if (currentStep === 'template' && sessionInitRef.current) {
       // Only clear when the user deliberately navigates back to template selection,
       // not on the initial mount where currentStep starts as 'template'.
       sessionStorage.removeItem('gencert_session');
+      // Don't clear localStorage here — keep the last template for next session
     }
   }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
 
@@ -176,10 +206,53 @@ export default function GenerateCertificatePage() {
     setPanelReady(false);
   }, [template?.id, previewOpen]);
 
+  // ── Browser-back interception ───────────────────────────────────────────────
+  // Push a history entry when entering the design step so the back button stays
+  // inside this page (template chooser) instead of leaving to the analytics page.
+  useEffect(() => {
+    if (currentStep === 'design' && !designHistoryPushedRef.current) {
+      designHistoryPushedRef.current = true;
+      history.pushState({ gencertStep: 'design' }, '');
+    }
+    if (currentStep === 'template') {
+      designHistoryPushedRef.current = false;
+    }
+  }, [currentStep]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (currentStep === 'design') {
+        if (fields.length > 0) {
+          // Show nav guard and re-push so pressing back again doesn't escape the app
+          setShowNavGuard(true);
+          history.pushState({ gencertStep: 'design' }, '');
+        } else {
+          skipAutoSelectRef.current = true;
+          selectRequestRef.current++;
+          setTemplate(null);
+          setFields([]);
+          setSelectedFieldId(null);
+          setPanelReady(false);
+          router.replace(pathname);
+          setCurrentStep('template');
+        }
+      } else if (currentStep === 'data') {
+        setCurrentStep('design');
+        history.pushState({ gencertStep: 'design' }, '');
+      } else if (currentStep === 'export') {
+        setCurrentStep('data');
+        history.pushState({ gencertStep: 'data' }, '');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [currentStep, fields.length, pathname]);
+
   // Load saved templates and imports
   useEffect(() => {
-    const isInitialMount = !_initialLoadDone;
-    _initialLoadDone = true;
+    // Use a window-level flag (survives HMR module re-evaluation, unlike module-level variables)
+    const isInitialMount = !(window as any).__gencertInitialLoadDone;
+    (window as any).__gencertInitialLoadDone = true;
     loadSavedData(isInitialMount);
   }, []);
 
@@ -236,29 +309,59 @@ export default function GenerateCertificatePage() {
         setSavedImports([]);
       }
 
-      // ── Restore session on page RELOAD only ───────────────────────────────
-      // Only restore when the user hard-reloaded (F5/Ctrl+R) on the first mount.
-      // _initialLoadDone guards against re-running after SPA navigation, where
-      // performance.getEntriesByType may still report 'reload' from the original load.
-      const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
-      const isReload = isInitialMount && navType === 'reload';
+      // ── Restore last design session ──────────────────────────────────────────
+      // Prefer sessionStorage (has full field snapshot for same-tab refresh).
+      // Fall back to localStorage (survives browser close / system shutdown).
+      // In both cases fields are also in the DB via autosave, so loading from DB
+      // is the ground-truth restore path.
+      if (!new URLSearchParams(window.location.search).get('template')) {
+        let templateIdToRestore: string | null = null;
+        let sessionFields: any[] | null = null;
+        let sessionPage: number | undefined;
+        let sessionScale: number | undefined;
+        let sessionVersionId: string | null = null;
 
-      if (isReload && !new URLSearchParams(window.location.search).get('template')) {
         try {
           const saved = sessionStorage.getItem('gencert_session');
           if (saved) {
-            const { templateId, fields: savedFields, currentPage: savedPage, canvasScale: savedScale, templateVersionId: savedVersionId } = JSON.parse(saved);
-            if (templateId && savedFields?.length >= 0) {
-              const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateId) || { id: templateId };
-              await handleTemplateSelect(templateObj);
-              setFields(savedFields);
-              if (savedPage !== undefined) setCurrentPage(savedPage);
-              if (savedScale) setCanvasScale(savedScale);
-              if (savedVersionId) setTemplateVersionId(savedVersionId);
-            }
+            const parsed = JSON.parse(saved);
+            templateIdToRestore = parsed.templateId ?? null;
+            sessionFields = parsed.fields ?? null;
+            sessionPage = parsed.currentPage;
+            sessionScale = parsed.canvasScale;
+            sessionVersionId = parsed.templateVersionId ?? null;
           }
         } catch {
           sessionStorage.removeItem('gencert_session');
+        }
+
+        // Fall back to localStorage (just template ID; fields come from DB)
+        if (!templateIdToRestore) {
+          try {
+            templateIdToRestore = localStorage.getItem('gencert_last_template_id');
+          } catch { /* storage unavailable */ }
+        }
+
+        if (templateIdToRestore) {
+          try {
+            const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateIdToRestore) || { id: templateIdToRestore };
+            await handleTemplateSelect(templateObj);
+            // If we have a full field snapshot (same-tab refresh), apply it on top of DB fields.
+            // Strip out blob URLs (stale after refresh) so the DB-loaded permanent URL is used instead.
+            if (sessionFields && sessionFields.length > 0) {
+              const sanitized = sessionFields.map((f: any) => ({
+                ...f,
+                imageUrl: f.imageUrl?.startsWith('blob:') ? undefined : f.imageUrl,
+                qrLogoUrl: f.qrLogoUrl?.startsWith('blob:') ? undefined : f.qrLogoUrl,
+              }));
+              setFields(sanitized);
+            }
+            if (sessionPage !== undefined) setCurrentPage(sessionPage);
+            if (sessionScale) setCanvasScale(sessionScale);
+            if (sessionVersionId) setTemplateVersionId(sessionVersionId);
+          } catch {
+            sessionStorage.removeItem('gencert_session');
+          }
         }
       }
     } catch (error) {
@@ -269,15 +372,14 @@ export default function GenerateCertificatePage() {
 
   // Auto-select template from URL parameter
   useEffect(() => {
+    // Skip if the user deliberately navigated back to the template chooser
+    if (skipAutoSelectRef.current) {
+      skipAutoSelectRef.current = false;
+      return;
+    }
     if (templateIdFromUrl && savedTemplates.length > 0 && !template) {
-      console.log('[Generate] Auto-selecting template from URL:', templateIdFromUrl);
       const templateToSelect = savedTemplates.find((t) => t.id === templateIdFromUrl);
-      if (templateToSelect) {
-        console.log('[Generate] Found template, auto-selecting:', templateToSelect.name);
-        handleTemplateSelect(templateToSelect);
-      } else {
-        console.warn('[Generate] Template not found:', templateIdFromUrl);
-      }
+      if (templateToSelect) handleTemplateSelect(templateToSelect);
     }
   }, [templateIdFromUrl, savedTemplates, template]);
 
@@ -302,24 +404,7 @@ export default function GenerateCertificatePage() {
 
     // If loadFields is true and we have fields from recent usage, use them
     if (loadFields && recentTemplate.fields && recentTemplate.fields.length > 0) {
-      const mappedFields = recentTemplate.fields.map((field: any) => ({
-        id: field.id || field.field_key,
-        type: mapBackendTypeToFrontend(field.type),
-        label: field.label,
-        x: field.x,
-        y: field.y,
-        width: field.width || 200,
-        height: field.height || 30,
-        fontSize: (field.style as any)?.fontSize || 16,
-        fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
-        color: (field.style as any)?.color || '#000000',
-        fontWeight: (field.style as any)?.fontWeight || '400',
-        fontStyle: (field.style as any)?.fontStyle || 'normal',
-        textAlign: (field.style as any)?.textAlign || 'left',
-        dateFormat: (field.style as any)?.dateFormat,
-        prefix: (field.style as any)?.prefix,
-        suffix: (field.style as any)?.suffix,
-      }));
+      const mappedFields = recentTemplate.fields.map(mapDbFieldToFrontend);
       setFields(mappedFields);
     }
 
@@ -333,6 +418,11 @@ export default function GenerateCertificatePage() {
   const handleTemplateSelect = async (selectedTemplate: any) => {
     // Increment request ID — any previous in-flight call will see a stale ID and bail out
     const requestId = ++selectRequestRef.current;
+
+    // Navigate to design immediately so the user isn't stuck on the template chooser
+    // while API calls load the template data.
+    setCurrentStep('design');
+    setIsTemplateLoading(true);
 
     // Reset state for new template to prevent stale data
     setTemplate(null);
@@ -458,27 +548,10 @@ export default function GenerateCertificatePage() {
     }
 
     // Map backend fields to frontend format if needed
-    const mappedFields = editorData?.fields?.map((field: any) => ({
-      id: field.id || field.field_key,
-      type: mapBackendTypeToFrontend(field.type),
-      label: field.label,
-      x: field.x,
-      y: field.y,
-      width: field.width || 200,
-      height: field.height || 30,
-      fontSize: (field.style as any)?.fontSize || 16,
-      fontFamily: (field.style as any)?.fontFamily || 'Helvetica',
-      color: (field.style as any)?.color || '#000000',
-      fontWeight: (field.style as any)?.fontWeight || '400',
-      fontStyle: (field.style as any)?.fontStyle || 'normal',
-      textAlign: (field.style as any)?.textAlign || 'left',
-      dateFormat: (field.style as any)?.dateFormat,
-      prefix: (field.style as any)?.prefix,
-      suffix: (field.style as any)?.suffix,
-    })) || selectedTemplate.fields || [];
+    const mappedFields = editorData?.fields?.map(mapDbFieldToFrontend) || selectedTemplate.fields || [];
 
     // If the user already clicked a different template, discard this result
-    if (selectRequestRef.current !== requestId) return;
+    if (selectRequestRef.current !== requestId) { setIsTemplateLoading(false); return; }
 
     setTemplate({
       id: selectedTemplate.id,
@@ -495,12 +568,173 @@ export default function GenerateCertificatePage() {
       subcategory: selectedTemplate.subcategory_name || '',
     });
     setFields(mappedFields);
+    setIsTemplateLoading(false);
+  };
+
+  // Load one template's data (fields + file URL + correct dimensions)
+  const loadTemplateData = async (t: any): Promise<{ template: CertificateTemplate; fields: CertificateField[]; versionId: string | null }> => {
+    try {
+      const editorData = await api.templates.getEditorData(t.id);
+      let fileUrl: string = editorData?.source_file?.url || t.preview_url || '';
+      const rawFileType = editorData?.source_file?.file_type || t.file_type || '';
+      const fileType: 'pdf' | 'image' = rawFileType === 'pdf' || rawFileType === 'application/pdf' ? 'pdf' : 'image';
+
+      const mappedFields: CertificateField[] = (editorData?.fields ?? []).map(mapDbFieldToFrontend);
+
+      // Calculate accurate dimensions from the actual file (same logic as handleTemplateSelect)
+      let pdfWidth: number = t.width || 0;
+      let pdfHeight: number = t.height || 0;
+      let pageCount = 1;
+
+      if ((!pdfWidth || !pdfHeight) && fileUrl) {
+        try {
+          const response = await fetch(fileUrl);
+          const blob = await response.blob();
+          const mimeType = editorData?.source_file?.file_type || blob.type;
+
+          if (fileType === 'pdf' || mimeType === 'application/pdf') {
+            const arrayBuffer = await blob.arrayBuffer();
+            const { PDFDocument } = await getPdfLib();
+            const pdfDoc = await PDFDocument.load(arrayBuffer);
+            const pages = pdfDoc.getPages();
+            const page = pages[0];
+            if (page) {
+              const { width, height } = page.getSize();
+              pdfWidth = width;
+              pdfHeight = height;
+              pageCount = pages.length;
+            }
+          } else {
+            const img = new Image();
+            const objectUrl = URL.createObjectURL(blob);
+            await new Promise((resolve) => {
+              img.onload = () => {
+                pdfWidth = img.naturalWidth;
+                pdfHeight = img.naturalHeight;
+                URL.revokeObjectURL(objectUrl);
+                resolve(true);
+              };
+              img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(false); };
+              img.src = objectUrl;
+            });
+          }
+        } catch {
+          // Fall back to safe defaults only if we truly can't read the file
+          pdfWidth = pdfWidth || 794;
+          pdfHeight = pdfHeight || 1123; // A4 portrait as default, not landscape
+        }
+      }
+
+      const tmpl: CertificateTemplate = {
+        id: t.id,
+        templateName: t.title || t.name,
+        fileUrl,
+        fileType,
+        pdfWidth: pdfWidth || 794,
+        pdfHeight: pdfHeight || 1123,
+        pageCount,
+        fields: mappedFields,
+      };
+      return { template: tmpl, fields: mappedFields, versionId: editorData?.version?.id || null };
+    } catch {
+      return {
+        template: {
+          id: t.id,
+          templateName: t.title || t.name,
+          fileUrl: t.preview_url || '',
+          fileType: 'image' as const,
+          pdfWidth: t.width || 794,
+          pdfHeight: t.height || 1123,
+          pageCount: 1,
+          fields: [],
+        },
+        fields: [],
+        versionId: null,
+      };
+    }
+  };
+
+  // Multi-mode: load all selected templates in parallel, navigate to design
+  const handleSelectMultipleTemplates = async (selectedTemplates: any[]) => {
+    if (selectedTemplates.length === 0) return;
+    const requestId = ++multiSelectRequestRef.current;
+
+    // Reset canvas state
+    setTemplate(null);
+    setFields([]);
+    setSelectedFieldId(null);
+    setTemplateVersionId(null);
+    setActiveTemplateIndex(0);
+    setTemplateConfigs([]);
+
+    const results = await Promise.all(selectedTemplates.map(t => loadTemplateData(t)));
+
+    // If user cancelled (switched back to single mode or re-triggered), bail out
+    if (multiSelectRequestRef.current !== requestId) return;
+
+    setTemplateConfigs(results);
+    setActiveTemplateIndex(0);
+    const first = results[0]!;
+    setTemplate(first.template);
+    setFields(first.fields);
+    setTemplateVersionId(first.versionId);
+    setTemplateMeta({ category: '', subcategory: '' });
     setCurrentStep('design');
+    historyRef.current = [];
+    futureRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+  };
+
+  // Multi-mode: switch the active template in the design canvas
+  const handleSwitchActiveTemplate = (index: number) => {
+    if (index === activeTemplateIndex) return;
+
+    // Save current canvas fields + undo/redo history back to backing store
+    setTemplateConfigs(prev => {
+      const updated = [...prev];
+      if (updated[activeTemplateIndex]) {
+        updated[activeTemplateIndex] = {
+          ...updated[activeTemplateIndex],
+          fields,
+          history: [...historyRef.current],
+          future: [...futureRef.current],
+        };
+      }
+      return updated;
+    });
+
+    const cfg = templateConfigs[index];
+    if (!cfg) return;
+
+    // Load the new template into canvas
+    setTemplate(cfg.template);
+    setFields(cfg.fields);
+    setTemplateVersionId(cfg.versionId);
+    setActiveTemplateIndex(index);
+    setSelectedFieldId(null);
+    setRightPanelVisible(false);
+    setCurrentPage(0);
+    // Fit the new template to screen (different dimensions = wrong scale otherwise)
+    setFitTrigger(t => t + 1);
+    // Restore this template's own undo/redo history
+    historyRef.current = cfg.history ?? [];
+    futureRef.current = cfg.future ?? [];
+    setCanUndo((cfg.history?.length ?? 0) > 0);
+    setCanRedo((cfg.future?.length ?? 0) > 0);
   };
 
   const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => {
     const fileType: 'pdf' | 'image' = file.type === 'application/pdf' ? 'pdf' : 'image';
-    const finalTemplateName = templateName || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
+    const baseName = templateName || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
+    const existingNames = savedTemplates.map(t => t.title?.toLowerCase() ?? '');
+    let finalTemplateName = baseName;
+    if (existingNames.includes(baseName.toLowerCase())) {
+      const stripped = baseName.replace(/\s*\(\d+\)$/, '');
+      let n = 2;
+      while (existingNames.includes(`${stripped} (${n})`.toLowerCase())) n++;
+      finalTemplateName = `${stripped} (${n})`;
+    }
 
     const newTemplate: CertificateTemplate = {
       templateName: finalTemplateName,
@@ -565,9 +799,26 @@ export default function GenerateCertificatePage() {
     }
   };
 
+  const handleDeleteTemplate = async (templateId: string) => {
+    await api.templates.delete(templateId);
+    setSavedTemplates(prev => prev.filter(t => t.id !== templateId));
+  };
+
+  const makeUniqueLabel = (base: string, currentFields: CertificateField[], excludeId?: string): string => {
+    const others = currentFields.filter(f => f.id !== excludeId).map(f => f.label.toLowerCase());
+    if (!others.includes(base.toLowerCase())) return base;
+    const stripped = base.replace(/\s*\(\d+\)$/, '');
+    let n = 2;
+    while (others.includes(`${stripped} (${n})`.toLowerCase())) n++;
+    return `${stripped} (${n})`;
+  };
+
   const handleAddField = (field: CertificateField) => {
     pushToHistory(fields);
-    setFields((prev) => [...prev, field]);
+    setFields((prev) => {
+      const uniqueLabel = makeUniqueLabel(field.label, prev);
+      return [...prev, { ...field, label: uniqueLabel }];
+    });
     setSelectedFieldId(field.id);
     setRightPanelVisible(true);
   };
@@ -593,9 +844,12 @@ export default function GenerateCertificatePage() {
 
   const handleFieldDuplicate = (field: CertificateField) => {
     pushToHistory(fields);
-    const newField: CertificateField = { ...field, id: crypto.randomUUID() };
-    setFields((prev) => [...prev, newField]);
-    setSelectedFieldId(newField.id);
+    const newId = crypto.randomUUID();
+    setFields((prev) => {
+      const uniqueLabel = makeUniqueLabel(field.label, prev);
+      return [...prev, { ...field, id: newId, label: uniqueLabel }];
+    });
+    setSelectedFieldId(newId);
   };
 
   const handleFieldReorder = (fieldId: string, direction: 'front' | 'back') => {
@@ -618,7 +872,10 @@ export default function GenerateCertificatePage() {
   };
 
   const handleFieldRename = (fieldId: string, label: string) => {
-    setFields((prev) => prev.map(f => f.id === fieldId ? { ...f, label } : f));
+    setFields((prev) => {
+      const uniqueLabel = makeUniqueLabel(label, prev, fieldId);
+      return prev.map(f => f.id === fieldId ? { ...f, label: uniqueLabel } : f);
+    });
   };
 
   const handleFieldLayerReorder = (orderedIds: string[]) => {
@@ -649,18 +906,41 @@ export default function GenerateCertificatePage() {
     if (ow > 0 && oh > 0 && origFields.length > 0) {
       const sx = width / ow;
       const sy = height / oh;
+      const sf = Math.sqrt(sx * sy);
       setFields(origFields.map(f => ({
         ...f,
         x: f.x * sx,
         y: f.y * sy,
         width: f.width * sx,
         height: f.height * sy,
+        fontSize: Math.round(f.fontSize * sf),
       })));
     }
     setTemplate(prev => prev ? { ...prev, pdfWidth: width, pdfHeight: height } : null);
   };
 
-  const handleAddAssetField = (url: string, name: string, x?: number, y?: number) => {
+  // Handles file-picker image add: optimistic blob preview + background upload + URL swap
+  const handleAddImageFile = async (file: File) => {
+    const blobUrl = URL.createObjectURL(file);
+    handleAddAssetField(blobUrl, file.name);
+    try {
+      const permanentUrl = await api.templates.uploadAsset(file);
+      URL.revokeObjectURL(blobUrl);
+      // Swap the blob URL to permanent in the existing field
+      handleAddAssetField(permanentUrl, file.name, undefined, undefined, blobUrl);
+    } catch (err) {
+      console.error('[page] Image upload failed, blob URL kept for session:', err);
+    }
+  };
+
+  const handleAddAssetField = (url: string, name: string, x?: number, y?: number, replaceBlobUrl?: string) => {
+    // If replaceBlobUrl is set, this is an upload-complete signal — swap the URL in the existing field
+    if (replaceBlobUrl) {
+      setFields(prev => prev.map(f =>
+        f.type === 'image' && f.imageUrl === replaceBlobUrl ? { ...f, imageUrl: url } : f
+      ));
+      return;
+    }
     const defaultSize = template
       ? Math.max(200, Math.round(Math.min(template.pdfWidth, template.pdfHeight) * 0.25))
       : 200;
@@ -791,6 +1071,28 @@ export default function GenerateCertificatePage() {
           if (field.prefix) style.prefix = field.prefix;
           if (field.suffix) style.suffix = field.suffix;
 
+          // Extended style properties for faithful PDF/image rendering
+          if (field.opacity !== undefined && field.opacity !== 100) style.opacity = field.opacity;
+          if (field.letterSpacing) style.letterSpacing = field.letterSpacing;
+          if (field.lineHeight) style.lineHeight = field.lineHeight;
+          if (field.textTransform && field.textTransform !== 'none') style.textTransform = field.textTransform;
+          if (field.textShadow) style.textShadow = field.textShadow;
+          if (field.colorMode && field.colorMode !== 'solid') {
+            style.colorMode = field.colorMode;
+            if (field.gradientStartColor) style.gradientStartColor = field.gradientStartColor;
+            if (field.gradientEndColor) style.gradientEndColor = field.gradientEndColor;
+            if (field.gradientAngle !== undefined) style.gradientAngle = field.gradientAngle;
+          }
+          if (field.type === 'qr_code') {
+            if (field.qrStyle) style.qrStyle = field.qrStyle;
+            if (field.qrTransparentBg !== undefined) style.qrTransparentBg = field.qrTransparentBg;
+            if (field.qrLogoUrl) style.qrLogoUrl = field.qrLogoUrl;
+          }
+          if (field.type === 'image') {
+            if (field.cornerRadius !== undefined) style.cornerRadius = field.cornerRadius;
+            if (field.imageUrl) style.imageUrl = field.imageUrl;
+          }
+
           // Calculate width and height - ensure they're positive numbers
           // Provide defaults to ensure fields are always valid
           const width = field.width && field.width > 0 ? field.width : 200;
@@ -840,7 +1142,7 @@ export default function GenerateCertificatePage() {
             return false;
           }
           // Ensure type is valid
-          if (!['text', 'date', 'qrcode', 'custom'].includes(field.type)) {
+          if (!['text', 'date', 'qrcode', 'custom', 'image'].includes(field.type)) {
             console.warn('[Generate] Skipping invalid field (invalid type):', field);
             return false;
           }
@@ -924,11 +1226,13 @@ export default function GenerateCertificatePage() {
   const handleDataImport = (data: ImportedData | null) => {
     setImportedData(data);
     if (data) {
-      const autoMappings = autoMapColumns(fields, data.headers);
+      // In multi mode, auto-map for ALL templates' fields
+      const allFields = templateMode === 'multi' && templateConfigs.length > 0
+        ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
+        : fields;
+      const autoMappings = autoMapColumns(allFields, data.headers);
       setFieldMappings(autoMappings);
-      // Don't auto-navigate - let user click Continue button
     } else {
-      // Clear mappings when data is cleared
       setFieldMappings([]);
     }
   };
@@ -1031,11 +1335,13 @@ export default function GenerateCertificatePage() {
                   return;
                 }
                 if (step.id === 'template' && currentStep !== 'template') {
+                  skipAutoSelectRef.current = true;
                   selectRequestRef.current++;
                   setTemplate(null);
                   setFields([]);
                   setSelectedFieldId(null);
                   setPanelReady(false);
+                  router.replace(pathname);
                 }
                 setCurrentStep(step.id as any);
               }}
@@ -1136,46 +1442,113 @@ export default function GenerateCertificatePage() {
 
         <div className="flex-1 flex overflow-hidden">
           {currentStep === 'template' && (
-            <div className="flex-1 p-8 overflow-y-auto">
+            <div className="flex-1 overflow-hidden">
               <TemplateSelector
                 savedTemplates={savedTemplates}
-                onSelectTemplate={handleTemplateSelect}
+                onSelectTemplate={(t) => { setTemplateMode('single'); handleTemplateSelect(t); }}
                 onNewUpload={handleNewTemplateUpload}
+                onDeleteTemplate={handleDeleteTemplate}
                 recentGenerated={recentGenerated}
                 inProgress={inProgressTemplates}
                 recentLoading={recentLoading}
                 onSelectRecentTemplate={handleRecentTemplateSelect}
+                templateMode={templateMode}
+                onTemplateModeChange={setTemplateMode}
+                onSelectMultipleTemplates={handleSelectMultipleTemplates}
               />
             </div>
           )}
 
           {currentStep === 'data' && (
             <div className="flex-1 p-8 overflow-y-auto">
-              <DataSelector
-                fields={fields}
-                savedImports={savedImports}
-                importedData={importedData}
-                fieldMappings={fieldMappings}
-                onDataImport={handleDataImport}
-                onMappingChange={setFieldMappings}
-                onLoadImport={handleLoadImport}
-                onContinueToGenerate={handleContinueToGenerate}
-              />
+              {(() => {
+                // In multi mode, expose all templates' fields for sample file + mapping
+                const allMultiFields = templateMode === 'multi' && templateConfigs.length > 0
+                  ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
+                  : fields;
+                const templateGroupsForData = templateMode === 'multi' && templateConfigs.length > 1
+                  ? templateConfigs.map((c, i) => ({
+                      templateName: c.template.templateName,
+                      fields: i === activeTemplateIndex ? fields : c.fields,
+                    }))
+                  : undefined;
+                return (
+                  <DataSelector
+                    fields={allMultiFields}
+                    templateGroups={templateGroupsForData}
+                    savedImports={savedImports}
+                    importedData={importedData}
+                    fieldMappings={fieldMappings}
+                    onDataImport={handleDataImport}
+                    onMappingChange={setFieldMappings}
+                    onLoadImport={handleLoadImport}
+                    onContinueToGenerate={handleContinueToGenerate}
+                  />
+                );
+              })()}
             </div>
           )}
 
           {currentStep === 'export' && (
             <div className="flex-1 p-8 overflow-y-auto">
-              <ExportSection
-                template={template}
-                fields={fields}
-                importedData={importedData}
-                fieldMappings={fieldMappings}
-              />
+              {(() => {
+                if (templateMode === 'multi' && templateConfigs.length > 0) {
+                  // Build primary + additional from templateConfigs
+                  const primaryCfg = templateConfigs[0]!;
+                  const primaryFields = activeTemplateIndex === 0 ? fields : primaryCfg.fields;
+                  const primaryMappings = fieldMappings.filter(m => primaryFields.some(f => f.id === m.fieldId));
+                  const multiAdditional: CertificateConfig[] = templateConfigs.slice(1).map((c, relIdx) => {
+                    const absIdx = relIdx + 1;
+                    const tplFields = absIdx === activeTemplateIndex ? fields : c.fields;
+                    return {
+                      key: `multi_${absIdx}`,
+                      template: c.template,
+                      fields: tplFields,
+                      fieldMappings: fieldMappings.filter(m => tplFields.some(f => f.id === m.fieldId)),
+                      label: c.template.templateName,
+                    };
+                  });
+                  return (
+                    <ExportSection
+                      template={primaryCfg.template}
+                      fields={primaryFields}
+                      importedData={importedData}
+                      fieldMappings={primaryMappings}
+                      savedTemplates={savedTemplates}
+                      additionalConfigs={multiAdditional}
+                      onAdditionalConfigsChange={undefined}
+                    />
+                  );
+                }
+                return (
+                  <ExportSection
+                    template={template}
+                    fields={fields}
+                    importedData={importedData}
+                    fieldMappings={fieldMappings}
+                    savedTemplates={savedTemplates}
+                    additionalConfigs={additionalCertConfigs}
+                    onAdditionalConfigsChange={setAdditionalCertConfigs}
+                  />
+                );
+              })()}
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Template loading overlay (shown while handleTemplateSelect fetches data) ── */}
+      {currentStep === 'design' && !template && isTemplateLoading && (
+        <div className="fixed top-0 left-14 right-0 bottom-0 z-50 bg-background flex flex-col items-center justify-center gap-4">
+          <div className="relative w-20 h-20">
+            <span className="absolute inset-0 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '1.6s' }} />
+            <div className="absolute inset-3 rounded-full bg-primary/15 flex items-center justify-center">
+              <Wand2 className="w-8 h-8 text-primary animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground font-medium">Loading template…</p>
+        </div>
+      )}
 
       {/* ── Full-screen design overlay ── */}
       {currentStep === 'design' && template && (
@@ -1206,7 +1579,7 @@ export default function GenerateCertificatePage() {
                 onTemplateResize={handleTemplateResize}
                 onTemplateResizeStart={handleTemplateResizeStart}
                 onPageChange={(page) => setCurrentPage(page - 1)}
-                onAssetDrop={(url, name, x, y) => handleAddAssetField(url, name, x, y)}
+                onAssetDrop={(url, name, x, y, replaceBlobUrl) => handleAddAssetField(url, name, x, y, replaceBlobUrl)}
                 onFieldDuplicate={handleFieldDuplicate}
                 onPreviewToggle={() => {
                   const opening = !previewOpen;
@@ -1305,6 +1678,33 @@ export default function GenerateCertificatePage() {
                   </button>
                 </div>
 
+                {/* Template switcher — multi mode only */}
+                {templateMode === 'multi' && templateConfigs.length > 1 && (
+                  <div className="shrink-0 border-b border-border/30 px-3 py-2">
+                    <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Templates</p>
+                    <div className="space-y-0.5">
+                      {templateConfigs.map((cfg, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSwitchActiveTemplate(idx)}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left ${
+                            idx === activeTemplateIndex
+                              ? 'bg-primary text-primary-foreground font-medium'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full border text-[9px] flex items-center justify-center shrink-0 font-bold ${
+                            idx === activeTemplateIndex ? 'border-primary-foreground/50' : 'border-current'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <span className="truncate">{cfg.template.templateName || `Template ${idx + 1}`}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Scrollable tab content */}
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
@@ -1337,6 +1737,7 @@ export default function GenerateCertificatePage() {
                         <FieldTypeSelector
                           onAddField={handleAddField}
                           onAddImageField={handleAddAssetField}
+                          onAddImageFile={handleAddImageFile}
                           pdfWidth={template.pdfWidth}
                           pdfHeight={template.pdfHeight}
                           currentPage={currentPage}
@@ -1422,6 +1823,7 @@ export default function GenerateCertificatePage() {
                     onFieldUpdate={(updates) => {
                       if (selectedFieldId) handleUpdateField(selectedFieldId, updates);
                     }}
+                    allFieldLabels={fields.filter(f => f.id !== selectedFieldId).map(f => f.label)}
                     scale={canvasScale}
                     onScaleChange={setCanvasScale}
                     onFitToScreen={() => setFitTrigger(t => t + 1)}
@@ -1512,6 +1914,7 @@ export default function GenerateCertificatePage() {
                 className="px-3 py-1.5 text-xs rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
                 onClick={() => {
                   setShowNavGuard(false);
+                  skipAutoSelectRef.current = true;
                   selectRequestRef.current++;
                   setTemplate(null);
                   setFields([]);
@@ -1521,6 +1924,7 @@ export default function GenerateCertificatePage() {
                   futureRef.current = [];
                   setCanUndo(false);
                   setCanRedo(false);
+                  router.replace(pathname);
                   setCurrentStep('template');
                 }}
               >
@@ -1534,8 +1938,53 @@ export default function GenerateCertificatePage() {
   );
 }
 
+// Map a DB field record back to a frontend CertificateField, restoring all style properties
+function mapDbFieldToFrontend(field: any): CertificateField {
+  const s = (field.style ?? {}) as Record<string, any>;
+  return {
+    id: field.id || field.field_key,
+    type: mapBackendTypeToFrontend(field.type),
+    label: field.label,
+    x: field.x,
+    y: field.y,
+    width: field.width || 200,
+    height: field.height || 30,
+    // Multi-page: page_number is 1-indexed in DB, pageNumber is 0-indexed in frontend
+    pageNumber: field.page_number != null ? field.page_number - 1 : 0,
+    // Core text style
+    fontSize: s.fontSize ?? 16,
+    fontFamily: s.fontFamily ?? 'Helvetica',
+    color: s.color ?? '#000000',
+    fontWeight: s.fontWeight ?? '400',
+    fontStyle: s.fontStyle ?? 'normal',
+    textAlign: s.textAlign ?? 'left',
+    // Formatting
+    ...(s.dateFormat !== undefined && { dateFormat: s.dateFormat }),
+    ...(s.prefix !== undefined && { prefix: s.prefix }),
+    ...(s.suffix !== undefined && { suffix: s.suffix }),
+    // Typography extras
+    ...(s.opacity !== undefined && { opacity: s.opacity }),
+    ...(s.letterSpacing !== undefined && { letterSpacing: s.letterSpacing }),
+    ...(s.lineHeight !== undefined && { lineHeight: s.lineHeight }),
+    ...(s.textTransform !== undefined && { textTransform: s.textTransform }),
+    ...(s.textShadow !== undefined && { textShadow: s.textShadow }),
+    // Gradient / color mode
+    ...(s.colorMode !== undefined && { colorMode: s.colorMode }),
+    ...(s.gradientStartColor !== undefined && { gradientStartColor: s.gradientStartColor }),
+    ...(s.gradientEndColor !== undefined && { gradientEndColor: s.gradientEndColor }),
+    ...(s.gradientAngle !== undefined && { gradientAngle: s.gradientAngle }),
+    // QR code
+    ...(s.qrStyle !== undefined && { qrStyle: s.qrStyle }),
+    ...(s.qrTransparentBg !== undefined && { qrTransparentBg: s.qrTransparentBg }),
+    ...(s.qrLogoUrl !== undefined && { qrLogoUrl: s.qrLogoUrl }),
+    // Image
+    ...(s.imageUrl !== undefined && { imageUrl: s.imageUrl }),
+    ...(s.cornerRadius !== undefined && { cornerRadius: s.cornerRadius }),
+  };
+}
+
 // Map frontend field type to backend field type
-function mapFrontendTypeToBackend(frontendType: CertificateField['type']): 'text' | 'date' | 'qrcode' | 'custom' {
+function mapFrontendTypeToBackend(frontendType: CertificateField['type']): 'text' | 'date' | 'qrcode' | 'custom' | 'image' {
   switch (frontendType) {
     case 'name':
     case 'course':
@@ -1546,6 +1995,8 @@ function mapFrontendTypeToBackend(frontendType: CertificateField['type']): 'text
       return 'date';
     case 'qr_code':
       return 'qrcode';
+    case 'image':
+      return 'image';
     default:
       return 'text';
   }
@@ -1560,6 +2011,8 @@ function mapBackendTypeToFrontend(backendType: string): CertificateField['type']
       return 'start_date';
     case 'qrcode':
       return 'qr_code';
+    case 'image':
+      return 'image';
     default:
       return 'custom_text';
   }

@@ -133,6 +133,7 @@ Browser → /api/proxy/* → Backend API
 
 ## Documentation
 
+- [Changelog](./CHANGELOG.md) - All notable changes by version/date
 - [Frontend Architecture](./architecture-design/FRONTEND_DOCUMENTATION.md) - Detailed architecture documentation
 - [Email Templates](./email-templates/README.md) - Email template setup guide
 

@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format, parse, isValid } from 'date-fns';
 import {
   Plus,
   Trash2,
@@ -13,8 +16,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Edit2,
-  Save,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { CertificateField, ImportedData } from '@/lib/types/certificate';
 import { cn } from '@/lib/utils';
@@ -22,6 +25,7 @@ import { cn } from '@/lib/utils';
 interface ManualDataEntryProps {
   fields: CertificateField[];
   onDataSubmit: (data: ImportedData) => void;
+  initialData?: ImportedData;
   className?: string;
 }
 
@@ -31,40 +35,58 @@ interface RecipientRow {
   isEditing: boolean;
 }
 
-// Default columns that should always be present
-const DEFAULT_COLUMNS = [
-  { key: 'recipient_name', label: 'Recipient Name', required: true },
-  { key: 'email', label: 'Email', required: true },
-  { key: 'phone', label: 'Phone/WhatsApp', required: false },
-];
+const EMAIL_COLUMN = { key: 'email', label: 'Email', required: true, isDate: false };
 
-export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataEntryProps) {
-  const [rows, setRows] = useState<RecipientRow[]>([]);
+// Field types that are semantically unique per person — only one column needed even across multiple templates
+const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
+
+export function ManualDataEntry({ fields, onDataSubmit, initialData, className }: ManualDataEntryProps) {
   const [editingRow, setEditingRow] = useState<RecipientRow | null>(null);
 
-  // Build columns from default + template fields
+  // Build columns: template fields first (in order), then Email last.
+  // Semantic types (name, course, start_date, end_date) are deduped by type across all templates
+  // so the user only enters each piece of data once even in multi-template mode.
   const getColumns = () => {
-    const columns = [...DEFAULT_COLUMNS];
+    const templateCols: typeof EMAIL_COLUMN[] = [];
+    const seenTypes = new Set<string>();
 
-    // Add template fields (excluding QR code)
     fields
-      .filter((f) => f.type !== 'qr_code')
+      .filter((f) => f.type !== 'qr_code' && f.type !== 'image')
       .forEach((field) => {
-        // Skip if already in default columns
+        // For semantic types, only show the first occurrence regardless of label
+        if (SEMANTIC_TYPES.has(field.type)) {
+          if (seenTypes.has(field.type)) return;
+          seenTypes.add(field.type);
+        }
         const fieldKey = field.label.toLowerCase().replace(/\s+/g, '_');
-        if (!columns.find((c) => c.key === fieldKey)) {
-          columns.push({
+        if (!templateCols.find((c) => c.key === fieldKey)) {
+          templateCols.push({
             key: fieldKey,
             label: field.label,
             required: false,
+            isDate: field.type === 'start_date' || field.type === 'end_date',
           });
         }
       });
 
-    return columns;
+    // Email always at the end (skip if a template field already has key 'email')
+    if (!templateCols.find((c) => c.key === 'email')) {
+      templateCols.push(EMAIL_COLUMN);
+    }
+
+    return templateCols;
   };
 
   const columns = getColumns();
+
+  const [rows, setRows] = useState<RecipientRow[]>(() => {
+    if (!initialData) return [];
+    return initialData.rows.map((row) => ({
+      id: crypto.randomUUID(),
+      data: Object.fromEntries(columns.map((col) => [col.key, String(row[col.label] ?? '')])),
+      isEditing: false,
+    }));
+  });
 
   // Create empty row data
   const createEmptyRowData = (): Record<string, string> => {
@@ -75,14 +97,19 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
     return data;
   };
 
-  // Add new row
+  // Add new row — auto-saves any currently open editing row first
   const handleAddRow = () => {
     const newRow: RecipientRow = {
       id: crypto.randomUUID(),
       data: createEmptyRowData(),
       isEditing: true,
     };
-    setRows([...rows, newRow]);
+    setRows((prev) => {
+      const committed = editingRow
+        ? prev.map((r) => r.id === editingRow.id ? { ...editingRow, isEditing: false } : r)
+        : prev;
+      return [...committed, newRow];
+    });
     setEditingRow(newRow);
   };
 
@@ -163,6 +190,27 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
     onDataSubmit(importedData);
   };
 
+  // Auto-apply data to parent whenever committed rows change
+  useEffect(() => {
+    const committedRows = rows.filter(r => r.id !== editingRow?.id);
+    if (committedRows.length === 0) return;
+
+    const headers = columns.map((c) => c.label);
+    const dataRows = committedRows.map((row) => {
+      const rowData: Record<string, unknown> = {};
+      columns.forEach((col) => { rowData[col.label] = row.data[col.key] || ''; });
+      return rowData;
+    });
+
+    onDataSubmit({
+      fileName: 'Manual Entry',
+      headers,
+      rows: dataRows,
+      rowCount: dataRows.length,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
   return (
     <div className={cn('space-y-6', className)}>
       {/* Header */}
@@ -222,15 +270,56 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
                       {columns.map((col) => (
                         <td key={col.key} className="px-4 py-3">
                           {isEditing ? (
+                            col.isDate ? (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    data-empty={!currentData[col.key]}
+                                    className="h-8 w-full justify-between text-left text-sm font-normal data-[empty=true]:text-muted-foreground"
+                                  >
+                                    {currentData[col.key] || <span>Pick a date</span>}
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <Calendar
+                                    mode="single"
+                                    selected={
+                                      currentData[col.key]
+                                        ? (() => {
+                                            const d = new Date(currentData[col.key]);
+                                            return isValid(d) ? d : undefined;
+                                          })()
+                                        : undefined
+                                    }
+                                    onSelect={(d) => {
+                                      handleFieldChange(col.key, d ? format(d, 'PPP') : '');
+                                      handleSaveEdit();
+                                    }}
+                                    defaultMonth={
+                                      currentData[col.key]
+                                        ? (() => {
+                                            const d = new Date(currentData[col.key]);
+                                            return isValid(d) ? d : undefined;
+                                          })()
+                                        : undefined
+                                    }
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                            ) : (
                             <Input
                               value={currentData[col.key] || ''}
                               onChange={(e) => handleFieldChange(col.key, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); } }}
                               placeholder={col.label}
                               className={cn(
                                 'h-8 text-sm',
                                 col.required && !currentData[col.key]?.trim() && 'border-destructive'
                               )}
                             />
+                            )
                           ) : (
                             <span
                               className={cn(
@@ -252,14 +341,16 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
                                 size="icon"
                                 className="h-7 w-7 text-green-600 hover:text-green-600"
                                 onClick={handleSaveEdit}
+                                title="Confirm (Enter)"
                               >
-                                <Save className="w-3.5 h-3.5" />
+                                <CheckCircle2 className="w-3.5 h-3.5" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
                                 onClick={handleCancelEdit}
+                                title="Cancel"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </Button>
@@ -296,16 +387,16 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
       )}
 
       {/* Add Row Button */}
-      <Button variant="outline" onClick={handleAddRow} className="w-full gap-2" disabled={!!editingRow}>
+      <Button variant="outline" onClick={handleAddRow} className="w-full gap-2">
         <Plus className="w-4 h-4" />
         Add Recipient
       </Button>
 
       {/* Validation Message */}
       {rows.length > 0 && !allRowsValid && (
-        <div className="flex items-center gap-2 text-sm text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 p-3 rounded-lg">
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>Some rows are missing required fields (Recipient Name, Email)</span>
+          <span>Some rows are missing required fields — please fill in the Email field for all recipients.</span>
         </div>
       )}
 
@@ -314,11 +405,11 @@ export function ManualDataEntry({ fields, onDataSubmit, className }: ManualDataE
         <div className="flex justify-end">
           <Button
             onClick={handleSubmit}
-            disabled={!allRowsValid || !!editingRow}
+            disabled={!allRowsValid}
             className="gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
-            Use This Data ({rows.length} recipient{rows.length !== 1 ? 's' : ''})
+            Confirm Data
           </Button>
         </div>
       )}

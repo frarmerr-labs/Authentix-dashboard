@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { CertificateField } from '@/lib/types/certificate';
+import { api } from '@/lib/api/client';
 import { DraggableField } from './DraggableField';
 import { Button } from '@/components/ui/button';
 import {
@@ -63,7 +64,7 @@ interface InfiniteCanvasProps {
   onTemplateResize?: (width: number, height: number) => void;
   onTemplateResizeStart?: (width: number, height: number) => void;
   onPageChange?: (page: number) => void;
-  onAssetDrop?: (url: string, name: string, x: number, y: number) => void;
+  onAssetDrop?: (url: string, name: string, x: number, y: number, replaceBlobUrl?: string) => void;
   onPreviewToggle?: () => void;
   previewOpen?: boolean;
   onFieldDuplicate?: (field: CertificateField) => void;
@@ -482,10 +483,12 @@ export function InfiniteCanvas({
 
   useEffect(() => {
     if (!isResizingTemplate) return;
+    let rafId = 0;
     const onMove = (e: MouseEvent) => {
       if (!resizeCorner.current) return;
-      const dx = (e.clientX - templateResizeStart.current.x) / scale;
-      const dy = (e.clientY - templateResizeStart.current.y) / scale;
+      // Use scaleRef.current so this handler never needs to be recreated when scale changes
+      const dx = (e.clientX - templateResizeStart.current.x) / scaleRef.current;
+      const dy = (e.clientY - templateResizeStart.current.y) / scaleRef.current;
       let nw = initialTemplateDims.current.w;
       let nh = initialTemplateDims.current.h;
       switch (resizeCorner.current) {
@@ -498,13 +501,14 @@ export function InfiniteCanvas({
         case 's':  nh += dy; break;
         case 'n':  nh -= dy; break;
       }
-      // Update visual dims every frame for smooth visual feedback — no prop changes = no PDF re-render
       const dims = { w: Math.max(100, nw), h: Math.max(100, nh) };
       latestResizeDims.current = dims;
-      setVisualDims(dims);
+      // Throttle visual updates to one per animation frame to prevent jitter
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => setVisualDims(dims));
     };
     const onUp = () => {
-      // Commit final size to parent only once on mouseUp (prevents PDF flicker)
+      cancelAnimationFrame(rafId);
       if (latestResizeDims.current) {
         onTemplateResize?.(latestResizeDims.current.w, latestResizeDims.current.h);
       }
@@ -516,10 +520,14 @@ export function InfiniteCanvas({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
+      cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [isResizingTemplate, scale, onTemplateResize]);
+  // Intentionally omit `scale` — we use scaleRef.current to read the latest value
+  // without re-creating the listener (which caused jitter during resize)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isResizingTemplate, onTemplateResize]);
 
   // ── Template rotation ─────────────────────────────────────────────────────
   const handleRotateStart = (e: React.MouseEvent) => {
@@ -725,11 +733,20 @@ export function InfiniteCanvas({
           onAssetDrop(url, name, canvasX, canvasY);
           return;
         }
-        // OS file drag
+        // OS file drag — upload to storage so the backend can fetch the URL
         const file = e.dataTransfer.files?.[0];
         if (file && file.type.startsWith('image/')) {
+          // Use blob URL immediately for preview; upload in background and swap the URL
           const blobUrl = URL.createObjectURL(file);
           onAssetDrop(blobUrl, file.name, canvasX, canvasY);
+          // Tell parent to swap the imageUrl once the permanent URL is ready
+          api.templates.uploadAsset(file).then((permanentUrl) => {
+            URL.revokeObjectURL(blobUrl);
+            // Parent receives this as an "update last blob URL" signal
+            onAssetDrop(permanentUrl, file.name, canvasX, canvasY, blobUrl);
+          }).catch((err) => {
+            console.error('[InfiniteCanvas] Asset upload failed — image will work this session only:', err);
+          });
         }
       }}
     >

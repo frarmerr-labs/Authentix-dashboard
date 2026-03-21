@@ -178,38 +178,41 @@ function UserMenu({
   onLogout,
   mounted,
 }: UserMenuProps) {
-  if (!mounted) {
-    return (
-      <div className="flex items-center gap-3 pl-3 border-l">
-        <div className="w-10 h-10 rounded-full bg-muted animate-pulse" />
-      </div>
-    );
-  }
-
+  // Always render DropdownMenu so Radix's useId counter is stable between SSR
+  // and client — conditionally swapping the entire component causes downstream
+  // useId mismatches (e.g. Tabs aria-controls). Show skeleton inside trigger
+  // instead.
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           className="flex items-center gap-3 pl-3 border-l hover:opacity-80"
           aria-label="User menu"
+          disabled={!mounted}
         >
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium">{profileName || "User"}</p>
-            <p className="text-xs text-muted-foreground">
-              {organizationName || "Organization"}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold overflow-hidden">
-            {organizationLogo ? (
-              <img
-                src={organizationLogo}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              (profileName || "U").charAt(0).toUpperCase()
-            )}
-          </div>
+          {!mounted ? (
+            <div className="w-10 h-10 rounded-full bg-muted animate-pulse" />
+          ) : (
+            <>
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-medium">{profileName || "User"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {organizationName || "Organization"}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold overflow-hidden">
+                {organizationLogo ? (
+                  <img
+                    src={organizationLogo}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  (profileName || "U").charAt(0).toUpperCase()
+                )}
+              </div>
+            </>
+          )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

@@ -1,5 +1,108 @@
 # Changelog
 
+## [Unreleased] — 2026-03-21 (continued)
+
+### Fixed — Field Selection Box Too Large / Font Too Small
+
+Two root causes for fields appearing oversized with undersized text after a session with template resize:
+
+1. **Selection outline color** (`DraggableField.tsx`) — hardcoded `#d4d4d4` (light grey) was visually prominent on the dark canvas (`#141414`), making the selection border appear larger than it actually was. Changed to `var(--primary)` (brand green) for `isSelected` (1.5px dashed) and `isMultiSelected` (2px solid).
+
+2. **`handleTemplateResize` missing `fontSize` scaling** (`page.tsx`) — when the canvas template was resized, `x`, `y`, `width`, and `height` were all proportionally scaled but `fontSize` was not. After resize, field boxes changed size while text stayed at its original size. Fixed by scaling `fontSize` using the geometric mean of the x/y scale factors: `Math.round(f.fontSize * Math.sqrt(sx * sy))`.
+
+**Files changed:**
+- `app/dashboard/org/[slug]/generate-certificate/components/DraggableField.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/page.tsx`
+
+---
+
+### Fixed — 8 Generate-Certificate UX Bugs
+
+1. **Dark theme default** — Added `className="dark"` to `<html>` in `app/layout.tsx`; applies to login, signup, and all dashboard pages via Tailwind CSS variables.
+
+2. **Skip template step when navigating via `?template=` param** — `currentStep` and `isTemplateLoading` now initialized from `templateIdFromUrl` so user lands on the design step immediately with a loading overlay instead of seeing the template chooser briefly.
+
+3. **ManualDataEntry auto-save UX** — Removed floppy disk Save icon; replaced with `CheckCircle2` green checkmark confirm button. Added `onKeyDown` Enter auto-commit on text inputs. Date picker auto-commits on date select. Validation error background changed from brown/orange to `bg-destructive/10` (red).
+
+4. **ExpiryDateSelector custom date picker spacing** — Added `pt-3 mt-1 border-t space-y-3` wrapper around the custom date section; `sideOffset` increased to 8. Replaced custom date input with shadcn `Calendar` inside `Popover`.
+
+5. **Preview modal two close buttons** — `DialogContent` in shadcn always renders a built-in close button as last child; hidden via `[&>button:last-child]:hidden` on the `DialogContent` className.
+
+6. **Generation animation + progress stuck at 0%** — Replaced blueprint SVG animation with a cleaner stacked-card animation. Switched from count-based (`Math.floor(totalRows * 0.92)` = 0 for single recipient) to time-elapsed progress simulation (`elapsed / estimatedMs`) so progress always animates smoothly. "Generate More" reset now also clears `progress`, `simulatedCount`, and `progressLabel`.
+
+**Files changed:**
+- `app/layout.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/page.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/components/ManualDataEntry.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/components/ExpiryDateSelector.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx`
+
+---
+
+## [Unreleased] — 2026-03-21
+
+### Improved — Generate-Certificate UX Overhaul
+
+Six UX improvements to the certificate generation flow:
+
+#### 1. Direct Navigation to Design Step
+- `handleTemplateSelect` now calls `setCurrentStep('design')` + `setIsTemplateLoading(true)` **before** any async API calls — user lands on design instantly instead of waiting on the template chooser
+- Full-screen loading overlay (`Wand2` pulse animation) shown while template metadata fetches in the background
+- Stale-request guard via `selectRequestRef` discards in-flight results when the user switches templates quickly
+
+**Files changed:** `app/dashboard/org/[slug]/generate-certificate/page.tsx`
+
+---
+
+#### 2. Delete Template from Choose-Template Screen
+- Added `onDeleteTemplate?: (id: string) => Promise<void>` prop to `TemplateSelector`
+- Card hover overlay shows a destructive **Trash2 icon** button alongside "Use Template"
+- `deletingId` state drives a spinner while delete is in flight; `window.confirm` prevents accidental deletes
+- Parent `page.tsx` calls `api.templates.delete()` then removes the template from local state
+
+**Files changed:**
+- `app/dashboard/org/[slug]/generate-certificate/components/TemplateSelector.tsx`
+- `app/dashboard/org/[slug]/generate-certificate/page.tsx`
+
+---
+
+#### 3. Column Warning — Exclude Image & QR Asset Fields
+- "Some field columns weren't found in your file" was incorrectly including `image` and `custom_text` fields (UUID-named SVG assets, QR assets) in the missing-column check
+- Filter now excludes `type !== 'qr_code' && type !== 'image' && type !== 'custom_text'` from mappable fields
+
+**Files changed:** `app/dashboard/org/[slug]/generate-certificate/components/DataSelector.tsx` (line ~91)
+
+---
+
+#### 4. Preview in Modal with Carousel (Not New Tab)
+- Preview no longer opens in `window.open()` — replaced with a Shadcn `Dialog` modal
+- Carousel (`ChevronLeft` / `ChevronRight` + dot indicators) for multiple certificate configs
+- Close button at top-right of modal
+
+**Files changed:** `app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx`
+
+---
+
+#### 5. Blueprint SVG Generation Animation
+- Replaced generic pulsing rings + spinner with a blueprint-style inline SVG animation:
+  - Grid background (`<pattern>` crosshatch), certificate outline with `strokeDashoffset` driven by `progress`%
+  - Corner accent brackets, title bar, text lines, circular seal with star
+  - Glowing scan line that translates vertically with progress (0 → 100%)
+- Progress percentage counter shown below the SVG
+
+**Files changed:** `app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx`
+
+---
+
+#### 6. Instant Certificate Download (No Buffer Delay)
+- Replaced `fetch() → blob → createObjectURL → anchor.click()` with native anchor click
+- `a.href = cert.download_url; a.click()` — browser handles transfer directly; no file buffered in memory first
+- Removed `downloadingId` state and loading spinner from download button
+
+**Files changed:** `app/dashboard/org/[slug]/generate-certificate/components/CertificateTable.tsx`
+
+---
+
 ## [Unreleased] - 2026-03-20
 
 ### Removed — Cloudflare Turnstile CAPTCHA

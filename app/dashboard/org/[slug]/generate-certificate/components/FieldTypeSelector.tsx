@@ -18,6 +18,8 @@ import { v4 as uuidv4 } from 'uuid';
 interface FieldTypeSelectorProps {
   onAddField: (field: CertificateField) => void;
   onAddImageField?: (url: string, name: string) => void;
+  /** Preferred over onAddImageField — parent handles upload + blob-swap */
+  onAddImageFile?: (file: File) => void;
   pdfWidth: number;
   pdfHeight: number;
   currentPage?: number; // For multi-page PDF support
@@ -37,7 +39,7 @@ const FIELD_ICONS = {
 const REF_WIDTH = 595;
 const REF_HEIGHT = 842;
 
-export function FieldTypeSelector({ onAddField, onAddImageField, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
+export function FieldTypeSelector({ onAddField, onAddImageField, onAddImageFile, pdfWidth, pdfHeight, currentPage = 0 }: FieldTypeSelectorProps) {
   const [showCustomNameDialog, setShowCustomNameDialog] = useState(false);
   const [customFieldName, setCustomFieldName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,7 +92,7 @@ export function FieldTypeSelector({ onAddField, onAddImageField, pdfWidth, pdfHe
     if (type === 'custom_text') {
       setCustomFieldName('');
       setShowCustomNameDialog(true);
-    } else if (type === 'image' && onAddImageField) {
+    } else if (type === 'image' && (onAddImageFile || onAddImageField)) {
       fileInputRef.current?.click();
     } else {
       createField(type);
@@ -100,8 +102,14 @@ export function FieldTypeSelector({ onAddField, onAddImageField, pdfWidth, pdfHe
   const handleImageFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    onAddImageField?.(url, file.name);
+    if (onAddImageFile) {
+      // Parent handles upload + blob-swap (permanent URL persistence)
+      onAddImageFile(file);
+    } else {
+      // Fallback: blob URL only (no server upload)
+      const url = URL.createObjectURL(file);
+      onAddImageField?.(url, file.name);
+    }
     // Reset input so same file can be re-picked
     e.target.value = '';
   };

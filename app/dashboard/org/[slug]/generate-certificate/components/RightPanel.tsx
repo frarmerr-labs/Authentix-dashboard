@@ -3,9 +3,10 @@
 import { createPortal } from 'react-dom';
 import { CertificateField, FontWeight, CERTIFICATE_FONTS, PRESET_COLORS, DATE_FORMATS } from '@/lib/types/certificate';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2 } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2, Lock, Unlock, RefreshCw, Trash2 } from 'lucide-react';
 import { RgbaColorPicker } from 'react-colorful';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { api } from '@/lib/api/client';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -214,12 +215,25 @@ function QRLogoUploader({
   onLogoChange: (url: string | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFile = (file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    onLogoChange(url);
-  };
+    // Optimistic preview while uploading
+    const blobUrl = URL.createObjectURL(file);
+    onLogoChange(blobUrl);
+    setUploading(true);
+    try {
+      const permanentUrl = await api.templates.uploadAsset(file);
+      URL.revokeObjectURL(blobUrl);
+      onLogoChange(permanentUrl);
+    } catch (err) {
+      console.error('[QRLogoUploader] Upload failed:', err);
+      // Keep the blob URL as fallback so user can still see it locally
+    } finally {
+      setUploading(false);
+    }
+  }, [onLogoChange]);
 
   return (
     <div>
@@ -232,22 +246,34 @@ function QRLogoUploader({
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
       />
       {logoUrl ? (
-        <div className="flex items-center gap-2">
-          <div className="relative w-10 h-10 rounded border border-border/50 overflow-hidden bg-white shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-16 h-16 rounded border border-border/50 overflow-hidden bg-white shrink-0">
             <img src={logoUrl} alt="QR logo" className="w-full h-full object-contain" />
+            {uploading && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
             <button
+              title="Replace logo"
+              disabled={uploading}
               onClick={() => fileRef.current?.click()}
-              className="text-[10px] text-primary hover:text-primary/80 text-left transition-colors"
+              className="p-1.5 rounded border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors disabled:opacity-50"
             >
-              Replace
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
+              title="Remove logo"
+              disabled={uploading}
               onClick={() => onLogoChange(null)}
-              className="text-[10px] text-destructive/70 hover:text-destructive text-left transition-colors"
+              className="p-1.5 rounded border border-border/50 text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors disabled:opacity-50"
             >
-              Remove
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -327,12 +353,23 @@ function ImageSourceUploader({
   onImageChange: (url: string | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFile = (file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    onImageChange(url);
-  };
+    const blobUrl = URL.createObjectURL(file);
+    onImageChange(blobUrl);
+    setUploading(true);
+    try {
+      const permanentUrl = await api.templates.uploadAsset(file);
+      URL.revokeObjectURL(blobUrl);
+      onImageChange(permanentUrl);
+    } catch (err) {
+      console.error('[ImageSourceUploader] Upload failed:', err);
+    } finally {
+      setUploading(false);
+    }
+  }, [onImageChange]);
 
   return (
     <div>
@@ -344,22 +381,34 @@ function ImageSourceUploader({
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
       />
       {imageUrl ? (
-        <div className="flex items-center gap-2">
-          <div className="relative w-12 h-12 rounded border border-border/50 overflow-hidden bg-muted/30 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-16 h-16 rounded border border-border/50 overflow-hidden bg-muted/30 shrink-0">
             <img src={imageUrl} alt="Field image" className="w-full h-full object-contain" />
+            {uploading && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
             <button
+              title="Replace image"
+              disabled={uploading}
               onClick={() => fileRef.current?.click()}
-              className="text-[10px] text-primary hover:text-primary/80 text-left transition-colors"
+              className="p-1.5 rounded border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors disabled:opacity-50"
             >
-              Replace image
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
+              title="Remove image"
+              disabled={uploading}
               onClick={() => onImageChange(null)}
-              className="text-[10px] text-destructive/70 hover:text-destructive text-left transition-colors"
+              className="p-1.5 rounded border border-border/50 text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors disabled:opacity-50"
             >
-              Remove
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -389,6 +438,7 @@ const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 interface RightPanelProps {
   selectedField: CertificateField | undefined;
   onFieldUpdate: (updates: Partial<CertificateField>) => void;
+  allFieldLabels?: string[];
   // Canvas controls (shown when no field is selected)
   scale?: number;
   onScaleChange?: (s: number) => void;
@@ -401,7 +451,7 @@ interface RightPanelProps {
 
 type EffectType = 'none' | 'drop_shadow' | 'layer_blur' | 'background_blur';
 
-export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange, onFitToScreen, snapToGrid, onSnapToggle, pdfWidth, pdfHeight }: RightPanelProps) {
+export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale, onScaleChange, onFitToScreen, snapToGrid, onSnapToggle, pdfWidth, pdfHeight }: RightPanelProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<ColorTarget>('main');
   const [pickerInitialPos, setPickerInitialPos] = useState({ x: 0, y: 0 });
@@ -409,8 +459,18 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
   const [hexFocused, setHexFocused] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedEffect, setSelectedEffect] = useState<EffectType>('none');
+  const [labelDraft, setLabelDraft] = useState(selectedField?.label ?? '');
+  const labelInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Sync label draft when a different field is selected
+  useEffect(() => {
+    if (!labelInputRef.current?.matches(':focus')) {
+      setLabelDraft(selectedField?.label ?? '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedField?.id, selectedField?.label]);
 
   useEffect(() => {
     const id = 'gf-preload-all';
@@ -586,14 +646,41 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
     <div className="flex flex-col">
 
       {/* ── Field type + label ── */}
-      <div className="px-3 py-2.5 flex items-center gap-2 shrink-0">
+      <div className="px-3 pt-2.5 pb-1 flex items-center gap-2 shrink-0">
         <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded select-none shrink-0">
           {typeLabel}
         </span>
-        <input value={selectedField.label} onChange={(e) => onFieldUpdate({ label: e.target.value })}
-          className="flex-1 bg-transparent text-xs font-medium outline-none text-foreground placeholder:text-muted-foreground min-w-0"
-          placeholder="Field label" />
+        <input
+          ref={labelInputRef}
+          value={labelDraft}
+          onChange={(e) => setLabelDraft(e.target.value)}
+          onBlur={() => {
+            const trimmed = labelDraft.trim() || selectedField.label;
+            const others = allFieldLabels ?? [];
+            let final = trimmed;
+            if (others.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
+              const stripped = trimmed.replace(/\s*\(\d+\)$/, '');
+              let n = 2;
+              while (others.some(l => l.toLowerCase() === `${stripped} (${n})`.toLowerCase())) n++;
+              final = `${stripped} (${n})`;
+              setLabelDraft(final);
+            }
+            onFieldUpdate({ label: final });
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          className={`flex-1 bg-transparent text-xs font-medium outline-none placeholder:text-muted-foreground min-w-0 ${
+            (allFieldLabels ?? []).some(l => l.toLowerCase() === labelDraft.trim().toLowerCase())
+              ? 'text-destructive'
+              : 'text-foreground'
+          }`}
+          placeholder="Field label"
+        />
       </div>
+      {(allFieldLabels ?? []).some(l => l.toLowerCase() === labelDraft.trim().toLowerCase()) && (
+        <p className="px-3 pb-1.5 text-[10px] text-destructive/80 leading-none">
+          Name already in use — will be auto-renamed on blur
+        </p>
+      )}
 
       {/* ── Position ── */}
       <Section label="Position">
@@ -608,9 +695,42 @@ export function RightPanel({ selectedField, onFieldUpdate, scale, onScaleChange,
 
       {/* ── Dimensions ── */}
       <Section label="Dimensions">
-        <div className="grid grid-cols-2 gap-2">
-          <NumBox label="W" value={selectedField.width} onChange={(v) => onFieldUpdate({ width: v })} icon={<ArrowLeftRight className="w-3 h-3" />} />
-          <NumBox label="H" value={selectedField.height} onChange={(v) => onFieldUpdate({ height: v })} icon={<ArrowUpDown className="w-3 h-3" />} />
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1 min-w-0">
+            <NumBox label="W" value={selectedField.width}
+              className="w-full"
+              onChange={(v) => {
+                if (isImage && selectedField.lockAspectRatio && selectedField.width > 0) {
+                  const ratio = selectedField.height / selectedField.width;
+                  onFieldUpdate({ width: v, height: Math.round(v * ratio) });
+                } else {
+                  onFieldUpdate({ width: v });
+                }
+              }}
+              icon={<ArrowLeftRight className="w-3 h-3" />} />
+          </div>
+          {isImage && (
+            <button
+              title={selectedField.lockAspectRatio ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+              onClick={() => onFieldUpdate({ lockAspectRatio: !selectedField.lockAspectRatio })}
+              className={`p-1.5 rounded transition-colors shrink-0 ${selectedField.lockAspectRatio ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground'}`}
+            >
+              {selectedField.lockAspectRatio ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <NumBox label="H" value={selectedField.height}
+              className="w-full"
+              onChange={(v) => {
+                if (isImage && selectedField.lockAspectRatio && selectedField.height > 0) {
+                  const ratio = selectedField.width / selectedField.height;
+                  onFieldUpdate({ width: Math.round(v * ratio), height: v });
+                } else {
+                  onFieldUpdate({ height: v });
+                }
+              }}
+              icon={<ArrowUpDown className="w-3 h-3" />} />
+          </div>
         </div>
       </Section>
 

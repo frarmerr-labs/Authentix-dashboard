@@ -1,6 +1,6 @@
 # AGENTS.md — AI Agent Rules for Authentix Platform
 
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-03-21
 **Applies to:** Claude Code, Cursor, and any AI agent working in this repository
 
 ---
@@ -168,6 +168,13 @@ After ANY code change, update the relevant memory file:
 - Do NOT insert into `file_import_jobs` with old columns (`file_name`, `storage_path`, `total_rows`, `source_type`, `reusable`, `data_persisted`, `failure_count`) — use `source_file_id`, `source_format`, `row_count`
 - Do NOT use `certificate.status = 'issued'` — correct value is `'active'`
 - Do NOT reference `certificate.issue_date`/`expiry_date` — correct columns are `issued_at`/`expires_at`
+- Do NOT include `image`, `custom_text`, or `qr_code` field types in "missing column" mapping warnings — these are assets, not data columns
+- Do NOT navigate to design step AFTER async template API calls — navigate immediately and show a loading overlay during the fetch (optimistic navigation pattern)
+- Do NOT use `window.open()` for certificate previews — open in a Dialog modal with carousel support
+- Do NOT use `fetch() → blob → createObjectURL → anchor.click()` for downloads — use a direct native anchor click (`a.href = url; a.click()`) for instant downloads
+- Do NOT use count-based progress simulation (`Math.floor(totalRows * 0.92)`) — use time-elapsed approach (`elapsed / estimatedMs`) so single-recipient generation also animates
+- Do NOT use hardcoded grey colours for selection outlines on the design canvas — use `var(--primary)` so outlines work in both light and dark modes
+- Do NOT scale only `x/y/width/height` in `handleTemplateResize` without also scaling `fontSize` — use `Math.round(f.fontSize * Math.sqrt(sx * sy))` (geometric mean) to keep text proportional after resize
 
 ---
 

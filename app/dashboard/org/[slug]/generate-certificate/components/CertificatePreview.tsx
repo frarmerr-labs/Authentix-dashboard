@@ -79,7 +79,11 @@ export function CertificatePreview({ template, fields, currentPage }: Certificat
           const sw = field.width * scale;
           const sh = field.height * scale;
           const sf = field.fontSize * scale;
-          const displayValue = field.sampleValue || field.label;
+          const TYPE_SAMPLE_DEFAULTS: Record<string, string> = {
+            name: 'John Doe', course: 'Web Development Fundamentals',
+            start_date: 'January 15, 2026', end_date: 'March 15, 2026', custom_text: 'Custom Value',
+          };
+          const displayValue = field.sampleValue || TYPE_SAMPLE_DEFAULTS[field.type] || field.label;
 
           if (field.type === 'qr_code') {
             return (

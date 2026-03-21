@@ -12,6 +12,8 @@ import {
   ChevronRight,
   CheckCircle2,
   Loader2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,9 +34,35 @@ interface CertificateTableProps {
   totalCount: number;
   isLoading?: boolean;
   className?: string;
+  /** true for image templates — enables PNG download filename + Copy to Clipboard */
+  isImageTemplate?: boolean;
 }
 
 const PAGE_SIZE = 10;
+
+/** Render any image (including AVIF) onto a canvas and export as a PNG Blob. */
+async function toPngBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  const srcBlob = await response.blob();
+  if (srcBlob.type === 'image/png') return srcBlob;
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(srcBlob);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { URL.revokeObjectURL(objectUrl); return reject(new Error('No canvas context')); }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(objectUrl);
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+    img.src = objectUrl;
+  });
+}
 
 export function CertificateTable({
   certificates,
@@ -42,10 +70,13 @@ export function CertificateTable({
   totalCount,
   isLoading,
   className,
+  isImageTemplate = false,
 }: CertificateTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const totalPages = Math.ceil(certificates.length / PAGE_SIZE);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
@@ -63,23 +94,45 @@ export function CertificateTable({
 
   const handleDownload = async (cert: GeneratedCertificate) => {
     if (!cert.download_url) return;
-
     setDownloadingId(cert.id);
     try {
+      // Must fetch → blob → object URL to force download for cross-origin Supabase signed URLs.
+      // The `download` attribute is ignored by browsers for cross-origin URLs.
       const response = await fetch(cert.download_url);
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `${cert.certificate_number}.pdf`;
+      a.href = objectUrl;
+      a.download = isImageTemplate
+        ? `${cert.certificate_number}.png`
+        : `${cert.certificate_number}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download failed:', error);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error('Download failed:', err);
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleCopy = async (cert: GeneratedCertificate) => {
+    const url = cert.download_url || cert.preview_url;
+    if (!url) return;
+
+    setCopyingId(cert.id);
+    try {
+      const pngBlob = await toPngBlob(url);
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlob }),
+      ]);
+      setCopiedId(cert.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (error) {
+      console.error('Copy failed:', error);
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -189,6 +242,25 @@ export function CertificateTable({
                         )}
                       </Button>
                     )}
+                    {/* Copy to clipboard — image templates only */}
+                    {isImageTemplate && (cert.download_url || cert.preview_url) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleCopy(cert)}
+                        disabled={copyingId === cert.id}
+                        title="Copy image to clipboard"
+                      >
+                        {copyingId === cert.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : copiedId === cert.id ? (
+                          <Check className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
                     {cert.download_url && (
                       <Button
                         variant="ghost"
@@ -198,11 +270,9 @@ export function CertificateTable({
                         disabled={downloadingId === cert.id}
                         title="Download certificate"
                       >
-                        {downloadingId === cert.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4" />
-                        )}
+                        {downloadingId === cert.id
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <Download className="w-4 h-4" />}
                       </Button>
                     )}
                   </div>

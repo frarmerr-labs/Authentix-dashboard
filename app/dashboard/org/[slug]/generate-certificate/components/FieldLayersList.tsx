@@ -1,4 +1,9 @@
-import { CertificateField, FIELD_TYPE_CONFIG, FieldType } from '@/lib/types/certificate';
+import { CertificateField } from '@/lib/types/certificate';
+
+const TYPE_CHIP: Record<string, string> = {
+  name: 'name', course: 'course', start_date: 'date',
+  end_date: 'date', custom_text: 'text', qr_code: 'qr', image: 'image',
+};
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trash2, Eye, EyeOff, Lock, Unlock, GripVertical, Copy, Pencil, Check, X } from 'lucide-react';
@@ -86,6 +91,9 @@ export function FieldLayersList({
     );
   }
 
+  const isRenameConflict = renamingId !== null &&
+    fields.some(f => f.id !== renamingId && f.label.toLowerCase() === renameValue.trim().toLowerCase());
+
   const commitRename = () => {
     if (renamingId && renameValue.trim()) {
       onFieldRename?.(renamingId, renameValue.trim());
@@ -153,7 +161,7 @@ export function FieldLayersList({
           const isHidden = hiddenFields.has(field.id);
           const isDragOver = dragOverId === field.id;
           const isRenaming = renamingId === field.id;
-          const typeLabel = FIELD_TYPE_CONFIG[field.type as FieldType]?.label ?? field.type;
+          const typeLabel = TYPE_CHIP[field.type] ?? field.type;
 
           const isHovered = hoveredId === field.id;
           const showActions = isHovered;
@@ -170,8 +178,8 @@ export function FieldLayersList({
               onDragEnd={handleDragEnd}
               onContextMenu={(e) => handleContextMenu(e, field.id)}
               className={`
-                px-2 py-1.5 cursor-pointer transition-colors border-l-2
-                ${isSelected ? 'bg-white dark:bg-neutral-800/30 border-l-neutral-300 dark:border-l-neutral-500 border-y-transparent border-r-transparent' : 'border-l-transparent border-border/50 hover:bg-white/60 dark:hover:bg-neutral-800/20 hover:border-l-neutral-200 dark:hover:border-l-neutral-600'}
+                px-2 py-1.5 cursor-pointer transition-all
+                ${isSelected ? 'ring-1 ring-primary/70' : ''}
                 ${isHidden ? 'opacity-40' : ''}
                 ${isDragOver ? 'bg-neutral-200/60 dark:bg-neutral-700/40' : ''}
               `}
@@ -189,30 +197,41 @@ export function FieldLayersList({
                 <div className="flex-1 min-w-0">
                   {isRenaming ? (
                     /* ── Rename mode ── */
-                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                      <input
-                        ref={renameInputRef}
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') commitRename();
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={commitRename}
-                        className="flex-1 min-w-0 text-xs bg-background border border-primary/50 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <button
-                        className="text-primary hover:text-primary/80 shrink-0"
-                        onMouseDown={e => { e.preventDefault(); commitRename(); }}
-                      >
-                        <Check className="w-3 h-3" />
-                      </button>
-                      <button
-                        className="text-muted-foreground/60 hover:text-muted-foreground shrink-0"
-                        onMouseDown={e => { e.preventDefault(); setRenamingId(null); }}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                    <div className="flex flex-col gap-0.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <input
+                          ref={renameInputRef}
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') commitRename();
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onBlur={commitRename}
+                          className={`flex-1 min-w-0 text-xs bg-background rounded px-1.5 py-0.5 outline-none focus:ring-1 border ${
+                            isRenameConflict
+                              ? 'border-destructive/60 focus:ring-destructive/40 text-destructive'
+                              : 'border-primary/50 focus:ring-primary'
+                          }`}
+                        />
+                        <button
+                          className="text-primary hover:text-primary/80 shrink-0"
+                          onMouseDown={e => { e.preventDefault(); commitRename(); }}
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          className="text-muted-foreground/60 hover:text-muted-foreground shrink-0"
+                          onMouseDown={e => { e.preventDefault(); setRenamingId(null); }}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {isRenameConflict && (
+                        <p className="text-[9px] text-destructive/80 leading-none px-0.5">
+                          Name already in use — will be auto-renamed
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <>

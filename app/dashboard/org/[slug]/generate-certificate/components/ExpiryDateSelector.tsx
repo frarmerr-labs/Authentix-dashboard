@@ -1,9 +1,12 @@
 'use client';
 
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, Clock, Infinity, AlertCircle } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
+import { format, isValid } from 'date-fns';
+import { Calendar, Clock, Infinity, AlertCircle, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type ExpiryType = 'day' | 'week' | 'month' | 'year' | '5_years' | 'never' | 'custom';
@@ -125,18 +128,33 @@ export function ExpiryDateSelector({
 
         {/* Custom Date Picker */}
         {value === 'custom' && (
-          <div className="space-y-2 pt-2 border-t">
-            <Label htmlFor="custom-expiry-date" className="text-xs text-muted-foreground">
+          <div className="pt-3 mt-1 border-t space-y-3">
+            <Label className="text-xs font-medium text-foreground block">
               Custom Expiry Date
             </Label>
-            <Input
-              id="custom-expiry-date"
-              type="date"
-              value={customDate || ''}
-              min={getMinDate()}
-              onChange={(e) => onChange('custom', e.target.value)}
-              className="max-w-xs"
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  data-empty={!customDate}
+                  className="w-full sm:w-[240px] justify-between font-normal data-[empty=true]:text-muted-foreground"
+                >
+                  {customDate && isValid(new Date(customDate))
+                    ? format(new Date(customDate), 'PPP')
+                    : <span>Pick a date</span>}
+                  <ChevronDown className="w-4 h-4 opacity-60" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start" sideOffset={8}>
+                <CalendarPicker
+                  mode="single"
+                  selected={customDate && isValid(new Date(customDate)) ? new Date(customDate) : undefined}
+                  onSelect={(d) => onChange('custom', d ? format(d, 'yyyy-MM-dd') : '')}
+                  disabled={(date) => date < new Date(getMinDate())}
+                  defaultMonth={customDate && isValid(new Date(customDate)) ? new Date(customDate) : undefined}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
         )}
 

@@ -543,8 +543,38 @@ export const api = {
     },
 
     /**
+     * Upload a canvas asset (logo, stamp, image field, QR logo) to Supabase storage.
+     * Returns a permanent signed URL that the backend can fetch during certificate generation.
+     */
+    uploadAsset: async (file: File): Promise<string> => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await fetch(`${API_BASE_URL}/templates/assets/upload`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const json = await response.json() as ApiResponse<{ url: string }>;
+        if (!response.ok || !json.data?.url) {
+          const msg = typeof json.error === "object" ? json.error?.message : json.error ?? "Upload failed";
+          throw new ApiError("UPLOAD_ERROR", msg ?? "Upload failed", {});
+        }
+        return json.data.url;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
+    },
+
+    /**
      * Create a new certificate template
-     * 
+     *
      * IMPORTANT: Frontend sends ONLY metadata and file blob.
      * Backend is responsible for ALL storage path generation.
      * Frontend MUST NOT:

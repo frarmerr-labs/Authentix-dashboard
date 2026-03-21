@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Image as ImageIcon, Stamp, PenTool, Upload, Plus, Trash2, MousePointerClick } from 'lucide-react';
+import { Image as ImageIcon, Stamp, PenTool, Upload, Plus, Trash2, MousePointerClick, Loader2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
+import { api } from '@/lib/api/client';
 
 export interface Asset {
   id: string;
@@ -17,7 +18,7 @@ export interface Asset {
 
 interface AssetLibraryProps {
   assets: Asset[];
-  onAssetsChange: (assets: Asset[]) => void;
+  onAssetsChange: (assets: Asset[] | ((prev: Asset[]) => Asset[])) => void;
   onAddAsset: (url: string, name: string) => void;
 }
 
@@ -32,6 +33,7 @@ export function AssetLibrary({ assets, onAssetsChange, onAddAsset }: AssetLibrar
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [assetName, setAssetName] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => {
@@ -46,18 +48,28 @@ export function AssetLibrary({ assets, onAssetsChange, onAddAsset }: AssetLibrar
     noClick: false,
   });
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!uploadFile || !assetName.trim()) return;
-    const newAsset: Asset = {
-      id: Math.random().toString(36).slice(2),
-      name: assetName.trim(),
-      url: URL.createObjectURL(uploadFile),
-      type: activeType,
-    };
-    onAssetsChange([...assets, newAsset]);
+    setIsUploading(true);
+    // Optimistic entry with blob URL
+    const blobUrl = URL.createObjectURL(uploadFile);
+    const tempId = Math.random().toString(36).slice(2);
+    const tempAsset: Asset = { id: tempId, name: assetName.trim(), url: blobUrl, type: activeType };
+    onAssetsChange([...assets, tempAsset]);
     setShowUploadDialog(false);
     setUploadFile(null);
     setAssetName('');
+    try {
+      const permanentUrl = await api.templates.uploadAsset(uploadFile);
+      URL.revokeObjectURL(blobUrl);
+      // Replace blob URL with permanent URL
+      onAssetsChange(prev => prev.map(a => a.id === tempId ? { ...a, url: permanentUrl } : a));
+    } catch (err) {
+      console.error('[AssetLibrary] Upload failed:', err);
+      // Keep blob URL (works for current session)
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleDelete = (id: string) => {
