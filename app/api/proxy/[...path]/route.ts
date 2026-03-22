@@ -59,6 +59,7 @@ const ALLOWED_PATH_PREFIXES = [
   "/webhooks/",
   "/industries",
   "/catalog/",
+  "/delivery/",
 ] as const;
 
 // ============================================================================
