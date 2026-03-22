@@ -383,6 +383,12 @@ export interface CreateIntegrationDto {
   from_name?: string;
   reply_to?: string;
   email_api_key?: string;
+  // SMTP-specific
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_secure?: boolean;
+  smtp_user?: string;
+  smtp_password?: string;
 }
 
 export interface CreateDeliveryTemplateDto {
@@ -401,6 +407,7 @@ export interface SendEmailDto {
   template_id?: string;
   subject_override?: string;
   from_name_override?: string;
+  use_platform_default?: boolean;
 }
 
 export interface TestSendDto {

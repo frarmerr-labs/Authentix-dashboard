@@ -72,12 +72,12 @@ type Theme = "light" | "dark" | "system";
 
 const NAVIGATION_ITEMS: readonly NavItem[] = [
   { name: "Analytics", href: "", icon: LayoutDashboard },
-  { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Certificate Templates", href: "/templates", icon: FileText },
   { name: "Generate", href: "/generate-certificate", icon: Sparkles },
   { name: "Imports", href: "/imports", icon: Upload },
   { name: "Certificates", href: "/certificates", icon: FileCheck },
   { name: "Verification", href: "/verification-logs", icon: Shield },
-  { name: "Email", href: "/email-templates", icon: Mail },
+  { name: "Email Templates", href: "/email-templates", icon: Mail },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Users", href: "/users", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },

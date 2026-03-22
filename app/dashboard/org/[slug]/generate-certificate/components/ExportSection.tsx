@@ -190,6 +190,7 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
   const [templates, setTemplates] = useState<DeliveryTemplate[]>([]);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [usePlatformDefault, setUsePlatformDefault] = useState(false);
   const [subjectOverride, setSubjectOverride] = useState('');
   const [fromNameOverride, setFromNameOverride] = useState('');
   const [testEmail, setTestEmail] = useState('');
@@ -232,15 +233,17 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
   };
 
   const handleSend = async () => {
-    if (!selectedIntegration || !selectedTemplate) return;
+    if (!selectedTemplate) return;
+    if (!usePlatformDefault && !selectedIntegration) return;
     setStep('sending');
     try {
       const result = await api.delivery.sendJobEmails({
         generation_job_id: jobId,
-        integration_id: selectedIntegration.id,
+        integration_id: usePlatformDefault ? undefined : selectedIntegration!.id,
         template_id: selectedTemplate.id,
         subject_override: subjectOverride.trim() || undefined,
         from_name_override: fromNameOverride.trim() || undefined,
+        use_platform_default: usePlatformDefault || undefined,
       });
       setSendResult({ sent: result.sent, failed: result.failed });
       setStep('done');
@@ -302,18 +305,43 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
         {/* No integration */}
         {step === 'no_integration' && (
           <div className="space-y-4">
-            <Alert className="border-amber-500/30 bg-amber-500/5">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-sm text-amber-800">
-                No active email integration configured. Set up your sender to enable sending.
-              </AlertDescription>
-            </Alert>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-              <Link href={orgPath('/settings/delivery')} className="flex-1">
-                <Button className="w-full gap-2">Configure Email <ExternalLink className="w-3.5 h-3.5" /></Button>
+            <p className="text-sm text-muted-foreground">No custom email integration is configured yet. Choose how you'd like to send:</p>
+            <div className="grid gap-3">
+              {/* Option 1: Authentix default */}
+              <button
+                type="button"
+                onClick={() => {
+                  setUsePlatformDefault(true);
+                  // Check if templates exist before proceeding
+                  if (templates.length === 0) { setStep('no_template'); return; }
+                  const defaultTpl = templates.find(t => t.is_default) ?? templates[0]!;
+                  setSelectedTemplateId(defaultTpl.id);
+                  setStep('confirm');
+                }}
+                className="flex items-start gap-3 p-4 rounded-lg border-2 border-border hover:border-[#3ECF8E] hover:bg-[#3ECF8E]/5 text-left transition-all group"
+              >
+                <div className="p-2 rounded-full bg-[#3ECF8E]/10 shrink-0 mt-0.5">
+                  <Mail className="w-4 h-4 text-[#3ECF8E]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold group-hover:text-[#3ECF8E] transition-colors">Use Authentix Default Email</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Send from Authentix's verified domain — no setup needed.</p>
+                </div>
+              </button>
+              {/* Option 2: Set up your own */}
+              <Link href={orgPath('/settings/delivery')} className="block">
+                <div className="flex items-start gap-3 p-4 rounded-lg border-2 border-border hover:border-border/60 text-left transition-all group">
+                  <div className="p-2 rounded-full bg-muted shrink-0 mt-0.5">
+                    <Settings2 className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Set Up My Own Email</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Connect AWS SES or Gmail/Outlook SMTP to send from your domain.</p>
+                  </div>
+                </div>
               </Link>
             </div>
+            <Button variant="ghost" size="sm" onClick={onClose} className="w-full text-muted-foreground">Cancel</Button>
           </div>
         )}
 
@@ -336,7 +364,7 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
         )}
 
         {/* Confirm */}
-        {step === 'confirm' && selectedIntegration && selectedTemplate && (
+        {step === 'confirm' && (usePlatformDefault || selectedIntegration) && selectedTemplate && (
           <div className="space-y-4">
             {/* Recipient count pill */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
@@ -349,10 +377,15 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
             {/* Integration selector */}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Send From</Label>
-              {integrations.length === 1 ? (
+              {usePlatformDefault ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-md border bg-[#3ECF8E]/5 border-[#3ECF8E]/20 text-sm">
+                  <Mail className="w-3.5 h-3.5 text-[#3ECF8E] shrink-0" />
+                  <span className="truncate text-[#3ECF8E] font-medium">Authentix Default Email</span>
+                </div>
+              ) : integrations.length === 1 ? (
                 <div className="flex items-center gap-2 p-2.5 rounded-md border bg-muted/30 text-sm">
                   <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="truncate">{effectiveSender || selectedIntegration.from_email}</span>
+                  <span className="truncate">{effectiveSender || selectedIntegration!.from_email}</span>
                 </div>
               ) : (
                 <Select value={selectedIntegrationId} onValueChange={setSelectedIntegrationId}>
@@ -419,11 +452,11 @@ function SendEmailModal({ jobId, recipientCount, orgPath, onClose, onEmailSent }
                   <Input
                     value={fromNameOverride}
                     onChange={e => setFromNameOverride(e.target.value)}
-                    placeholder={selectedIntegration.from_name ?? 'e.g. Authentix Academy'}
+                    placeholder={selectedIntegration?.from_name ?? 'e.g. Authentix Academy'}
                     className="h-8 text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Overrides "{selectedIntegration.from_name || 'not set'}" for this send only.
+                    Overrides "{selectedIntegration?.from_name || 'not set'}" for this send only.
                   </p>
                 </div>
                 <div className="space-y-1.5">

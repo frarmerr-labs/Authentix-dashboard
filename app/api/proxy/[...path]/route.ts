@@ -381,6 +381,10 @@ async function proxyRequest(
         );
       }
     } else {
+      // 204 No Content — body-less response
+      if (response.status === 204) {
+        return new NextResponse(null, { status: 204 });
+      }
       // For non-JSON responses (e.g., file downloads), stream through
       const responseBody = await response.arrayBuffer();
       return new NextResponse(responseBody, {

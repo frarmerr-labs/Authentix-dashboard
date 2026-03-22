@@ -27,6 +27,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Unregister any stale service workers from other projects on the same origin */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})})}`
+          }}
+        />
+      </head>
       <body className={inter.className} suppressHydrationWarning>
         {children}
         <Toaster richColors theme="dark" position="bottom-right" />

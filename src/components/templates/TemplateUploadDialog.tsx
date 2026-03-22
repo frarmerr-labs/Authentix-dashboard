@@ -126,11 +126,18 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       'image/png',
       'image/jpeg',
       'image/webp',
+      'image/svg+xml',
+      'image/avif',
+      'image/heic',
+      'image/heif',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     ];
 
-    if (validTypes.includes(selectedFile.type)) {
+    // HEIC/HEIF files often report empty MIME type on non-Apple browsers
+    const isHeicByExtension = /\.(heic|heif)$/i.test(selectedFile.name) && !selectedFile.type;
+
+    if (validTypes.includes(selectedFile.type) || isHeicByExtension) {
       setFile(selectedFile);
       // Auto-fill title from filename if title is empty
       const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, "");
@@ -139,7 +146,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
       }
       setError("");
     } else {
-      setError("Please upload a valid file (PDF, PNG, JPG, WebP, DOCX, PPTX)");
+      setError("Please upload a valid file (PDF, PNG, JPG, WebP, SVG, AVIF, HEIC, DOCX, PPTX)");
     }
   };
 
@@ -368,7 +375,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
               <input
                 id="file-upload"
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.pptx"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.svg,.avif,.heic,.heif,.docx,.pptx"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={uploading}
@@ -412,7 +419,7 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Supports: PDF, PNG, JPG, WebP, DOCX, PPTX (Max 50MB)
+                    Supports: PDF, PNG, JPG, WebP, SVG, AVIF, HEIC/HEIF, DOCX, PPTX (Max 50MB)
                   </p>
                 </div>
               )}
