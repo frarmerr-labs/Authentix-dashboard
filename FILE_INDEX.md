@@ -128,6 +128,24 @@ Look here for:
 - `app/dashboard/org/[slug]/settings/api/page.tsx`
 - `app/dashboard/org/[slug]/users/page.tsx`
 
+### `__tests__/`
+
+Unit and component tests (Vitest + @testing-library/react).
+
+- `__tests__/auth/signup-action.test.ts` — server action: validation, backend calls, NEXT_REDIRECT
+- `__tests__/auth/login-action.test.ts` — server action: login flow, bootstrap, cookie handling
+- `__tests__/components/ManualDataEntry.test.tsx` — add/edit/delete rows, email validation, Confirm Data
+- `__tests__/components/CertificateTable.test.tsx` — empty/loading, pagination, download, clipboard, ZIP
+- `__tests__/components/ExportSection.test.tsx` — canGenerate button state, overlay state machine
+- `__tests__/lib/automap.test.ts` — pure function: label matching, type fallbacks, first-match-wins
+
+### `e2e/`
+
+End-to-end tests (Playwright, intercepts at `http://localhost:3000`).
+
+- `e2e/auth.spec.ts` — login and signup flows with mocked API responses
+- `e2e/generate-certificate.spec.ts` — template selection → data entry → generation flow
+
 ## Configuration and Tooling Files
 
 - `package.json` - scripts, dependencies, Node engine
@@ -137,10 +155,13 @@ Look here for:
 - `eslint.config.mjs` - lint rules
 - `tailwind.config.ts` and `postcss.config.mjs` - styling pipeline
 - `.env.example` - environment template
+- `vitest.config.ts` - Vitest config (jsdom, `vite-tsconfig-paths`, coverage)
+- `vitest.setup.ts` - Vitest global setup (`@testing-library/jest-dom`)
+- `playwright.config.ts` - Playwright E2E config (Chromium, `localhost:3000`)
 
 ## Documentation Map
 
-- `README.md` - onboarding and developer workflows
+- `README.md` - onboarding and developer workflows (includes Testing section)
 - `AGENTS.md` - AI-agent operational constraints
 - `projectmemory.md` - persistent architecture memory and recent changes
 - `SYSTEM_OVERVIEW.md` - end-to-end system and data flows

@@ -115,16 +115,35 @@ Flow:
 - Supabase host allowance configured in `next.config.ts` for image/network policy needs
 - Billing/payment actions rely on backend-provided Razorpay links
 
-## 8) Operational Notes
+## 8) Test Coverage
+
+Unit and component tests (Vitest 3.2, jsdom):
+
+| File | Area | Count |
+|---|---|---|
+| `__tests__/auth/signup-action.test.ts` | Signup server action | 22 |
+| `__tests__/auth/login-action.test.ts` | Login server action | 15 |
+| `__tests__/components/ManualDataEntry.test.tsx` | Manual data entry component | ~20 |
+| `__tests__/components/CertificateTable.test.tsx` | Certificate results table | 25 |
+| `__tests__/components/ExportSection.test.tsx` | Export/generation overlay | ~15 |
+| `__tests__/lib/automap.test.ts` | `autoMapForTemplate` pure fn | ~28 |
+
+E2E tests (Playwright, `localhost:3000`, mocked API via `page.route()`):
+- `e2e/auth.spec.ts` — login + signup flows
+- `e2e/generate-certificate.spec.ts` — full certificate generation flow
+
+Quality gates in order: `npm run typecheck` → `npm run lint` → `npm run test:run` → `npm run build`.
+
+## 9) Operational Notes
 
 - Node runtime expectation: 24.x
-- Type/lint/build checks are primary quality gates in this repo
+- Type/lint/build/test checks are primary quality gates in this repo
 - Documentation sync should happen with architecture/API/workflow changes:
   - `README.md`
   - `AGENTS.md`
   - `projectmemory.md`
 
-## 9) Related Documents
+## 10) Related Documents
 
 - `README.md`
 - `AGENTS.md`

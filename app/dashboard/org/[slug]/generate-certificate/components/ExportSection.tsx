@@ -56,7 +56,7 @@ function getExportFormatDescription(template: CertificateTemplate | null): strin
 // Auto-map imported data headers to a template's fields.
 // Uses exact label match first, then type-based fallback so renamed fields
 // (e.g. "Student Name" vs "Recipient Name") still resolve correctly.
-function autoMapForTemplate(
+export function autoMapForTemplate(
   fields: CertificateField[],
   headers: string[]
 ): FieldMapping[] {

@@ -1,6 +1,6 @@
 # AGENTS.md - Authentix Dashboard Agent Guide
 
-**Last Updated:** 2026-03-21  
+**Last Updated:** 2026-03-22
 **Scope:** `Authentix-dashboard` frontend repository
 
 This document is optimized for AI agents and automation tooling. Read this before code edits.
@@ -113,6 +113,7 @@ Primary flow:
 - Non-breaking documentation updates (`README.md`, `FILE_INDEX.md`, `SYSTEM_OVERVIEW.md`)
 - Typed refactors that preserve endpoint/method/path contracts
 - Testless cleanup only when runtime behavior is unchanged and verified
+- Adding/extending tests in `__tests__/` or `e2e/` for existing behavior
 
 ## Hard Constraints
 
@@ -129,6 +130,15 @@ Primary flow:
 - Using stale schema fields (`issue_date`, `expiry_date`, `status='issued'`).
 - Downloading files through unnecessary blob-buffer roundtrips when direct links are available.
 - Re-introducing optimistic-flow regressions in generate-certificate UX.
+
+## Test Infrastructure Rules
+
+- Run `npm run test:run` after any change to `generate-certificate/components/*`, `(auth)/*/actions.ts`, or `src/lib/api/*`.
+- Do NOT use manual `@/` alias maps in `vitest.config.ts` — use `vite-tsconfig-paths` plugin (order-sensitive alias resolution causes silent failures).
+- Do NOT use `vi.useFakeTimers()` in ExportSection overlay tests — progress `setInterval` + fake timers deadlock `userEvent.click()`. Use `vi.spyOn(global, 'setInterval')` instead.
+- Do NOT call `vi.spyOn(document.body, 'appendChild')` before `render()` — breaks React's DOM root creation.
+- `autoMapForTemplate` must remain exported from `ExportSection.tsx` (needed by `__tests__/lib/automap.test.ts`).
+- E2E tests require `npx playwright install` before first run.
 
 ## Documentation Synchronization Rules
 

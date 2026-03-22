@@ -6,7 +6,7 @@ All notable changes to this project are documented here.
 
 | Release | Date | Focus |
 |---|---|---|
-| Unreleased | 2026-03-22 | ExportSection generation overlay rework — state model, StrictMode fix, brand color, dragger sync, progress cap, success icons |
+| Unreleased | 2026-03-22 | Test infrastructure (Vitest + Playwright, 125 unit/component tests); ExportSection generation overlay rework |
 | Unreleased | 2026-03-21 | Generate-certificate UX fixes, ManualDataEntry fixes |
 | Unreleased | 2026-03-20 | Auth/login cleanup, certificate schema alignment |
 | Unreleased | 2026-03-19 | Slug routing migration, API contract alignment |
@@ -21,6 +21,10 @@ All notable changes to this project are documented here.
 
 | Type | Area | Summary | Key Files |
 |---|---|---|---|
+| Added | Testing | Comprehensive test suite: Vitest 3.2 + jsdom + @testing-library/react 16.3 + Playwright 1.52. 125 unit/component tests (6 files), all passing. E2E tests for auth and certificate generation flows with `page.route()` API interception — no live backend needed. | `vitest.config.ts`, `vitest.setup.ts`, `playwright.config.ts`, `__tests__/**`, `e2e/**` |
+| Added | Testing | Auth server action tests: 22 signup + 15 login tests covering validation, backend calls, cookie flow, NEXT_REDIRECT re-throw, bootstrap error handling | `__tests__/auth/signup-action.test.ts`, `__tests__/auth/login-action.test.ts` |
+| Added | Testing | Component tests: ManualDataEntry (add/edit/delete rows, validation, auto-commit), CertificateTable (empty/loading/pagination/download/clipboard/ZIP), ExportSection (canGenerate logic, overlay state machine) | `__tests__/components/*.test.tsx` |
+| Added | Testing | Pure function test for `autoMapForTemplate` — exported from ExportSection.tsx: exact match, case-insensitive, type fallbacks, first-match-wins semantics | `__tests__/lib/automap.test.ts` |
 | Fixed | ExportSection | Replaced `isGenerating + isShowingSuccess + generationComplete` trio with single `overlayState: 'hidden' \| 'generating' \| 'success'` enum — eliminates multi-flag race conditions and `useEffect` dependency fragility | `ExportSection.tsx` |
 | Fixed | ExportSection | React StrictMode `isMountedRef` bug: effect body now sets `isMountedRef.current = true` on mount. Without this, double-mount cleanup left ref permanently `false`, silently aborting the success path | `ExportSection.tsx` |
 | Fixed | ExportSection | Success now triggered via direct `setOverlayState('success')` + `setTimeout` inside `handleGenerate` — not a `useEffect` watching state deps | `ExportSection.tsx` |

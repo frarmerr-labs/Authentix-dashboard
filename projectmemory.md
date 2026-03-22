@@ -1,6 +1,6 @@
 # Project Memory - Authentix Dashboard (Frontend)
 
-**Last Updated:** 2026-03-21  
+**Last Updated:** 2026-03-22
 **Purpose:** Persistent memory for architecture, decisions, constraints, and recent changes.
 
 ---
@@ -123,4 +123,5 @@ Not implemented in frontend runtime:
 - **2026-03-20** | Certificate schema alignment | Updated certificate interfaces and UI usage for live backend fields.
 - **2026-03-21** | Generate-certificate UX and bug fixes | Improved template selection flow, preview/download UX, data-entry behavior, and field resizing/selection behavior.
 - **2026-03-21** | Documentation modernization refresh | Reorganized core docs (`README.md`, `AGENTS.md`, `projectmemory.md`) and added `SYSTEM_OVERVIEW.md` and `FILE_INDEX.md` for onboarding and navigation.
+- **2026-03-22** | Test infrastructure | Added comprehensive test suite: Vitest 3.2 + @testing-library/react 16.3 + Playwright 1.52. 125 unit/component tests all passing (6 test files). E2E tests for auth and certificate generation flows. Key config: `vite-tsconfig-paths` plugin required for `@/*` alias resolution. Key patterns: stub `setInterval` in ExportSection tests, use `fireEvent` (not `userEvent`) for overlay/clipboard click tests, render before spying on `document.body.appendChild`. Scripts: `npm test` (watch), `npm run test:run` (CI), `npm run test:coverage`, `npm run test:e2e`.
 - **2026-03-22** | ExportSection generation overlay overhaul | Replaced fragile `isGenerating+isShowingSuccess+generationComplete` trio with single `overlayState` enum (`hidden|generating|success`). Fixed StrictMode `isMountedRef` bug (effect body now resets ref to `true` on remount). Replaced `useEffect`-based success trigger with direct `setTimeout` in `handleGenerate`. Fixed brand color invisibility (`--primary` is oklch, not HSL — must use `#3ECF8E` directly). Fixed dragger/fill sync by making dragger a child element of fill div. Raised progress cap from ~83% to ~98%. Added CSS-only generation animation (orbiting dots, document lines) and success animation (`ShieldCheck` + floating `BadgeCheck`) with keyframes hoisted to always-rendered `<style>` tag.

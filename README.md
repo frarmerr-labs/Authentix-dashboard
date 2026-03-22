@@ -137,6 +137,10 @@ npm start
 - `npm run lint` - run ESLint
 - `npm run build` - create production build
 - `npm start` - run production server
+- `npm test` - run unit/component tests in watch mode (Vitest)
+- `npm run test:run` - run all unit/component tests once (CI)
+- `npm run test:coverage` - run tests with v8 coverage report
+- `npm run test:e2e` - run Playwright E2E tests (requires `npx playwright install` first)
 
 ## Key Internal Workflows
 
@@ -163,6 +167,31 @@ npm start
 
 ⚠️ Needs clarification: async generation for very large batches is documented as incomplete in project memory and should be treated as a known limitation.
 
+## Testing
+
+Unit and component tests live in `__tests__/` and run via Vitest (jsdom environment):
+
+```bash
+npm run test:run        # all tests once
+npm run test:coverage   # with coverage
+```
+
+E2E tests live in `e2e/` and run via Playwright against `http://localhost:3000`:
+
+```bash
+npx playwright install  # one-time browser install
+npm run test:e2e
+```
+
+Key config files: `vitest.config.ts`, `vitest.setup.ts`, `playwright.config.ts`.
+
+**Testing gotchas:**
+- `vite-tsconfig-paths` plugin (not manual aliases) is required for `@/*` path resolution in Vitest
+- Stub `setInterval` in ExportSection tests — the progress timer fires out-of-`act` and stalls `waitFor`
+- Use `fireEvent` (not `userEvent`) for overlay and async clipboard click tests
+- Call `render()` before `vi.spyOn(document.body, 'appendChild')` — spying first breaks React DOM mounting
+- `ClipboardItem` is not defined in jsdom — stub it via `vi.stubGlobal('ClipboardItem', ...)` in `beforeEach`
+
 ## Contribution Guidelines
 
 - Prefer Server Components for initial data loading
@@ -170,6 +199,7 @@ npm start
 - Route new protected features under `app/dashboard/org/[slug]/`
 - Keep API access behind Next route handlers (`/api/proxy/*`, `/api/auth/*`)
 - Run `npm run typecheck && npm run lint && npm run build` before PR
+- Run `npm run test:run` to verify no regressions
 - Update docs when architecture, routes, contracts, or workflows change
 
 ## Documentation Rules
