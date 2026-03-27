@@ -390,6 +390,7 @@ function IntegrationProviderIcon({ integration }: { integration: DeliveryIntegra
 
 const PLATFORM_DEFAULT_EMAIL = "info@xencus.com";
 const PLATFORM_DEFAULT_NAME_KEY = "authentix_default_sender_name";
+const PLATFORM_DEFAULT_ENABLED_KEY = "authentix_default_enabled";
 
 export default function EmailDeliverySettingsPage() {
   const { orgPath } = useOrg();
@@ -402,14 +403,17 @@ export default function EmailDeliverySettingsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  // Authentix default: editable sender name stored in localStorage
+  // Authentix default: editable sender name + enabled toggle stored in localStorage
   const [defaultSenderName, setDefaultSenderName] = useState("Authentix");
   const [editingDefaultName, setEditingDefaultName] = useState(false);
   const [defaultNameDraft, setDefaultNameDraft] = useState("Authentix");
+  const [platformDefaultEnabled, setPlatformDefaultEnabled] = useState(true);
 
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem(PLATFORM_DEFAULT_NAME_KEY) : null;
     if (stored) { setDefaultSenderName(stored); setDefaultNameDraft(stored); }
+    const enabledStored = typeof window !== "undefined" ? localStorage.getItem(PLATFORM_DEFAULT_ENABLED_KEY) : null;
+    if (enabledStored !== null) setPlatformDefaultEnabled(enabledStored !== "false");
     load();
   }, []);
 
@@ -419,6 +423,12 @@ export default function EmailDeliverySettingsPage() {
     localStorage.setItem(PLATFORM_DEFAULT_NAME_KEY, v);
     setEditingDefaultName(false);
     toast.success("Sender name saved");
+  };
+
+  const togglePlatformDefault = (enabled: boolean) => {
+    setPlatformDefaultEnabled(enabled);
+    localStorage.setItem(PLATFORM_DEFAULT_ENABLED_KEY, String(enabled));
+    toast.success(enabled ? "Authentix default enabled" : "Authentix default disabled");
   };
 
   const load = async () => {
@@ -518,7 +528,8 @@ export default function EmailDeliverySettingsPage() {
   };
 
   const activeDefault = integrations.find(i => i.is_default && i.is_active) ?? integrations.find(i => i.is_active);
-  const usingPlatformDefault = integrations.filter(i => i.is_active).length === 0;
+  const hasActiveIntegration = integrations.filter(i => i.is_active).length > 0;
+  const usingPlatformDefault = !hasActiveIntegration && platformDefaultEnabled;
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -537,89 +548,15 @@ export default function EmailDeliverySettingsPage() {
         </Alert>
       )}
 
-      {/* ── Authentix Default section ─────────────────────────────────────── */}
-      <Card className={usingPlatformDefault ? "border-[#3ECF8E]/40 shadow-sm" : ""}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg shrink-0 ${usingPlatformDefault ? "bg-[#3ECF8E]/10" : "bg-muted"}`}>
-              <Mail className={`w-4 h-4 ${usingPlatformDefault ? "text-[#3ECF8E]" : "text-muted-foreground"}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <CardTitle className="text-base">Authentix Default Email</CardTitle>
-                {usingPlatformDefault && (
-                  <Badge className="bg-[#3ECF8E]/10 text-[#3ECF8E] border-[#3ECF8E]/30 hover:bg-[#3ECF8E]/10 text-xs">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    Currently In Use
-                  </Badge>
-                )}
-              </div>
-              <CardDescription className="mt-0.5 text-xs">
-                When no custom integration is active, certificates are sent from Authentix&apos;s verified sender.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Sender details */}
-          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Sender Email</p>
-                <p className="text-sm font-mono font-medium">{PLATFORM_DEFAULT_EMAIL}</p>
-              </div>
-              <Badge variant="outline" className="text-xs">Managed by Authentix</Badge>
-            </div>
-            <Separator />
-            {/* Editable sender name */}
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Sender Name</p>
-              {editingDefaultName ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={defaultNameDraft}
-                    onChange={e => setDefaultNameDraft(e.target.value)}
-                    className="h-8 text-sm flex-1"
-                    placeholder="Authentix"
-                    autoFocus
-                    onKeyDown={e => { if (e.key === "Enter") saveDefaultName(); if (e.key === "Escape") setEditingDefaultName(false); }}
-                  />
-                  <Button size="sm" className="h-8 gap-1 bg-[#3ECF8E] hover:bg-[#34b87a] text-white shrink-0" onClick={saveDefaultName}>
-                    <Check className="w-3 h-3" /> Save
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingDefaultName(false)}>✕</Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium flex-1">{defaultSenderName}</p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => { setDefaultNameDraft(defaultSenderName); setEditingDefaultName(true); }}
-                  >
-                    <Pencil className="w-3 h-3" /> Edit
-                  </Button>
-                </div>
-              )}
-              <p className="text-[11px] text-muted-foreground">Recipients will see this as the "From" name in their inbox.</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Add your own integration below to send from your domain instead.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* ── Custom integrations ────────────────────────────────────────────── */}
-      <Card>
+      {/* ── Your Email Integrations (shown FIRST) ──────────────────────────── */}
+      <Card className={hasActiveIntegration ? "border-[#3ECF8E]/40 shadow-sm" : ""}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg">Your Email Integrations</CardTitle>
+              <CardTitle className="text-lg">Your Email Integration</CardTitle>
               <CardDescription className="mt-0.5">
                 {integrations.length === 0
-                  ? "No custom integrations yet — using Authentix default above."
+                  ? "Connect your own sender to send emails from your domain."
                   : `${integrations.length} integration${integrations.length !== 1 ? "s" : ""} · ${activeDefault ? `Sending from ${activeDefault.from_email}` : "None active"}`}
               </CardDescription>
             </div>
@@ -645,7 +582,6 @@ export default function EmailDeliverySettingsPage() {
             </div>
           ) : (
             <>
-              {/* Existing integrations */}
               {integrations.map(integration => (
                 <div key={integration.id}>
                   {editingId === integration.id ? (
@@ -661,12 +597,9 @@ export default function EmailDeliverySettingsPage() {
                   ) : (
                     <div className={`rounded-lg border transition-colors ${integration.is_active ? "hover:bg-muted/10" : "bg-muted/20 opacity-70"}`}>
                       <div className="flex items-center gap-3 p-3.5">
-                        {/* Provider icon */}
                         <div className="p-2 rounded-full bg-background border shrink-0 flex items-center justify-center w-9 h-9">
                           <IntegrationProviderIcon integration={integration} />
                         </div>
-
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-semibold truncate">{integration.display_name}</p>
@@ -689,18 +622,13 @@ export default function EmailDeliverySettingsPage() {
                               : integration.from_email}
                           </p>
                         </div>
-
-                        {/* Actions */}
                         <div className="flex items-center gap-1 shrink-0">
-                          {/* Enable / Disable toggle */}
-                          <div className="flex items-center gap-1.5 mr-1">
-                            <Switch
-                              checked={integration.is_active}
-                              disabled={togglingId === integration.id}
-                              onCheckedChange={() => handleToggleActive(integration.id, integration.is_active)}
-                              className="data-[state=checked]:bg-[#3ECF8E]"
-                            />
-                          </div>
+                          <Switch
+                            checked={integration.is_active}
+                            disabled={togglingId === integration.id}
+                            onCheckedChange={() => handleToggleActive(integration.id, integration.is_active)}
+                            className="data-[state=checked]:bg-[#3ECF8E] mr-1"
+                          />
                           <Button
                             variant="ghost"
                             size="sm"
@@ -730,11 +658,10 @@ export default function EmailDeliverySettingsPage() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Server className="w-8 h-8 mx-auto mb-2 opacity-20" />
                   <p className="text-sm">No integrations yet.</p>
-                  <p className="text-xs mt-0.5">Click "Add Integration" to connect Gmail, Outlook, or AWS SES.</p>
+                  <p className="text-xs mt-0.5">Add Gmail, Outlook, or AWS SES to send from your own domain.</p>
                 </div>
               )}
 
-              {/* Add form — collapsible */}
               {showAddForm && (
                 <Card className="p-5 border-[#3ECF8E]/30 mt-2">
                   <p className="text-sm font-semibold mb-4">New Integration</p>
@@ -748,6 +675,88 @@ export default function EmailDeliverySettingsPage() {
             </>
           )}
         </CardContent>
+      </Card>
+
+      {/* ── Authentix Default (fallback, shown SECOND) ─────────────────────── */}
+      <Card className={usingPlatformDefault ? "border-[#3ECF8E]/40 shadow-sm" : "opacity-80"}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg shrink-0 ${usingPlatformDefault ? "bg-[#3ECF8E]/10" : "bg-muted"}`}>
+              <Mail className={`w-4 h-4 ${usingPlatformDefault ? "text-[#3ECF8E]" : "text-muted-foreground"}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="text-base">Authentix Default Email</CardTitle>
+                {usingPlatformDefault && (
+                  <Badge className="bg-[#3ECF8E]/10 text-[#3ECF8E] border-[#3ECF8E]/30 hover:bg-[#3ECF8E]/10 text-xs">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Currently In Use
+                  </Badge>
+                )}
+                {!platformDefaultEnabled && (
+                  <Badge variant="secondary" className="text-xs">Disabled</Badge>
+                )}
+              </div>
+              <CardDescription className="mt-0.5 text-xs">
+                Fallback sender managed by Authentix — used when no custom integration is active.
+              </CardDescription>
+            </div>
+            {/* Enable / disable toggle for the Authentix default */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Switch
+                checked={platformDefaultEnabled}
+                onCheckedChange={togglePlatformDefault}
+                className="data-[state=checked]:bg-[#3ECF8E]"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        {platformDefaultEnabled && (
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Sender Email</p>
+                  <p className="text-sm font-mono font-medium">{PLATFORM_DEFAULT_EMAIL}</p>
+                </div>
+                <Badge variant="outline" className="text-xs">Managed by Authentix</Badge>
+              </div>
+              <Separator />
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Sender Name</p>
+                {editingDefaultName ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={defaultNameDraft}
+                      onChange={e => setDefaultNameDraft(e.target.value)}
+                      className="h-8 text-sm flex-1"
+                      placeholder="Authentix"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === "Enter") saveDefaultName(); if (e.key === "Escape") setEditingDefaultName(false); }}
+                    />
+                    <Button size="sm" className="h-8 gap-1 bg-[#3ECF8E] hover:bg-[#34b87a] text-white shrink-0" onClick={saveDefaultName}>
+                      <Check className="w-3 h-3" /> Save
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingDefaultName(false)}>✕</Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium flex-1">{defaultSenderName}</p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => { setDefaultNameDraft(defaultSenderName); setEditingDefaultName(true); }}
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">Recipients will see this as the "From" name in their inbox.</p>
+              </div>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* Templates shortcut */}

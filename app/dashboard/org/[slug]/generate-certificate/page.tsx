@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import type { Asset } from './components/AssetLibrary';
@@ -335,17 +334,14 @@ export default function GenerateCertificatePage() {
           sessionStorage.removeItem('gencert_session');
         }
 
-        // Fall back to localStorage (just template ID; fields come from DB)
-        if (!templateIdToRestore) {
-          try {
-            templateIdToRestore = localStorage.getItem('gencert_last_template_id');
-          } catch { /* storage unavailable */ }
-        }
+        // Note: we intentionally do NOT fall back to localStorage here.
+        // gencert_last_template_id is a hint for the email template editor only —
+        // using it here caused auto-jumping into design mode on every fresh navigation.
 
         if (templateIdToRestore) {
           try {
             const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateIdToRestore) || { id: templateIdToRestore };
-            await handleTemplateSelect(templateObj);
+            await handleTemplateSelectSafe(templateObj);
             // If we have a full field snapshot (same-tab refresh), apply it on top of DB fields.
             // Strip out blob URLs (stale after refresh) so the DB-loaded permanent URL is used instead.
             if (sessionFields && sessionFields.length > 0) {
@@ -361,6 +357,9 @@ export default function GenerateCertificatePage() {
             if (sessionVersionId) setTemplateVersionId(sessionVersionId);
           } catch {
             sessionStorage.removeItem('gencert_session');
+            // Restore failed — ensure we never stay stuck on the loading skeleton
+            setIsTemplateLoading(false);
+            setCurrentStep('template');
           }
         }
       }
@@ -379,7 +378,13 @@ export default function GenerateCertificatePage() {
     }
     if (templateIdFromUrl && savedTemplates.length > 0 && !template) {
       const templateToSelect = savedTemplates.find((t) => t.id === templateIdFromUrl);
-      if (templateToSelect) handleTemplateSelect(templateToSelect);
+      if (templateToSelect) {
+        handleTemplateSelectSafe(templateToSelect);
+      } else {
+        // Template not found — reset so the user sees the chooser instead of eternal skeleton
+        setIsTemplateLoading(false);
+        setCurrentStep('template');
+      }
     }
   }, [templateIdFromUrl, savedTemplates, template]);
 
@@ -400,7 +405,7 @@ export default function GenerateCertificatePage() {
     }
 
     // Load the template
-    await handleTemplateSelect(templateToSelect);
+    await handleTemplateSelectSafe(templateToSelect);
 
     // If loadFields is true and we have fields from recent usage, use them
     if (loadFields && recentTemplate.fields && recentTemplate.fields.length > 0) {
@@ -569,6 +574,19 @@ export default function GenerateCertificatePage() {
     });
     setFields(mappedFields);
     setIsTemplateLoading(false);
+  };
+
+  // Safety net: if handleTemplateSelect ever throws without resetting isTemplateLoading,
+  // the user would be stuck on the skeleton forever. This wrapper ensures cleanup always happens.
+  const handleTemplateSelectSafe = async (selectedTemplate: any) => {
+    try {
+      await handleTemplateSelect(selectedTemplate);
+    } catch (err) {
+      console.error('[Generate] handleTemplateSelect failed:', err);
+      setIsTemplateLoading(false);
+      setCurrentStep('template');
+      throw err;
+    }
   };
 
   // Load one template's data (fields + file URL + correct dimensions)
@@ -1314,8 +1332,6 @@ export default function GenerateCertificatePage() {
     { id: 'export', label: 'Generate', icon: Wand2, completed: false },
   ];
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   const stepperContent = (
     <div className="flex items-center gap-2 bg-muted/30 p-1.5 rounded-full border">
@@ -1430,17 +1446,17 @@ export default function GenerateCertificatePage() {
   return (
     <>
       {/* Normal flow layout (template / data / export steps) */}
-      <div className="flex flex-col h-[calc(100vh-7rem)]">
-        {mounted && currentStep !== 'design' && typeof document !== 'undefined' && document.getElementById('header-portal') && createPortal(
-          stepperContent,
-          document.getElementById('header-portal')!
-        )}
-        {mounted && typeof document !== 'undefined' && document.getElementById('header-left-portal') && createPortal(
-          titleContent,
-          document.getElementById('header-left-portal')!
+      <div className="flex flex-col h-[calc(100vh-3rem)]">
+
+        {/* Inline title + stepper (shown on non-design steps) */}
+        {currentStep !== 'design' && (
+          <div className="flex items-center justify-between pb-3 shrink-0">
+            {titleContent}
+            {stepperContent}
+          </div>
         )}
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0">
           {currentStep === 'template' && (
             <div className="flex-1 overflow-hidden">
               <TemplateSelector
@@ -1514,6 +1530,7 @@ export default function GenerateCertificatePage() {
                       fields={primaryFields}
                       importedData={importedData}
                       fieldMappings={primaryMappings}
+                      subcategoryName={templateMeta.subcategory || undefined}
                       savedTemplates={savedTemplates}
                       additionalConfigs={multiAdditional}
                       onAdditionalConfigsChange={undefined}
@@ -1526,6 +1543,7 @@ export default function GenerateCertificatePage() {
                     fields={fields}
                     importedData={importedData}
                     fieldMappings={fieldMappings}
+                    subcategoryName={templateMeta.subcategory || undefined}
                     savedTemplates={savedTemplates}
                     additionalConfigs={additionalCertConfigs}
                     onAdditionalConfigsChange={setAdditionalCertConfigs}

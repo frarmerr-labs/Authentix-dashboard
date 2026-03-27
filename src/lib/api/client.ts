@@ -227,6 +227,11 @@ async function apiRequest<T>(
     );
   }
 
+  // 204 No Content — success with no body (e.g., DELETE operations)
+  if (response.status === 204) {
+    return { success: true, data: undefined as unknown as T };
+  }
+
   // Handle non-JSON responses
   const contentType = response.headers.get("content-type");
   let data: ApiResponse<T>;
@@ -416,6 +421,7 @@ export interface TestSendDto {
   integration_id?: string;
   subject_override?: string;
   from_name_override?: string;
+  use_platform_default?: boolean;
 }
 
 export interface SendResult {
@@ -1733,6 +1739,36 @@ export const api = {
           } | null;
         } | null;
       }>("/users/me");
+      return response.data!;
+    },
+    updateProfile: async (data: { full_name?: string }, avatarFile?: File) => {
+      // If uploading an avatar, use FormData. Otherwise, standard JSON PATCH.
+      if (avatarFile) {
+        const formData = new FormData();
+        if (data.full_name) formData.append("full_name", data.full_name);
+        formData.append("avatar", avatarFile);
+
+        const response = await fetch(`${API_BASE_URL}/users/me`, {
+          method: "PATCH",
+          body: formData,
+          credentials: "include",
+        });
+        
+        if (!response.ok) {
+           throw new ApiError("HTTP_ERROR", "Failed to update user profile with avatar");
+        }
+        const json = await response.json() as ApiResponse<any>;
+        return json.data!;
+      }
+
+      const response = await apiRequest<{
+        id: string;
+        email: string;
+        full_name: string | null;
+      }>("/users/me", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
       return response.data!;
     },
   },

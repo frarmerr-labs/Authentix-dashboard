@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import {
-  ArrowLeft, Save, Loader2, AlertCircle, Monitor,
-  Smartphone, Code2, ChevronDown, ImageIcon, Info,
-  Plus, X, RefreshCw,
+  Save, Loader2, AlertCircle, Monitor, Smartphone,
+  SendHorizonal, Send, FlaskConical,
+  SlidersHorizontal, X, Layers,
+  User, BookOpen, Calendar, Type, QrCode, Image as ImageIcon,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { useOrg } from "@/lib/org";
@@ -20,7 +22,7 @@ import {
   blocksToHtml,
   defaultBlock,
   STARTER_BLOCKS,
-  PALETTE,
+  EMAIL_BLOCKS_PALETTE,
   applyPreviewMocks,
   type EmailBlock,
   type BlockType,
@@ -28,97 +30,51 @@ import {
 import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
 
+// ── Cert field dock items ─────────────────────────────────────────────────────
+
+const CERT_DOCK_FIELDS = [
+  { key: "name",        varName: "recipient_name", label: "Recipient Name", Icon: User,      isBlock: false, blockType: null },
+  { key: "course",      varName: "course_name",    label: "Course Name",    Icon: BookOpen,  isBlock: false, blockType: null },
+  { key: "start_date",  varName: "start_date",     label: "Start Date",     Icon: Calendar,  isBlock: false, blockType: null },
+  { key: "end_date",    varName: "end_date",       label: "End Date",       Icon: Calendar,  isBlock: false, blockType: null },
+  { key: "custom_text", varName: "custom_text",    label: "Custom Text",    Icon: Type,      isBlock: false, blockType: null },
+  { key: "qr_code",     varName: null,             label: "QR Code",        Icon: QrCode,    isBlock: true,  blockType: "qr_code" as BlockType },
+  { key: "image",       varName: null,             label: "Cert Image",     Icon: ImageIcon, isBlock: true,  blockType: "cert_image" as BlockType },
+] as const;
+
 // ── Live preview ──────────────────────────────────────────────────────────────
 
-function LivePreview({ html, previewWidth }: { html: string; previewWidth: "desktop" | "mobile" }) {
+function LivePreview({ html, previewMode, panelWidth }: { html: string; previewMode: "desktop" | "mobile"; panelWidth: number }) {
   const rendered = applyPreviewMocks(html);
-
-  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,sans-serif}</style></head><body><div style="padding:16px">${rendered}</div></body></html>`;
-
-  return (
-    <div
-      className={cn(
-        "mx-auto transition-all duration-300 w-full",
-        previewWidth === "mobile" ? "max-w-[360px]" : "max-w-[560px]"
-      )}
-    >
-      <iframe
-        key={srcDoc.length}
-        srcDoc={srcDoc}
-        className="w-full border-0 block rounded-xl shadow-sm"
-        style={{ minHeight: 480 }}
-        onLoad={(e) => {
-          const iframe = e.target as HTMLIFrameElement;
-          const body = iframe.contentDocument?.body;
-          if (body) iframe.style.height = Math.max(body.scrollHeight + 32, 480) + "px";
-        }}
-        title="Email Preview"
-        sandbox="allow-same-origin"
-      />
-    </div>
-  );
-}
-
-// ── Certificate image toggle ──────────────────────────────────────────────────
-
-function CertImageToggle({
-  blocks,
-  outOfSync,
-  body,
-  onAdd,
-  onRemove,
-}: {
-  blocks: EmailBlock[];
-  outOfSync: boolean;
-  body: string;
-  onAdd: () => void;
-  onRemove: () => void;
-}) {
-  const embedded = outOfSync
-    ? body.includes("certificate_image_url")
-    : blocks.some(b => b.type === "cert_image");
+  const contentMaxWidth = previewMode === "mobile" ? 375 : 600;
+  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:16px;background:#18181b;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:flex-start;min-height:100vh}.email-wrapper{width:100%;max-width:${contentMaxWidth}px;background:#18181b;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)}</style></head><body><div class="email-wrapper">${rendered}</div></body></html>`;
 
   return (
-    <div className={cn(
-      "rounded-lg border p-3 transition-colors",
-      embedded ? "border-[#3ECF8E]/50 bg-[#3ECF8E]/5" : "border-dashed border-border bg-muted/20"
-    )}>
-      <div className="flex items-start gap-2.5">
-        <div className={cn(
-          "mt-0.5 shrink-0 w-7 h-7 rounded-md flex items-center justify-center",
-          embedded ? "bg-[#3ECF8E]/15" : "bg-muted"
-        )}>
-          <ImageIcon className={cn("w-3.5 h-3.5", embedded ? "text-[#3ECF8E]" : "text-muted-foreground")} />
+    <div className="w-full">
+      <div className="rounded-t-xl overflow-hidden border border-zinc-700 shadow-2xl">
+        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border-b border-zinc-700">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-red-500/80" />
+            <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
+            <span className="w-3 h-3 rounded-full bg-green-500/80" />
+          </div>
+          <div className="flex-1 mx-2 bg-zinc-700 rounded-md h-6 flex items-center px-3 gap-2">
+            <span className="text-[10px] text-zinc-400 truncate">📧 Email Preview — {previewMode === "mobile" ? "Mobile" : "Desktop"}</span>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className={cn("text-xs font-semibold", embedded ? "text-[#3ECF8E]" : "text-muted-foreground")}>
-            Certificate Image
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
-            {embedded
-              ? "Shown inline in email body. Also attached as file."
-              : "Attached as file only. Not shown inline."}
-          </p>
-          {embedded ? (
-            <button
-              type="button"
-              onClick={onRemove}
-              className="mt-2 flex items-center gap-1 text-[10px] font-medium text-destructive/70 hover:text-destructive transition-colors"
-            >
-              <X className="w-3 h-3" />
-              Remove from email body
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onAdd}
-              className="mt-2 flex items-center gap-1 text-[10px] font-medium text-[#3ECF8E] hover:text-[#34b87a] transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Embed inline in email
-            </button>
-          )}
-        </div>
+        <iframe
+          key={`${srcDoc.length}-${previewMode}`}
+          srcDoc={srcDoc}
+          className="w-full border-0 block"
+          style={{ minHeight: 520, background: "#18181b" }}
+          onLoad={(e) => {
+            const iframe = e.target as HTMLIFrameElement;
+            const body = iframe.contentDocument?.body;
+            if (body) iframe.style.height = Math.max(body.scrollHeight + 32, 520) + "px";
+          }}
+          title="Email Preview"
+          sandbox="allow-same-origin"
+        />
       </div>
     </div>
   );
@@ -129,8 +85,10 @@ function CertImageToggle({
 export default function EmailTemplateEditorPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { orgPath } = useOrg();
   const templateId = params.id as string;
+  const returnToSend = searchParams.get("returnToSend") === "1";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -147,17 +105,93 @@ export default function EmailTemplateEditorPage() {
   // Builder state
   const [blocks, setBlocks] = useState<EmailBlock[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [outOfSync, setOutOfSync] = useState(false);
   const builderInitRef = useRef(false);
 
   // UI state
-  const [previewWidth, setPreviewWidth] = useState<"desktop" | "mobile">("desktop");
-  const [htmlSourceOpen, setHtmlSourceOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
+  const [panelWidth, setPanelWidth] = useState(359);
+  const isDraggingPanel = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  // Left panel state (cert-builder floating style)
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [leftPanelTab, setLeftPanelTab] = useState<"blocks" | "settings">("blocks");
+
+  // Floating dock state
+  const [dockMinimized, setDockMinimized] = useState(false);
+
+  // Sender name
+  const [senderName, setSenderName] = useState("Your Organization");
+
+  // Variable replacement: which var chip was last clicked in a block
+  const [selectedVar, setSelectedVar] = useState<string | null>(null);
+
+  // Test send
+  const [testEmail, setTestEmail] = useState("");
+  const [testSending, setTestSending] = useState(false);
+
+  // Auto-save state
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialLoad = useRef(true);
+
+  // Clear selectedVar and reset dock when selected block changes
+  useEffect(() => {
+    setSelectedVar(null);
+    if (!selectedId) setDockMinimized(false);
+  }, [selectedId]);
 
   useEffect(() => {
     loadTemplate();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
+
+  // ── Auto-save (debounced 4s) ─────────────────────────────────────────────
+  useEffect(() => {
+    if (isInitialLoad.current) return;
+    if (!body.trim() || !name.trim()) return;
+
+    setAutoSaveStatus("pending");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      setAutoSaveStatus("saving");
+      try {
+        await api.delivery.updateTemplate(templateId, {
+          name: name.trim(),
+          email_subject: subject.trim() || undefined,
+          body,
+          variables,
+          is_default: isDefault,
+          is_active: isActive,
+        });
+        setAutoSaveStatus("saved");
+        setTimeout(() => setAutoSaveStatus("idle"), 3000);
+      } catch {
+        setAutoSaveStatus("idle");
+      }
+    }, 4000);
+
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body, subject, name]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingPanel.current) return;
+      const delta = dragStartX.current - e.clientX;
+      const next = Math.min(700, Math.max(280, dragStartWidth.current + delta));
+      setPanelWidth(next);
+    };
+    const onUp = () => { isDraggingPanel.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const loadTemplate = async () => {
     try {
@@ -178,26 +212,18 @@ export default function EmailTemplateEditorPage() {
 
       if (!builderInitRef.current) {
         builderInitRef.current = true;
-        if (!bodyHtml.trim()) {
-          // Fresh template — start with defaults
-          const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
-          setBlocks(starters);
-          const starterHtml = blocksToHtml(starters);
-          setBody(starterHtml);
-          syncVariables(starterHtml, template.email_subject ?? "");
-          setOutOfSync(false);
-        } else {
-          // Existing HTML — show preview mode; don't show out-of-sync warning
-          // outOfSync is only set when the user ACTIVELY types in the HTML textarea
-          setBlocks([]);
-          setOutOfSync(false);
-          syncVariables(bodyHtml, template.email_subject ?? "");
-        }
+        // Always initialise with starter blocks — no "existing content" prompt
+        const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
+        setBlocks(starters);
+        const starterHtml = blocksToHtml(starters);
+        setBody(starterHtml);
+        syncVariables(starterHtml, template.email_subject ?? "");
       }
     } catch (err: any) {
       setError(err.message ?? "Failed to load template");
     } finally {
       setLoading(false);
+      setTimeout(() => { isInitialLoad.current = false; }, 500);
     }
   };
 
@@ -221,17 +247,21 @@ export default function EmailTemplateEditorPage() {
     syncVariables(html, subject);
   }, [subject, syncVariables]);
 
-  const addBlock = (type: BlockType) => {
-    if (outOfSync) return;
+  const addBlock = useCallback((type: BlockType) => {
     const b = defaultBlock(type);
-    const newBlocks = [...blocks, b];
-    handleBlocksChange(newBlocks);
+    setBlocks(prev => {
+      const newBlocks = [...prev, b];
+      const html = blocksToHtml(newBlocks);
+      setBody(html);
+      syncVariables(html, subject);
+      return newBlocks;
+    });
     setSelectedId(b.id);
-    // Scroll canvas to bottom
     requestAnimationFrame(() => {
       document.getElementById("block-canvas")?.scrollTo({ top: 99999, behavior: "smooth" });
     });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject, syncVariables]);
 
   const handleStartFresh = () => {
     const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
@@ -239,51 +269,85 @@ export default function EmailTemplateEditorPage() {
     setBlocks(starters);
     setBody(html);
     syncVariables(html, subject);
-    setOutOfSync(false);
     setSelectedId(null);
-    setHtmlSourceOpen(false);
   };
 
-  // ── Cert image handlers ─────────────────────────────────────
-
-  const handleAddCertImage = () => {
-    if (outOfSync) {
-      // In HTML mode — append block HTML directly
-      const imgBlock = `\n<div style="margin: 32px; text-align: center;">\n  <img src="{{certificate_image_url}}" alt="Your Certificate" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.10);" />\n</div>`;
-      const newBody = body + imgBlock;
-      setBody(newBody);
-      syncVariables(newBody, subject);
-    } else {
-      addBlock("cert_image");
-    }
-  };
-
-  const handleRemoveCertImage = () => {
-    if (outOfSync) {
-      const cleaned = body
-        .replace(/<div[^>]*>[\s\S]*?<img[^>]*certificate_image_url[^>]*\/?>[\s\S]*?<\/div>/gi, "")
-        .replace(/<img[^>]*certificate_image_url[^>]*\/?>/gi, "")
-        .trim();
-      setBody(cleaned);
-      syncVariables(cleaned, subject);
-    } else {
-      const newBlocks = blocks.filter(b => b.type !== "cert_image");
-      handleBlocksChange(newBlocks);
-    }
-  };
-
-  // ── Subject + HTML source handlers ─────────────────────────
+  // ── Subject handler ─────────────────────────────────────────
 
   const handleSubjectChange = (val: string) => {
     setSubject(val);
     syncVariables(body, val);
   };
 
-  const handleHtmlSourceEdit = (html: string) => {
-    setBody(html);
-    setBlocks([]);
-    setOutOfSync(true);
-    syncVariables(html, subject);
+  // ── Var chip clicked in a block ─────────────────────────────
+  const handleVarClick = useCallback((varName: string) => {
+    setSelectedVar(varName);
+  }, []);
+
+  // ── Insert / replace variable into selected block ───────────
+  const handleInsertVarToSelected = useCallback((varName: string) => {
+    if (!selectedId) return;
+    setBlocks(prev => {
+      const block = prev.find(b => b.id === selectedId);
+      if (!block) return prev;
+
+      const clean = varName.replace(/^\{\{|\}\}$/g, "").trim();
+      const token = `{{${clean}}}`;
+
+      // Replace existing selected var, or append to end
+      const replaceOrAppend = (text: string): string => {
+        if (selectedVar) {
+          const oldToken = `{{${selectedVar}}}`;
+          if (text.includes(oldToken)) return text.replace(oldToken, token);
+        }
+        return (text ?? "") + " " + token;
+      };
+
+      let patch: Partial<EmailBlock> | null = null;
+      if (["text", "greeting", "markdown", "footer", "linkedin", "cta_button"].includes(block.type)) {
+        patch = { content: replaceOrAppend(block.content ?? "") };
+      } else if (block.type === "header") {
+        patch = { title: replaceOrAppend(block.title ?? "") };
+      }
+      if (!patch) return prev;
+
+      const newBlocks = prev.map(b => b.id === selectedId ? { ...b, ...patch! } : b);
+      const html = blocksToHtml(newBlocks);
+      setBody(html);
+      syncVariables(html, subject);
+      return newBlocks;
+    });
+    setSelectedVar(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selectedVar, subject, syncVariables]);
+
+  // ── Dock field click ─────────────────────────────────────────
+  const handleDockFieldClick = useCallback((field: typeof CERT_DOCK_FIELDS[number]) => {
+    if (field.isBlock && field.blockType) {
+      addBlock(field.blockType);
+      setSelectedVar(null);
+    } else if (field.varName) {
+      handleInsertVarToSelected(field.varName);
+    }
+  }, [addBlock, handleInsertVarToSelected]);
+
+  // ── Test send ────────────────────────────────────────────────
+  const handleTestSend = async () => {
+    if (!testEmail.trim()) return;
+    setTestSending(true);
+    try {
+      await api.delivery.testSend({
+        test_email: testEmail.trim(),
+        template_id: templateId,
+        use_platform_default: true,
+      });
+      toast.success(`Test email sent to ${testEmail}`, { duration: 3000 });
+      setTestEmail("");
+    } catch (err: any) {
+      toast.error(err.message ?? "Test send failed");
+    } finally {
+      setTestSending(false);
+    }
   };
 
   // ── Save ────────────────────────────────────────────────────
@@ -302,7 +366,20 @@ export default function EmailTemplateEditorPage() {
         is_default: isDefault,
         is_active: isActive,
       });
+      try {
+        const raw = localStorage.getItem("et_saved_ids");
+        const ids: string[] = raw ? JSON.parse(raw) : [];
+        if (!ids.includes(templateId)) {
+          ids.push(templateId);
+          localStorage.setItem("et_saved_ids", JSON.stringify(ids));
+        }
+      } catch { /* non-fatal */ }
       toast.success("Template saved");
+      if (returnToSend) {
+        router.push(orgPath("/generate-certificate"));
+      } else {
+        router.push(orgPath("/email-templates"));
+      }
     } catch (err: any) {
       setError(err.message ?? "Failed to save template");
     } finally {
@@ -319,308 +396,407 @@ export default function EmailTemplateEditorPage() {
     );
   }
 
+  const allVars = [
+    "recipient_name", "organization_name", "course_name",
+    "start_date", "end_date", "custom_text",
+    "verification_url", "certificate_image_url",
+  ];
+
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] -m-6">
-      {/* ── Toolbar ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-2.5 border-b bg-background shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(orgPath("/email-templates"))}
-          className="gap-1.5 text-muted-foreground hover:text-foreground -ml-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Templates
-        </Button>
+    <div className="flex flex-col h-screen -m-6 overflow-hidden">
 
-        <div className="h-4 w-px bg-border" />
+      {/* ── Main flex body ────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
 
-        <Input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Template name"
-          className="h-8 w-52 text-sm font-medium border-transparent focus:border-input bg-transparent px-1"
-        />
+        {/* ── CENTER: Canvas (full width, floating left panel overlay) ── */}
+        <div className="flex-1 relative overflow-hidden min-w-0">
 
-        {variables.length > 0 && (
-          <Badge variant="secondary" className="text-xs shrink-0 font-mono gap-1">
-            {variables.length} var{variables.length !== 1 ? "s" : ""}
-          </Badge>
-        )}
-
-        <div className="flex-1" />
-
-        {error && (
-          <p className="text-xs text-destructive max-w-xs truncate flex items-center gap-1">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            {error}
-          </p>
-        )}
-
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={saving}
-          className="gap-2 bg-[#3ECF8E] hover:bg-[#34b87a] text-white"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save
-        </Button>
-      </div>
-
-      {/* ── 3-column body ────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── LEFT PANEL ──────────────────────────────────────── */}
-        <div className="w-[252px] shrink-0 border-r flex flex-col overflow-y-auto bg-background">
-
-          {/* Subject line */}
-          <div className="p-4 border-b space-y-2">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Subject Line</Label>
-            <Input
-              value={subject}
-              onChange={e => handleSubjectChange(e.target.value)}
-              placeholder="Your Certificate from {{organization_name}}"
-              className="h-8 text-sm font-mono"
-            />
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
-              Use <span className="font-mono bg-muted px-1 rounded">{"{{variable}}"}</span> for dynamic values.
-            </p>
-          </div>
-
-          {/* Certificate image toggle */}
-          <div className="p-4 border-b">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2.5 block">Certificate Image</Label>
-            <CertImageToggle
-              blocks={blocks}
-              outOfSync={outOfSync}
-              body={body}
-              onAdd={handleAddCertImage}
-              onRemove={handleRemoveCertImage}
-            />
-          </div>
-
-          {/* Block palette */}
-          <div className="p-4 border-b flex-1">
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Add Blocks</Label>
-              {outOfSync && (
-                <span className="text-[10px] text-muted-foreground/60 italic">Builder paused</span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PALETTE.map(item => (
-                <button
-                  key={item.type}
-                  type="button"
-                  onClick={() => addBlock(item.type)}
-                  disabled={outOfSync}
-                  title={outOfSync ? "Start fresh to use the builder" : item.desc}
-                  className={cn(
-                    "flex items-center gap-1.5 p-2 rounded-lg border transition-all text-left",
-                    outOfSync
-                      ? "opacity-40 cursor-not-allowed border-transparent bg-muted/20"
-                      : "border-transparent bg-muted/30 hover:bg-muted/60 hover:border-border cursor-pointer group"
-                  )}
-                >
-                  <span className={cn("shrink-0 text-muted-foreground", !outOfSync && "group-hover:text-[#3ECF8E] transition-colors")}>
-                    {item.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-medium truncate">{item.label}</p>
-                    <p className="text-[9px] text-muted-foreground truncate leading-tight">{item.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Multiple certs info */}
-          <div className="px-4 py-3 border-b">
-            <div className="flex items-start gap-2 text-[10px] text-muted-foreground">
-              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-400" />
-              <p className="leading-relaxed">
-                One email is sent per certificate row. A recipient with multiple rows gets separate emails for each certificate.
-              </p>
-            </div>
-          </div>
-
-          {/* Template settings */}
-          <div className="p-4 border-b space-y-3">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Template Settings</Label>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="is_default_sw" className="text-xs cursor-pointer text-muted-foreground">Default template</Label>
-              <Switch id="is_default_sw" checked={isDefault} onCheckedChange={setIsDefault} />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="is_active_sw" className="text-xs cursor-pointer text-muted-foreground">Active</Label>
-              <Switch id="is_active_sw" checked={isActive} onCheckedChange={setIsActive} />
-            </div>
-          </div>
-
-          {/* HTML source accordion */}
-          <div className="border-b">
+          {/* Collapsed panel restore pill */}
+          {!leftPanelVisible && (
             <button
-              type="button"
-              onClick={() => setHtmlSourceOpen(v => !v)}
-              className="flex items-center justify-between w-full px-4 py-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors"
+              className="absolute z-40 left-4 top-3 flex items-center gap-2 bg-card border border-border/50 rounded-xl shadow-md px-3 py-2 hover:bg-muted/50 transition-colors select-none"
+              onClick={() => setLeftPanelVisible(true)}
+              title="Show blocks panel"
             >
-              <span className="flex items-center gap-1.5">
-                <Code2 className="w-3.5 h-3.5" />
-                HTML Source
-                {outOfSync && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-semibold">ACTIVE</span>}
-              </span>
-              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", htmlSourceOpen && "rotate-180")} />
+              <SlidersHorizontal className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-xs font-semibold text-foreground truncate max-w-[120px]">{name || "Template"}</span>
             </button>
-            {htmlSourceOpen && (
-              <div className="px-4 pb-4 space-y-2">
-                {outOfSync && (
-                  <p className="text-[10px] text-amber-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    Builder is out of sync — HTML is the active source.
-                  </p>
+          )}
+
+          {/* Floating left panel (cert-builder style) */}
+          {leftPanelVisible && (
+            <div
+              className="absolute z-40 left-4 top-3 w-64 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
+              style={{ height: "calc(100% - 24px)" }}
+            >
+              {/* Header: template name + auto-save indicator + close */}
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b border-border/40 shrink-0 select-none">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Template name"
+                  className="flex-1 min-w-0 text-xs font-semibold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 cursor-text select-text"
+                />
+                {autoSaveStatus === "saving" && (
+                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
                 )}
-                <textarea
-                  value={body}
-                  onChange={e => handleHtmlSourceEdit(e.target.value)}
-                  className="w-full h-52 p-2 font-mono text-[10px] border rounded-lg bg-muted/20 focus:outline-none focus:ring-1 focus:ring-[#3ECF8E]/40 resize-none leading-relaxed"
-                  placeholder="<div>Hello {{recipient_name}},...</div>"
-                  spellCheck={false}
-                />
-                <p className="text-[9px] text-muted-foreground">Editing HTML disables the visual block builder.</p>
+                {autoSaveStatus === "saved" && (
+                  <span className="text-[9px] text-[#3ECF8E]/80 shrink-0 font-medium">Saved</span>
+                )}
+                {error && (
+                  <span title={error}><AlertCircle className="w-3 h-3 text-destructive shrink-0" /></span>
+                )}
+                <button
+                  onClick={() => setLeftPanelVisible(false)}
+                  className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Variable reference (collapsed hint) */}
-          <div className="p-4">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2.5 block">Available Variables</Label>
-            <div className="space-y-1">
-              {[
-                { v: "recipient_name", d: "Recipient's name" },
-                { v: "organization_name", d: "Your org name" },
-                { v: "course_name", d: "Course / program" },
-                { v: "issue_date", d: "Issue date" },
-                { v: "verification_url", d: "Verify link" },
-                { v: "certificate_image_url", d: "Certificate image" },
-              ].map(({ v, d }) => (
-                <div key={v} className="flex items-center gap-1.5 py-0.5">
-                  <code className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono shrink-0">{`{{${v}}}`}</code>
-                  <span className="text-[9px] text-muted-foreground truncate">{d}</span>
+              {/* Tab switcher */}
+              <div className="px-3 pt-2 pb-1.5 shrink-0">
+                <div className="flex items-center bg-muted rounded-lg p-1 gap-1 h-8">
+                  <button
+                    onClick={() => setLeftPanelTab("blocks")}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all",
+                      leftPanelTab === "blocks"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Layers className="w-3 h-3" />
+                    Blocks
+                  </button>
+                  <button
+                    onClick={() => setLeftPanelTab("settings")}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all",
+                      leftPanelTab === "settings"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    Settings
+                  </button>
                 </div>
-              ))}
-              <p className="text-[9px] text-muted-foreground/60 italic mt-1.5">Any spreadsheet column header is also a variable.</p>
-            </div>
-          </div>
-        </div>
+              </div>
 
-        {/* ── CENTER: Block canvas ──────────────────────────── */}
-        {!outOfSync && blocks.length === 0 && body.trim() ? (
-          /* HTML preview mode — template loaded with existing HTML */
-          <div className="flex-1 overflow-y-auto bg-muted/5 min-w-0">
-            <div className="sticky top-0 z-10 flex items-center gap-2 px-5 py-2.5 border-b bg-background/95 backdrop-blur-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Email Preview</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleStartFresh}
-                className="gap-1.5 h-7 text-xs border-[#3ECF8E]/40 text-[#3ECF8E] hover:bg-[#3ECF8E]/10"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Start fresh with Builder
-              </Button>
-            </div>
-            <div className="py-5 px-4">
-              <div className="max-w-[600px] mx-auto shadow-xl rounded-2xl overflow-hidden border border-gray-200/70">
-                <div className="bg-white border-b border-gray-100 px-5 py-3.5 flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#3ECF8E] flex items-center justify-center text-white text-sm font-bold shrink-0 select-none">A</div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Authentix Academy</p>
-                    <p className="text-xs text-gray-400">{subject || "Your certificate is ready"}</p>
+              {/* Tab content — scrollable */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+
+                {leftPanelTab === "blocks" && (
+                  <div className="p-3 pb-4">
+                    <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Add Blocks</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {EMAIL_BLOCKS_PALETTE.map(item => (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => addBlock(item.type)}
+                          draggable
+                          onDragStart={e => e.dataTransfer.setData("block-type", item.type)}
+                          title={item.desc}
+                          className="flex items-center gap-2 p-2.5 rounded-lg border border-transparent bg-muted/30 hover:bg-muted/60 hover:border-border cursor-grab active:cursor-grabbing transition-all text-left group"
+                        >
+                          <span className="shrink-0 text-muted-foreground group-hover:text-[#3ECF8E] transition-colors">
+                            {item.icon}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium truncate">{item.label}</p>
+                            <p className="text-[9px] text-muted-foreground truncate leading-tight">{item.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground/50 mt-2.5">Click to add · drag into canvas</p>
                   </div>
-                </div>
-                <div
-                  className="bg-white"
-                  dangerouslySetInnerHTML={{ __html: applyPreviewMocks(body) }}
-                />
-              </div>
-              <p className="text-center text-[10px] text-muted-foreground/50 mt-4">
-                This template uses custom HTML · Edit in HTML Source panel or start fresh with the visual builder
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div id="block-canvas" className="flex-1 overflow-y-auto bg-muted/5 min-w-0">
-            {/* Canvas header */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 px-5 py-2.5 border-b bg-background/95 backdrop-blur-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Email Builder</p>
-              <p className="text-[10px] text-muted-foreground">
-                {blocks.length > 0 && !outOfSync ? `${blocks.length} block${blocks.length !== 1 ? "s" : ""}` : ""}
-              </p>
-            </div>
+                )}
 
+                {leftPanelTab === "settings" && (
+                  <div className="p-3 space-y-4 pb-4">
+                    {/* Template toggles */}
+                    <div className="space-y-2.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Template</p>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="is_default_sw" className="text-xs cursor-pointer text-muted-foreground">Default template</Label>
+                        <Switch id="is_default_sw" checked={isDefault} onCheckedChange={setIsDefault} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="is_active_sw" className="text-xs cursor-pointer text-muted-foreground">Active</Label>
+                        <Switch id="is_active_sw" checked={isActive} onCheckedChange={setIsActive} />
+                      </div>
+                    </div>
+
+                    {/* Quick variables */}
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Quick Variables</p>
+                      <p className="text-[9px] text-muted-foreground/60">
+                        Type <kbd className="font-mono bg-muted border rounded px-1 py-px text-[9px]">@</kbd> in any block · click to copy
+                      </p>
+                      {[
+                        { v: "organization_name", d: "Your organisation",       color: "text-violet-400 bg-violet-500/10" },
+                        { v: "verification_url",  d: "Certificate verify link",  color: "text-sky-400 bg-sky-500/10" },
+                      ].map(({ v, d, color }) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(`{{${v}}}`).catch(() => {});
+                            toast.success(`Copied {{${v}}}`, { duration: 1500 });
+                          }}
+                          className="w-full flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/60 group transition-colors text-left"
+                        >
+                          <span className={cn("font-mono text-[10px] font-medium px-1.5 py-0.5 rounded border border-current/20 shrink-0 truncate max-w-[130px]", color)}>
+                            {`{{${v}}}`}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground flex-1 truncate">{d}</span>
+                          <span className="text-[9px] text-transparent group-hover:text-muted-foreground/50 shrink-0 transition-colors">copy</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Canvas scroll area — offset left to not hide behind floating panel */}
+          <div
+            id="block-canvas"
+            className="absolute inset-0 overflow-y-auto pt-3 pb-24 transition-[padding] duration-200"
+            style={{ paddingLeft: leftPanelVisible ? "280px" : "0" }}
+          >
             <EmailBlockBuilder
               blocks={blocks}
               selectedId={selectedId}
-              outOfSync={outOfSync}
               subject={subject}
+              senderName={senderName}
+              availableVars={allVars}
               onChange={handleBlocksChange}
               onSelect={setSelectedId}
               onStartFresh={handleStartFresh}
+              onSubjectChange={handleSubjectChange}
+              onSenderNameChange={setSenderName}
+              onAddBlock={addBlock}
+              onVarClick={handleVarClick}
             />
           </div>
-        )}
+        </div>
 
-        {/* ── RIGHT: Live preview ───────────────────────────── */}
-        <div className="w-[380px] shrink-0 border-l flex flex-col overflow-hidden bg-slate-50 dark:bg-zinc-950">
-          {/* Preview header */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b bg-background/95 backdrop-blur-sm shrink-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Live Preview</p>
-            <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-muted/30">
+        {/* ── RIGHT: Preview (resizable, full height from top) ──────── */}
+        <div
+          style={{ width: panelWidth }}
+          className="shrink-0 border-l flex flex-col overflow-hidden bg-zinc-950 relative"
+        >
+          {/* Resize handle */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-4 cursor-col-resize z-20 flex items-center justify-center group/resize hover:bg-[#3ECF8E]/5 transition-colors"
+            onMouseDown={e => {
+              e.preventDefault();
+              isDraggingPanel.current = true;
+              dragStartX.current = e.clientX;
+              dragStartWidth.current = panelWidth;
+            }}
+          >
+            <div className="flex flex-col gap-[3px] opacity-0 group-hover/resize:opacity-100 transition-opacity">
+              {[0, 1, 2, 3, 4].map(i => (
+                <span key={i} className="w-[3px] h-[3px] rounded-full bg-[#3ECF8E]" />
+              ))}
+            </div>
+          </div>
+
+          {/* Preview header — top padding matches canvas margin */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-2.5 shrink-0 border-b border-zinc-800 bg-zinc-900/80">
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Preview</p>
+              <span className="text-[10px] text-zinc-700">{panelWidth}px</span>
+            </div>
+            <div className="flex items-center gap-0.5 border border-zinc-700 rounded-md p-0.5 bg-zinc-800/50">
               <button
-                onClick={() => setPreviewWidth("desktop")}
+                onClick={() => setPreviewMode("desktop")}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
-                  previewWidth === "desktop" ? "bg-background shadow-sm" : "hover:bg-muted/50"
+                  "p-1 rounded transition-colors",
+                  previewMode === "desktop" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
                 )}
                 title="Desktop"
               >
-                <Monitor className="w-3.5 h-3.5" />
+                <Monitor className="w-3 h-3" />
               </button>
               <button
-                onClick={() => setPreviewWidth("mobile")}
+                onClick={() => setPreviewMode("mobile")}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
-                  previewWidth === "mobile" ? "bg-background shadow-sm" : "hover:bg-muted/50"
+                  "p-1 rounded transition-colors",
+                  previewMode === "mobile" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
                 )}
                 title="Mobile"
               >
-                <Smartphone className="w-3.5 h-3.5" />
+                <Smartphone className="w-3 h-3" />
               </button>
             </div>
           </div>
 
           {/* Preview area */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-3 pb-24">
             {body.trim() ? (
-              <LivePreview html={body} previewWidth={previewWidth} />
+              <LivePreview html={body} previewMode={previewMode} panelWidth={panelWidth} />
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-                <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center">
-                  <Monitor className="w-5 h-5 text-muted-foreground/40" />
+                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                  <Monitor className="w-4 h-4 text-zinc-600" />
                 </div>
-                <p className="text-sm text-muted-foreground">Add blocks to see a preview</p>
+                <p className="text-xs text-zinc-600">Add blocks to preview</p>
               </div>
             )}
           </div>
 
-          {/* Preview footer note */}
-          <div className="border-t px-4 py-2.5 shrink-0">
-            <p className="text-[10px] text-muted-foreground">
-              Preview uses sample values.{" "}
-              <span className="text-amber-600">Yellow highlights</span>{" "}
-              = unknown variables replaced at send time.
+          {/* Preview footer */}
+          <div className="border-t border-zinc-800 px-3 py-2 shrink-0 bg-zinc-900">
+            <p className="text-[9px] text-zinc-600">
+              Sample values shown.{" "}
+              <span className="text-amber-500/80">Amber</span>
+              {" "}= unknown variables.
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── BOTTOM DOCK — truly floating, fixed to viewport bottom ──── */}
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+        <div className="pointer-events-auto inline-flex flex-col items-stretch bg-zinc-900/95 backdrop-blur-md border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden">
+
+          {/* Replace indicator — only when selectedVar */}
+          {selectedVar && (
+            <div className="flex items-center justify-center gap-2 px-4 py-1.5 border-b border-[#3ECF8E]/20 bg-[#3ECF8E]/5">
+              <span className="text-[10px] text-[#3ECF8E]/90">
+                Replacing{" "}
+                <code className="font-mono bg-[#3ECF8E]/15 px-1 rounded">{`{{${selectedVar}}}`}</code>
+                {" "}— click a field below to replace
+              </span>
+              <button
+                onClick={() => setSelectedVar(null)}
+                className="text-[#3ECF8E]/50 hover:text-[#3ECF8E] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 px-3 py-2">
+
+            {/* Fields row — only when a block is selected and dock is not minimized */}
+            {selectedId && !dockMinimized && (
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 shrink-0">Fields</p>
+                <div
+                  className="flex items-center gap-1.5 overflow-x-auto"
+                  style={{ maxWidth: 340, scrollbarWidth: "none" }}
+                >
+                  {CERT_DOCK_FIELDS.map(f => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => handleDockFieldClick(f)}
+                      title={
+                        f.isBlock
+                          ? `Add ${f.label} block`
+                          : selectedVar
+                            ? `Replace {{${selectedVar}}} with {{${f.varName}}}`
+                            : `Insert {{${f.varName}}} into selected block`
+                      }
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all shrink-0",
+                        !f.isBlock && selectedVar
+                          ? "border-[#3ECF8E]/60 bg-[#3ECF8E]/15 text-[#3ECF8E] hover:bg-[#3ECF8E]/25"
+                          : "border-zinc-700/50 bg-zinc-800/40 hover:bg-[#3ECF8E]/10 hover:border-[#3ECF8E]/40 text-zinc-400 hover:text-zinc-200"
+                      )}
+                    >
+                      <f.Icon className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[11px] font-medium whitespace-nowrap">{f.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="w-px h-5 bg-zinc-700/60 shrink-0" />
+              </>
+            )}
+
+            {/* Minimize/expand toggle — only when a block is selected */}
+            {selectedId && (
+              <button
+                onClick={() => setDockMinimized(d => !d)}
+                className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors shrink-0"
+                title={dockMinimized ? "Show fields" : "Collapse fields"}
+              >
+                {dockMinimized
+                  ? <ChevronRight className="w-3.5 h-3.5" />
+                  : <ChevronLeft className="w-3.5 h-3.5" />
+                }
+              </button>
+            )}
+
+            {/* Error */}
+            {error && (
+              <p className="text-xs text-destructive flex items-center gap-1 shrink-0 max-w-[140px] truncate">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {error}
+              </p>
+            )}
+
+            {/* Test send */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 h-8 text-xs border-zinc-700 text-zinc-400 hover:text-foreground hover:border-zinc-600 shrink-0"
+                >
+                  <FlaskConical className="w-3.5 h-3.5" />
+                  Test
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="center" side="top" className="w-72 p-3 space-y-2">
+                <p className="text-xs font-semibold">Send a test email</p>
+                <p className="text-[11px] text-muted-foreground">Preview this template in your inbox using sample data.</p>
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={testEmail}
+                    onChange={e => setTestEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="h-8 text-sm flex-1"
+                    onKeyDown={e => { if (e.key === "Enter") handleTestSend(); }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleTestSend}
+                    disabled={testSending || !testEmail.trim()}
+                    className="gap-1.5 h-8 bg-[#3ECF8E] hover:bg-[#34b87a] text-white shrink-0"
+                  >
+                    {testSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    Send
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Save */}
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving}
+              className="gap-1.5 h-8 text-xs bg-[#3ECF8E] hover:bg-[#34b87a] text-white shrink-0"
+            >
+              {saving
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : returnToSend
+                  ? <SendHorizonal className="w-3.5 h-3.5" />
+                  : <Save className="w-3.5 h-3.5" />
+              }
+              {returnToSend ? "Save & Send" : "Save"}
+            </Button>
           </div>
         </div>
       </div>

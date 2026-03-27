@@ -316,9 +316,9 @@ export function ManualDataEntry({ fields, onDataSubmit, onDataChange, initialDat
                                     selected={
                                       currentData[col.key]
                                         ? (() => {
-                                            const d = new Date(currentData[col.key]);
+                                            const d = new Date(currentData[col.key] as string);
                                             return isValid(d) ? d : undefined;
-                                          })()
+                                          })() as Date | undefined
                                         : undefined
                                     }
                                     onSelect={(d) => {
@@ -330,9 +330,9 @@ export function ManualDataEntry({ fields, onDataSubmit, onDataChange, initialDat
                                     defaultMonth={
                                       currentData[col.key]
                                         ? (() => {
-                                            const d = new Date(currentData[col.key]);
+                                            const d = new Date(currentData[col.key] as string);
                                             return isValid(d) ? d : undefined;
-                                          })()
+                                          })() as Date | undefined
                                         : undefined
                                     }
                                   />

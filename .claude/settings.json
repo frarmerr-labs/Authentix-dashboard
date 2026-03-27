@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//#### public\\\\.certificates$/,/**)",
+      "Bash(grep -n \"ExportSection\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx)",
+      "Bash(grep -n \"sendModalOpen\\\\|setSendModalOpen\\\\|generationJobId\\\\|setGenerationJobId\\\\|totalGenerated\\\\|setTotalGenerated\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/page.tsx)",
+      "Bash(find /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/settings -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\")",
+      "Bash(find /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/components -name *.tsx)",
+      "Bash(grep -n \"certFieldHeaders\\\\|pendingSendJob\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx)",
+      "Bash(grep -n \"sessionStorage\\\\|header\\\\|field_key\\\\|label\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/components/ExportSection.tsx)",
+      "Bash(grep -n \"applyPreviewMocks\\\\|blocksToHtml\\\\|export function\\\\|^export const\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]/EmailBlockBuilder.tsx)",
+      "Bash(grep -n \"cursor-col-resize\\\\|dragStartX\\\\|isDraggingPanel\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]/page.tsx)",
+      "Bash(grep -n \"col-resize\\\\|dragStart\\\\|panelWidth\\\\|isDragging\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]/page.tsx)"
+    ],
+    "additionalDirectories": [
+      "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"
+    ]
+  }
+}
