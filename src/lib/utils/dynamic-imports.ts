@@ -17,7 +17,7 @@ export async function getPdfLib() {
  * Dynamically import xlsx for Excel file handling
  */
 export async function getXlsx() {
-  const XLSX = await import("xlsx");
+  const XLSX = await import("@e965/xlsx");
   return XLSX;
 }
 

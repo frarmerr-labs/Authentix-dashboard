@@ -5,59 +5,29 @@ import {
   sanitizeErrorMessage,
   ServerApiError,
 } from "@/lib/api/server";
-
-interface SignupRequest {
-  email: string;
-  password: string;
-  full_name: string;
-  company_name: string;
-}
-
-interface SignupResponse {
-  user: {
-    id: string;
-    email: string;
-    full_name: string | null;
-  };
-  session: {
-    access_token: string;
-    refresh_token: string;
-    expires_at: number;
-  };
-}
+import { SignupRequestSchema, SignupResponseSchema } from "@/lib/api/schemas/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as SignupRequest;
-
-    // Validate input
-    if (!body.email || !body.password || !body.full_name || !body.company_name) {
+    const parsed = SignupRequestSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "All fields are required" },
+        { success: false, error: parsed.error.errors[0].message },
         { status: 400 }
       );
     }
 
-    // Forward to backend
-    const result = await backendAuthRequest<SignupResponse>("/auth/signup", {
+    const result = await backendAuthRequest("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({
-        email: body.email,
-        password: body.password,
-        full_name: body.full_name,
-        company_name: body.company_name,
-      }),
+      body: JSON.stringify(parsed.data),
     });
 
-    // Set HttpOnly cookies
-    await setServerAuthCookies(result.session);
+    const validated = SignupResponseSchema.parse(result);
+    await setServerAuthCookies(validated.session);
 
-    // Return user info (without tokens)
     return NextResponse.json({
       success: true,
-      data: {
-        user: result.user,
-      },
+      data: { user: validated.user },
     });
   } catch (error) {
     console.error("[API] Signup error:", error);

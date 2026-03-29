@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   FileText,
@@ -20,6 +19,7 @@ import {
   Building2,
   Sparkles,
   CreditCard,
+  Mail,
 } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api/client";
@@ -54,7 +54,7 @@ interface DashboardShellProps {
   children: React.ReactNode;
   slug: string;
   initialUser: UserData | null;
-  initialCompany: OrganizationData | null;
+  initialOrganization: OrganizationData | null;
 }
 
 interface NavItem {
@@ -71,11 +71,12 @@ type Theme = "light" | "dark" | "system";
 
 const NAVIGATION_ITEMS: readonly NavItem[] = [
   { name: "Analytics", href: "", icon: LayoutDashboard },
-  { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Certificate Templates", href: "/templates", icon: FileText },
   { name: "Generate", href: "/generate-certificate", icon: Sparkles },
   { name: "Imports", href: "/imports", icon: Upload },
   { name: "Certificates", href: "/certificates", icon: FileCheck },
   { name: "Verification", href: "/verification-logs", icon: Shield },
+  { name: "Email Templates", href: "/email-templates", icon: Mail },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Users", href: "/users", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },
@@ -167,6 +168,7 @@ interface UserMenuProps {
   readonly slug: string;
   readonly onLogout: () => void;
   readonly mounted: boolean;
+  readonly expanded: boolean;
 }
 
 function UserMenu({
@@ -177,30 +179,24 @@ function UserMenu({
   slug,
   onLogout,
   mounted,
+  expanded,
 }: UserMenuProps) {
-  // Always render DropdownMenu so Radix's useId counter is stable between SSR
-  // and client — conditionally swapping the entire component causes downstream
-  // useId mismatches (e.g. Tabs aria-controls). Show skeleton inside trigger
-  // instead.
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-3 pl-3 border-l hover:opacity-80"
+          className={cn(
+            "flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium w-full hover:opacity-80 transition-opacity",
+            expanded ? "px-3" : "justify-center"
+          )}
           aria-label="User menu"
           disabled={!mounted}
         >
           {!mounted ? (
-            <div className="w-10 h-10 rounded-full bg-muted animate-pulse" />
+            <div className="w-7 h-7 rounded-full bg-muted animate-pulse shrink-0" />
           ) : (
             <>
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{profileName || "User"}</p>
-                <p className="text-xs text-muted-foreground">
-                  {organizationName || "Organization"}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold overflow-hidden">
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold overflow-hidden shrink-0 text-xs">
                 {organizationLogo ? (
                   <img
                     src={organizationLogo}
@@ -211,11 +207,19 @@ function UserMenu({
                   (profileName || "U").charAt(0).toUpperCase()
                 )}
               </div>
+              {expanded && (
+                <div className="text-left min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{profileName || "User"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {organizationName || "Organization"}
+                  </p>
+                </div>
+              )}
             </>
           )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-56">
         <DropdownMenuLabel>
           <p className="text-sm font-medium">{profileName}</p>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
@@ -245,7 +249,7 @@ export function DashboardShell({
   children,
   slug,
   initialUser,
-  initialCompany,
+  initialOrganization,
 }: DashboardShellProps) {
   // State
   const [mounted, setMounted] = useState(false);
@@ -258,8 +262,8 @@ export function DashboardShell({
   // Derived values
   const profileName =
     initialUser?.full_name ?? initialUser?.email?.split("@")[0] ?? "User";
-  const organizationName = initialCompany?.name ?? "Organization";
-  const organizationLogo = initialCompany?.logo ?? null;
+  const organizationName = initialOrganization?.name ?? "Organization";
+  const organizationLogo = initialOrganization?.logo ?? null;
 
   // Mounted effect for hydration safety
   useEffect(() => {
@@ -316,7 +320,7 @@ export function DashboardShell({
         {/* Sidebar */}
         <aside
           className={cn(
-            "fixed top-0 left-0 z-[60] h-screen bg-card border-r transition-all duration-300",
+            "fixed top-0 left-0 z-[60] h-screen bg-card border-r rounded-tr-2xl rounded-br-2xl transition-all duration-300",
             sidebarExpanded ? "w-52" : "w-14"
           )}
           onMouseEnter={() => setSidebarExpanded(true)}
@@ -324,7 +328,7 @@ export function DashboardShell({
         >
           <div className="flex flex-col h-full">
             {/* Logo */}
-            <div className="h-16 flex items-center justify-center border-b px-2">
+            <div className="h-14 flex items-center justify-center border-b px-2">
               <Link
                 href={`/dashboard/org/${slug}`}
                 className="flex items-center gap-2"
@@ -354,7 +358,35 @@ export function DashboardShell({
             />
 
             {/* Bottom actions */}
-            <div className="p-2 border-t space-y-1">
+            <div className="p-2 border-t space-y-0.5">
+              {/* Notifications */}
+              <button
+                className={cn(
+                  "relative flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium w-full",
+                  sidebarExpanded ? "px-3" : "justify-center",
+                  "text-muted-foreground hover:text-primary"
+                )}
+                aria-label="Notifications"
+              >
+                <span className="relative shrink-0">
+                  <Bell className="h-[18px] w-[18px]" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-destructive rounded-full" />
+                </span>
+                {sidebarExpanded && <span>Notifications</span>}
+              </button>
+
+              {/* User profile */}
+              <UserMenu
+                user={initialUser}
+                profileName={profileName}
+                organizationName={organizationName}
+                organizationLogo={organizationLogo}
+                slug={slug}
+                onLogout={handleLogout}
+                mounted={mounted}
+                expanded={sidebarExpanded}
+              />
+
               <ThemeButton
                 theme={theme}
                 onCycle={handleCycleTheme}
@@ -375,40 +407,8 @@ export function DashboardShell({
           </div>
         </aside>
 
-        {/* Main content */}
+        {/* Main content — sits to the right of the sidebar, no top header */}
         <div className="pl-14">
-          <header className="h-16 bg-card border-b sticky top-0 z-30">
-            <div className="h-full px-6 flex items-center justify-between">
-              <div
-                id="header-left-portal"
-                className="flex-1 flex items-center min-w-0"
-              />
-              <div
-                id="header-portal"
-                className="flex justify-center min-w-0 px-4"
-              />
-              <div className="flex-1 flex items-center justify-end gap-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative"
-                  aria-label="Notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-                </Button>
-                <UserMenu
-                  user={initialUser}
-                  profileName={profileName}
-                  organizationName={organizationName}
-                  organizationLogo={organizationLogo}
-                  slug={slug}
-                  onLogout={handleLogout}
-                  mounted={mounted}
-                />
-              </div>
-            </div>
-          </header>
           <main className="p-6">
             <div className="max-w-[1400px] mx-auto">{children}</div>
           </main>

@@ -7,12 +7,56 @@ const PUBLIC_ROUTES = ["/", "/login", "/signup", "/signup/success", "/forgot-pas
 const API_ROUTES = ["/api/"];
 const STATIC_ROUTES = ["/_next/", "/favicon.ico", "/images/", "/fonts/"];
 
+/**
+ * CSP NONCE
+ *
+ * Generates a per-request nonce and injects it into the Content-Security-Policy
+ * response header. The nonce is also forwarded as `x-nonce` on the request so
+ * that server components can attach it to inline <script> tags.
+ *
+ * Security notes:
+ * - `unsafe-eval` is intentionally absent — Next.js production builds do not need it.
+ * - `unsafe-inline` is retained as a legacy fallback only. Per CSP Level 3, browsers
+ *   that honour nonces will ignore `unsafe-inline` when a valid nonce is present.
+ *   Remove `unsafe-inline` once all inline scripts carry the nonce.
+ * - style-src keeps `unsafe-inline` — Tailwind/shadcn styles are currently inline.
+ */
+function buildCSP(nonce: string): string {
+  // React dev mode uses eval() for stack trace reconstruction — safe to allow in dev only.
+  const evalDirective = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'unsafe-inline'${evalDirective}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' blob: data: https://*.supabase.co",
+    "font-src 'self' data:",
+    "frame-src 'self' blob: https://*.supabase.co",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    "object-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "media-src 'self' blob:",
+  ].join("; ");
+}
+
+function nextWithNonce(request: NextRequest, nonce: string): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", buildCSP(nonce));
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip for static/API routes
+  // Generate a cryptographically random nonce for this request
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  const nonce = btoa(String.fromCharCode(...array));
+
+  // Skip auth checks for static/API routes but still apply CSP
   if (STATIC_ROUTES.some((r) => pathname.startsWith(r)) || API_ROUTES.some((r) => pathname.startsWith(r))) {
-    return NextResponse.next();
+    return nextWithNonce(request, nonce);
   }
 
   const hasAuthCookie = request.cookies.has(AUTH_COOKIE);
@@ -22,7 +66,7 @@ export async function proxy(request: NextRequest) {
     if (hasAuthCookie && (pathname === "/login" || pathname === "/signup")) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
-    return NextResponse.next();
+    return nextWithNonce(request, nonce);
   }
 
   // Protected routes need auth
@@ -34,22 +78,22 @@ export async function proxy(request: NextRequest) {
 
   // /dashboard exact - let page handle org resolution
   if (pathname === "/dashboard") {
-    return NextResponse.next();
+    return nextWithNonce(request, nonce);
   }
 
   // Legacy /dashboard/* routes without org - redirect to resolver
   if (pathname.startsWith("/dashboard/") && !pathname.startsWith("/dashboard/org/")) {
-    const response = NextResponse.next();
+    const response = NextResponse.redirect(new URL("/dashboard", request.url));
     response.cookies.set("redirect_path", pathname, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60,
     });
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return response;
   }
 
-  return NextResponse.next();
+  return nextWithNonce(request, nonce);
 }
 
 export const config = {

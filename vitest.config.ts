@@ -18,6 +18,7 @@ export default defineConfig({
       include: [
         'app/(auth)/**/*.ts',
         'app/(auth)/**/*.tsx',
+        'app/api/auth/**/*.ts',
         'app/dashboard/**/generate-certificate/components/**/*.tsx',
         'src/lib/**/*.ts',
       ],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,8 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { api, type Certificate } from "@/lib/api/client";
+import { useCertificates } from "@/lib/hooks/queries/certificates";
+import { useCatalogCategories, useCatalogSubcategories } from "@/lib/hooks/queries/catalog";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -65,79 +67,33 @@ const initialFilters: FilterState = {
 };
 
 export default function CertificatesPage() {
-  const [certificates, setCertificates] = useState<Certificate[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(initialFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [previewCertificate, setPreviewCertificate] = useState<Certificate | null>(null);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [subcategories, setSubcategories] = useState<{ id: string; name: string }[]>([]);
 
-  const loadCertificates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await api.certificates.list({
-        page,
-        limit: 20,
-        search: appliedFilters.search || undefined,
-        status: appliedFilters.status as 'issued' | 'revoked' | 'expired' | undefined,
-        category_id: appliedFilters.category || undefined,
-        subcategory_id: appliedFilters.subcategory || undefined,
-        date_from: appliedFilters.dateFrom || undefined,
-        date_to: appliedFilters.dateTo || undefined,
-        sort_by: "created_at",
-        sort_order: "desc",
-      });
-      setCertificates(response.items || []);
-      setTotalPages(response.pagination?.total_pages || 1);
-      setTotalItems(response.pagination?.total || 0);
-    } catch (err) {
-      console.error("Error loading certificates:", err);
-      // Set empty state on error
-      setCertificates([]);
-      setTotalPages(1);
-      setTotalItems(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, appliedFilters]);
+  const { certificates, pagination, loading, refetch } = useCertificates({
+    page,
+    limit: 20,
+    search: appliedFilters.search || undefined,
+    status: appliedFilters.status as 'issued' | 'revoked' | 'expired' | undefined,
+    category_id: appliedFilters.category || undefined,
+    subcategory_id: appliedFilters.subcategory || undefined,
+    date_from: appliedFilters.dateFrom || undefined,
+    date_to: appliedFilters.dateTo || undefined,
+    sort_by: "created_at",
+    sort_order: "desc",
+  });
 
-  useEffect(() => {
-    loadCertificates();
-  }, [loadCertificates]);
+  const totalPages = pagination?.total_pages ?? 1;
+  const totalItems = pagination?.total ?? 0;
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  const { groups: categoryGroups } = useCatalogCategories();
+  const categories = categoryGroups.flatMap(g => g.items).map(c => ({ id: c.id, name: c.name }));
 
-  const loadCategories = async () => {
-    try {
-      const response = await api.catalog.getCategories();
-      // Extract flat categories
-      const flatCategories = response.groups?.flatMap(g => g.items) || response.flat || [];
-      setCategories(flatCategories.map(c => ({ id: c.id, name: c.name })));
-    } catch (err) {
-      console.error("Error loading categories:", err);
-    }
-  };
-
-  const loadSubcategories = async (categoryId: string) => {
-    if (!categoryId) {
-      setSubcategories([]);
-      return;
-    }
-    try {
-      const response = await api.catalog.getSubcategories(categoryId);
-      setSubcategories(response.items?.map(s => ({ id: s.id, name: s.name })) || []);
-    } catch (err) {
-      console.error("Error loading subcategories:", err);
-      setSubcategories([]);
-    }
-  };
+  const { subcategories: subcatItems } = useCatalogSubcategories(filters.category || null);
+  const subcategories = subcatItems.map(s => ({ id: s.id, name: s.name }));
 
   const handleApplyFilters = () => {
     setAppliedFilters({ ...filters });
@@ -163,11 +119,6 @@ export default function CertificatesPage() {
 
   const handleCategoryChange = (value: string) => {
     setFilters(prev => ({ ...prev, category: value, subcategory: "" }));
-    if (value) {
-      loadSubcategories(value);
-    } else {
-      setSubcategories([]);
-    }
   };
 
   const handleDownload = async (certificate: Certificate) => {
@@ -203,7 +154,7 @@ export default function CertificatesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={loadCertificates} className="gap-2">
+          <Button variant="outline" onClick={() => refetch()} className="gap-2">
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             Refresh
           </Button>

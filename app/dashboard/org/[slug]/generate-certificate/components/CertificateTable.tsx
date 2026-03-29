@@ -14,6 +14,9 @@ import {
   Loader2,
   Copy,
   Check,
+  Mail,
+  Clock,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +31,8 @@ export interface GeneratedCertificate {
   preview_url: string | null;
   category?: string | null;
   subcategory?: string | null;
+  /** Linked recipient_id for matching delivery status */
+  recipient_id?: string | null;
 }
 
 interface CertificateTableProps {
@@ -38,6 +43,8 @@ interface CertificateTableProps {
   className?: string;
   /** true for image templates — enables PNG download filename + Copy to Clipboard */
   isImageTemplate?: boolean;
+  /** keyed by recipient_id → delivery status ('queued'|'sent'|'delivered'|'failed') */
+  emailStatuses?: Record<string, string>;
 }
 
 const PAGE_SIZE = 10;
@@ -66,6 +73,39 @@ async function toPngBlob(url: string): Promise<Blob> {
   });
 }
 
+function EmailStatusBadge({ status }: { status: string }) {
+  if (status === 'sent' || status === 'delivered') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-600">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        {status === 'delivered' ? 'Delivered' : 'Sent'}
+      </span>
+    );
+  }
+  if (status === 'failed') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-destructive">
+        <XCircle className="w-3.5 h-3.5" />
+        Failed
+      </span>
+    );
+  }
+  if (status === 'queued') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Clock className="w-3.5 h-3.5" />
+        Queued
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+      <Mail className="w-3.5 h-3.5" />
+      {status}
+    </span>
+  );
+}
+
 export function CertificateTable({
   certificates,
   zipDownloadUrl,
@@ -73,6 +113,7 @@ export function CertificateTable({
   isLoading,
   className,
   isImageTemplate = false,
+  emailStatuses,
 }: CertificateTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -201,6 +242,9 @@ export function CertificateTable({
               )}
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Issue Date</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expiry</th>
+              {emailStatuses && (
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
+              )}
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
@@ -241,6 +285,13 @@ export function CertificateTable({
                     </Badge>
                   )}
                 </td>
+                {emailStatuses && (
+                  <td className="px-4 py-3">
+                    {cert.recipient_id && emailStatuses[cert.recipient_id]
+                      ? <EmailStatusBadge status={emailStatuses[cert.recipient_id]!} />
+                      : <span className="text-xs text-muted-foreground">—</span>}
+                  </td>
+                )}
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     {cert.preview_url && (

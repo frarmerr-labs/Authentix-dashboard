@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,9 @@ import {
   ExternalLink,
   Database,
 } from "lucide-react";
-import { api, type ImportJob } from "@/lib/api/client";
+import { type ImportJob } from "@/lib/api/client";
+import { useImports, useImportData } from "@/lib/hooks/queries/imports";
+import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -38,72 +40,76 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatDistanceToNow, format } from "date-fns";
 
-interface ImportWithPreview extends ImportJob {
-  previewData?: Record<string, unknown>[];
-  previewLoading?: boolean;
+function ImportPreview({ importId }: { importId: string }) {
+  const { data, isLoading } = useImportData(importId, { page: 1, limit: 5 });
+  const rows = (data?.items ?? []) as Record<string, unknown>[];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>No preview data available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              {Object.keys(rows[0] ?? {}).map((header) => (
+                <th
+                  key={header}
+                  className="px-4 py-2 text-left font-medium text-muted-foreground whitespace-nowrap"
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="border-t">
+                {Object.values(row).map((value, colIndex) => (
+                  <td key={colIndex} className="px-4 py-2 whitespace-nowrap">
+                    {value !== null && value !== undefined ? (
+                      String(value)
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 export default function ImportsPage() {
-  const [imports, setImports] = useState<ImportWithPreview[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { imports, loading, refetch } = useImports({
+    sort_by: "created_at",
+    sort_order: "desc",
+    limit: 50,
+  });
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [importToDelete, setImportToDelete] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadImports();
-  }, []);
-
-  const loadImports = async () => {
-    setLoading(true);
-    try {
-      const response = await api.imports.list({
-        sort_by: "created_at",
-        sort_order: "desc",
-        limit: 50,
-      });
-      setImports(response.items || []);
-    } catch (err) {
-      console.error("Error loading imports:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleExpand = async (importId: string) => {
-    if (expandedId === importId) {
-      setExpandedId(null);
-      return;
-    }
-
-    setExpandedId(importId);
-
-    // Load preview data if not already loaded
-    const importItem = imports.find((i) => i.id === importId);
-    if (importItem && !importItem.previewData && !importItem.previewLoading) {
-      // Mark as loading
-      setImports((prev) =>
-        prev.map((i) => (i.id === importId ? { ...i, previewLoading: true } : i))
-      );
-
-      try {
-        const data = await api.imports.getData(importId, { page: 1, limit: 5 });
-        setImports((prev) =>
-          prev.map((i) =>
-            i.id === importId
-              ? { ...i, previewData: data.items as Record<string, unknown>[], previewLoading: false }
-              : i
-          )
-        );
-      } catch (err) {
-        console.error("Error loading preview data:", err);
-        setImports((prev) =>
-          prev.map((i) =>
-            i.id === importId ? { ...i, previewLoading: false } : i
-          )
-        );
-      }
-    }
+  const toggleExpand = (importId: string) => {
+    setExpandedId((prev) => (prev === importId ? null : importId));
   };
 
   const handleDownload = async (importId: string) => {
@@ -116,23 +122,21 @@ export default function ImportsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!importToDelete) return;
-
+  const handleDelete = () => {
     // TODO: Add delete API endpoint to backend
-    // For now, just remove from local state
-    setImports((prev) => prev.filter((i) => i.id !== importToDelete));
     setDeleteDialogOpen(false);
     setImportToDelete(null);
   };
 
   const handleUseForGeneration = (importId: string) => {
-    // Navigate to generate certificate page with import ID
     window.location.href = `/dashboard/generate-certificate?import=${importId}`;
   };
 
   const getStatusBadge = (status: ImportJob["status"]) => {
-    const variants: Record<ImportJob["status"], { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    const variants: Record<
+      ImportJob["status"],
+      { variant: "default" | "secondary" | "destructive" | "outline"; label: string }
+    > = {
       completed: { variant: "default", label: "Completed" },
       queued: { variant: "secondary", label: "Queued" },
       pending: { variant: "secondary", label: "Pending" },
@@ -175,7 +179,7 @@ export default function ImportsPage() {
             View and manage data files used for certificate generation
           </p>
         </div>
-        <Button variant="outline" onClick={loadImports} className="gap-2">
+        <Button variant="outline" onClick={() => refetch()} className="gap-2">
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
@@ -199,7 +203,7 @@ export default function ImportsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {imports.map((importItem) => (
+          {(imports as ImportJob[]).map((importItem) => (
             <Card
               key={importItem.id}
               className={cn(
@@ -236,7 +240,9 @@ export default function ImportsPage() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3.5 w-3.5" />
-                            {formatDistanceToNow(new Date(importItem.created_at), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(importItem.created_at), {
+                              addSuffix: true,
+                            })}
                           </span>
                         </div>
                       </div>
@@ -256,7 +262,9 @@ export default function ImportsPage() {
                               <Download className="h-4 w-4 mr-2" />
                               Download
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleUseForGeneration(importItem.id)}>
+                            <DropdownMenuItem
+                              onClick={() => handleUseForGeneration(importItem.id)}
+                            >
                               <ExternalLink className="h-4 w-4 mr-2" />
                               Use for Generation
                             </DropdownMenuItem>
@@ -311,47 +319,7 @@ export default function ImportsPage() {
                       Data Preview (Top 5 rows)
                     </h4>
 
-                    {importItem.previewLoading ? (
-                      <div className="flex items-center justify-center py-8">
-                        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : importItem.previewData && importItem.previewData.length > 0 ? (
-                      <div className="border rounded-lg overflow-hidden">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/50">
-                              <tr>
-                                {Object.keys(importItem.previewData[0] ?? {}).map((header) => (
-                                  <th
-                                    key={header}
-                                    className="px-4 py-2 text-left font-medium text-muted-foreground whitespace-nowrap"
-                                  >
-                                    {header}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {importItem.previewData.map((row, rowIndex) => (
-                                <tr key={rowIndex} className="border-t">
-                                  {Object.values(row).map((value, colIndex) => (
-                                    <td key={colIndex} className="px-4 py-2 whitespace-nowrap">
-                                      {value !== null && value !== undefined
-                                        ? String(value)
-                                        : <span className="text-muted-foreground">-</span>}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <p>No preview data available</p>
-                      </div>
-                    )}
+                    <ImportPreview importId={importItem.id} />
 
                     {/* Additional Details */}
                     <div className="mt-4 pt-4 border-t">
@@ -363,7 +331,10 @@ export default function ImportsPage() {
                         <div>
                           <p className="text-muted-foreground">Uploaded</p>
                           <p className="font-medium">
-                            {format(new Date(importItem.created_at), "MMM d, yyyy 'at' h:mm a")}
+                            {format(
+                              new Date(importItem.created_at),
+                              "MMM d, yyyy 'at' h:mm a"
+                            )}
                           </p>
                         </div>
                         <div>
@@ -373,7 +344,9 @@ export default function ImportsPage() {
                         {importItem.error_message && (
                           <div className="col-span-2 md:col-span-4">
                             <p className="text-muted-foreground">Error</p>
-                            <p className="font-medium text-destructive">{importItem.error_message}</p>
+                            <p className="font-medium text-destructive">
+                              {importItem.error_message}
+                            </p>
                           </div>
                         )}
                       </div>

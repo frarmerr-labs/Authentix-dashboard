@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Limit proxy request body size for security (DoS prevention)
@@ -52,26 +53,43 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
           },
-          {
-            // CSP allowing PDF viewing and Supabase integration
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' blob: data: https://*.supabase.co",
-              "font-src 'self' data:",
-              "frame-src 'self' blob: https://*.supabase.co",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-              "object-src 'self' blob:",
-              "worker-src 'self' blob:",
-              "media-src 'self' blob:",
-            ].join("; "),
-          },
+          // Content-Security-Policy is set dynamically per-request by proxy.ts
+          // (nonce-based; see proxy.ts for policy details)
         ],
       },
     ];
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "authentix",
+  project: "authentix-frontend",
+
+  // Suppress the Sentry CLI output during builds
+  silent: !process.env.CI,
+
+  // Upload source maps to Sentry for readable stack traces in production
+  widenClientFileUpload: true,
+
+  // Route browser requests to Sentry through a Next.js rewrite to avoid
+  // ad blockers. May increase server load.
+  tunnelRoute: "/monitoring",
+
+  // Hides source maps from generated client bundles
+  hideSourceMaps: true,
+
+  webpack: {
+    // Automatically instrument React components for performance monitoring
+    reactComponentAnnotation: {
+      enabled: true,
+    },
+
+    // Automatically tree-shake Sentry logger statements to reduce bundle size
+    treeshake: {
+      removeDebugLogging: true,
+    },
+
+    // Enables automatic instrumentation of Vercel Cron Monitors
+    automaticVercelMonitors: true,
+  },
+});

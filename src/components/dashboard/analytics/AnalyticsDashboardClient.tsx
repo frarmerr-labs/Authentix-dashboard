@@ -13,19 +13,24 @@ import {
 } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  Area,
+  AreaChart,
+  XAxis,
+  YAxis,
+  Bar,
+  BarChart,
+  Pie,
+  PieChart,
+  Label,
   RadialBar,
   RadialBarChart,
   PolarGrid,
   PolarAngleAxis,
   Radar,
   RadarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-  Bar,
-  BarChart,
 } from "recharts"
 import {
   Award,
@@ -514,6 +519,53 @@ function EmptyState({ slug }: { slug: string }) {
   )
 }
 
+function AnalyticsKPICards({ stats }: { stats: DashboardStats }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 w-full">
+      <Card className="bg-card/60 backdrop-blur-sm border-border/50 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Certificates</CardTitle>
+          <Award className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats.totalCertificates.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Generated all-time</p>
+        </CardContent>
+      </Card>
+      <Card className="bg-card/60 backdrop-blur-sm border-border/50 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Pending Jobs</CardTitle>
+          <Activity className="h-4 w-4 text-primary" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats.pendingJobs.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Currently processing</p>
+        </CardContent>
+      </Card>
+      <Card className="bg-card/60 backdrop-blur-sm border-border/50 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Verifications Today</CardTitle>
+          <Shield className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats.verificationsToday.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Recent scanning activity</p>
+        </CardContent>
+      </Card>
+      <Card className="bg-card/60 backdrop-blur-sm border-border/50 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Revoked</CardTitle>
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats.revokedCertificates.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Certificates invalidated</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function ChartRadialGridKpis({
   stats,
   preset,
@@ -870,7 +922,7 @@ function ChartCertificatesDailyInteractive({
             config={chartConfig}
             className="aspect-auto h-[280px] w-full sm:h-[300px]"
           >
-            <LineChart
+            <AreaChart
               accessibilityLayer
               data={series}
               margin={{
@@ -878,7 +930,21 @@ function ChartCertificatesDailyInteractive({
                 right: 12,
               }}
             >
-              <CartesianGrid vertical={false} />
+              <defs>
+                <linearGradient id="fillArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="5%"
+                    stopColor={`var(--color-${activeChart})`}
+                    stopOpacity={0.3}
+                  />
+                  <stop
+                    offset="95%"
+                    stopColor={`var(--color-${activeChart})`}
+                    stopOpacity={0.0}
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} opacity={0.3} />
               <XAxis
                 dataKey="date"
                 tickLine={false}
@@ -909,14 +975,15 @@ function ChartCertificatesDailyInteractive({
                   />
                 }
               />
-              <Line
+              <Area
                 dataKey={activeChart}
                 type="monotone"
+                fill="url(#fillArea)"
+                fillOpacity={1}
                 stroke={`var(--color-${activeChart})`}
                 strokeWidth={2}
-                dot={false}
               />
-            </LineChart>
+            </AreaChart>
           </ChartContainer>
         )}
       </CardContent>
@@ -934,85 +1001,85 @@ function ChartCertificateCategoryMixTop({
 }: {
   mix: CertificateCategoryMixRow[]
 }) {
-  const chartConfig = {
-    count: {
-      label: "Certificates",
-      color: "var(--chart-1)",
-    },
-  } satisfies ChartConfig
-
   const chartData = React.useMemo(() => {
-    return mix.map((row) => ({
-      label: `${row.categoryName} / ${row.subcategoryName}`,
+    return mix.map((row, index) => ({
+      name: `${row.categoryName} / ${row.subcategoryName}`,
       count: row.count,
+      fill: `var(--chart-${(index % 5) + 1})`,
     }))
   }, [mix])
 
-  return (
-    <Card className="py-4 sm:py-0">
-      <CardHeader className="items-start pb-4">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-muted-foreground" />
-          <div className="space-y-1">
-            <CardTitle className="text-lg">Top category + subcategory</CardTitle>
-            <CardDescription>
-              Which category/subcategory your certificates are generated from
-              most (all-time).
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
+  const totalCertificates = React.useMemo(() => {
+    return chartData.reduce((acc, curr) => acc + curr.count, 0)
+  }, [chartData])
 
-      <CardContent className="pb-0">
+  const chartConfig = {
+    count: { label: "Count" },
+  } satisfies ChartConfig
+
+  return (
+    <Card className="flex flex-col h-full border-border/50 shadow-sm">
+      <CardHeader className="items-center pb-4 text-center">
+        <CardTitle className="text-lg">Category Mix</CardTitle>
+        <CardDescription>All-time distribution by template category.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex-1 pb-0 flex flex-col justify-center">
         {chartData.length === 0 ? (
           <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-            No certificates available to build a category breakdown yet.
+            No category breakdown available.
           </div>
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="h-[360px] w-full sm:h-[420px]"
+            className="mx-auto aspect-square max-h-[300px]"
           >
-            <BarChart
-              data={chartData}
-              layout="vertical"
-              margin={{
-                left: 8,
-                right: 8,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <YAxis
-                dataKey="label"
-                type="category"
-                width={220}
-                tickLine={false}
-                axisLine={false}
-              />
-              <XAxis
-                dataKey="count"
-                type="number"
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => Number(value).toLocaleString()}
-              />
+            <PieChart>
               <ChartTooltip
-                content={<ChartTooltipContent nameKey="label" />}
+                cursor={false}
+                content={<ChartTooltipContent hideLabel />}
               />
-              <Bar
+              <Pie
+                data={chartData}
                 dataKey="count"
-                fill="var(--color-count)"
-                radius={[6, 6, 6, 6]}
-              />
-            </BarChart>
+                nameKey="name"
+                innerRadius={60}
+                strokeWidth={5}
+                paddingAngle={2}
+              >
+                <Label
+                  content={({ viewBox }) => {
+                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                      return (
+                        <text
+                          x={viewBox.cx}
+                          y={viewBox.cy}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                        >
+                          <tspan
+                            x={viewBox.cx}
+                            y={viewBox.cy}
+                            className="fill-foreground text-3xl font-bold"
+                          >
+                            {totalCertificates.toLocaleString()}
+                          </tspan>
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy || 0) + 24}
+                            className="fill-muted-foreground text-xs"
+                          >
+                            Certificates
+                          </tspan>
+                        </text>
+                      )
+                    }
+                  }}
+                />
+              </Pie>
+            </PieChart>
           </ChartContainer>
         )}
       </CardContent>
-
-      <CardFooter className="text-xs text-muted-foreground">
-        Date filters apply to the line chart only (category breakdown is
-        lifetime totals).
-      </CardFooter>
     </Card>
   )
 }
@@ -1144,19 +1211,29 @@ export function AnalyticsDashboardClient({
         </div>
       </div>
 
-      {/* Charts — radial + radar (with range-scaled preview when empty) */}
+      {/* Premium KPI Cards */}
+      <AnalyticsKPICards stats={stats} />
+
+      {/* Main Charts */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <ChartCertificatesDailyInteractive
+            series={filteredCertificatesDaily}
+            rangeLabel={rangeLabel}
+          />
+        </div>
+        <div className="lg:col-span-1">
+          <ChartCertificateCategoryMixTop mix={allCertificateCategoryMix} />
+        </div>
+      </div>
+
+      {/* Legacy Radar/Radial Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="lg:col-span-2">
           <ChartRadialGridKpis
             stats={stats}
             preset={preset}
             customRange={customRange}
-          />
-        </div>
-        <div className="lg:col-span-2">
-          <ChartCertificatesDailyInteractive
-            series={filteredCertificatesDaily}
-            rangeLabel={rangeLabel}
           />
         </div>
         <ChartRadarDotsActivity
@@ -1174,9 +1251,6 @@ export function AnalyticsDashboardClient({
           preset={preset}
           customRange={customRange}
         />
-        <div className="lg:col-span-2">
-          <ChartCertificateCategoryMixTop mix={allCertificateCategoryMix} />
-        </div>
       </div>
 
       {/* Empty State */}

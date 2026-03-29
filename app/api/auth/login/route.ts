@@ -5,55 +5,29 @@ import {
   sanitizeErrorMessage,
   ServerApiError,
 } from "@/lib/api/server";
-
-interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-interface LoginResponse {
-  user: {
-    id: string;
-    email: string;
-    full_name: string | null;
-  };
-  session: {
-    access_token: string;
-    refresh_token: string;
-    expires_at: number;
-  };
-}
+import { LoginRequestSchema, LoginResponseSchema } from "@/lib/api/schemas/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as LoginRequest;
-
-    // Validate input
-    if (!body.email || !body.password) {
+    const parsed = LoginRequestSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Email and password are required" },
+        { success: false, error: parsed.error.errors[0].message },
         { status: 400 }
       );
     }
 
-    // Forward to backend
-    const result = await backendAuthRequest<LoginResponse>("/auth/login", {
+    const result = await backendAuthRequest("/auth/login", {
       method: "POST",
-      body: JSON.stringify({
-        email: body.email,
-        password: body.password,
-      }),
+      body: JSON.stringify(parsed.data),
     });
 
-    // Set HttpOnly cookies
-    await setServerAuthCookies(result.session);
+    const validated = LoginResponseSchema.parse(result);
+    await setServerAuthCookies(validated.session);
 
-    // Return user info (without tokens)
     return NextResponse.json({
       success: true,
-      data: {
-        user: result.user,
-      },
+      data: { user: validated.user },
     });
   } catch (error) {
     console.error("[API] Login error:", error);

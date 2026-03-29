@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Palette, Bell, Shield, Key } from "lucide-react";
+import { Building2, Palette, Bell, Shield, Key, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useOrg } from "@/lib/org";
@@ -21,6 +21,12 @@ export default function SettingsPage() {
       title: "API Settings",
       description: "Generate and manage API keys for integration",
       href: orgPath("/settings/api"),
+    },
+    {
+      icon: Mail,
+      title: "Email Delivery",
+      description: "Configure email integration and manage templates for certificate delivery",
+      href: orgPath("/settings/delivery"),
     },
       {
       icon: Palette,

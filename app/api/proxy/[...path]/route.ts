@@ -16,6 +16,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AUTH_COOKIES } from "@/lib/api/server";
+import { logger } from "@/lib/logger";
+import { ALLOWED_METHODS, isPathSafe, isPathAllowed, createSafeHeaders } from "@/lib/api/proxy-validators";
 
 // ============================================================================
 // Configuration (Server-only)
@@ -28,142 +30,6 @@ const BACKEND_API_URL = BACKEND_PRIMARY_URL;
 // Request timeout in milliseconds
 // Longer timeout for file uploads (multipart requests)
 const REQUEST_TIMEOUT_MS = 120_000; // 120 seconds for file uploads
-
-// ============================================================================
-// Security: Allowed Methods
-// ============================================================================
-
-const ALLOWED_METHODS = new Set([
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "OPTIONS",
-]);
-
-// ============================================================================
-// Security: Allowed Path Prefixes (relative to backend API root)
-// ============================================================================
-
-const ALLOWED_PATH_PREFIXES = [
-  "/auth/",
-  "/templates",
-  "/organizations/",
-  "/users/",
-  "/certificates/",
-  "/import-jobs",
-  "/billing/",
-  "/verification/",
-  "/dashboard/",
-  "/webhooks/",
-  "/industries",
-  "/catalog/",
-] as const;
-
-// ============================================================================
-// Security: Hop-by-hop Headers to Strip
-// ============================================================================
-
-const HOP_BY_HOP_HEADERS = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
-// ============================================================================
-// Security: Path Validation
-// ============================================================================
-
-/**
- * Validate path against traversal attacks and suspicious patterns
- */
-function isPathSafe(path: string): boolean {
-  // Block path traversal patterns
-  if (path.includes("..")) return false;
-  if (path.includes("%2e%2e")) return false;
-  if (path.includes("%2E%2E")) return false;
-
-  // Block double slashes (potential bypass)
-  if (path.includes("//")) return false;
-
-  // Block null bytes
-  if (path.includes("%00")) return false;
-  if (path.includes("\0")) return false;
-
-  // Block backslashes (Windows-style paths)
-  if (path.includes("\\")) return false;
-  if (path.includes("%5c")) return false;
-  if (path.includes("%5C")) return false;
-
-  return true;
-}
-
-/**
- * Check if path is in allowlist
- */
-function isPathAllowed(path: string): boolean {
-  // Normalize path (remove leading slash for comparison)
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  return ALLOWED_PATH_PREFIXES.some(
-    (prefix) =>
-      normalizedPath.startsWith(prefix) ||
-      normalizedPath === prefix.replace(/\/$/, "") // Handle exact match without trailing slash
-  );
-}
-
-// ============================================================================
-// Security: Header Filtering
-// ============================================================================
-
-/**
- * Create safe headers for backend request
- */
-function createSafeHeaders(
-  originalHeaders: Headers,
-  accessToken: string | null
-): Headers {
-  const safeHeaders = new Headers();
-
-  // Copy only safe headers
-  originalHeaders.forEach((value, key) => {
-    const lowerKey = key.toLowerCase();
-
-    // Skip hop-by-hop headers
-    if (HOP_BY_HOP_HEADERS.has(lowerKey)) return;
-
-    // Skip host header (will be set by fetch)
-    if (lowerKey === "host") return;
-
-    // Skip cookie header (we handle auth separately)
-    if (lowerKey === "cookie") return;
-
-    // For multipart/form-data, preserve Content-Type with boundary
-    if (lowerKey === "content-type" && value.includes("multipart/form-data")) {
-      safeHeaders.set(key, value);
-      return;
-    }
-
-    safeHeaders.set(key, value);
-  });
-
-  // Only set Content-Type if it was in the original request
-  // Don't add it automatically - let the request specify it if needed
-  // This prevents issues with DELETE requests that have no body
-
-  // Add auth header if token exists
-  if (accessToken) {
-    safeHeaders.set("Authorization", `Bearer ${accessToken}`);
-  }
-
-  return safeHeaders;
-}
 
 // ============================================================================
 // Error Response Helpers
@@ -191,9 +57,12 @@ async function proxyRequest(
   request: NextRequest,
   method: string
 ): Promise<NextResponse> {
+  // Generate a unique ID for this request — used for log correlation and forwarded to the backend
+  const requestId = crypto.randomUUID();
+
   // Validate backend URL is configured
   if (!BACKEND_API_URL) {
-    console.error("[Proxy] Backend URL not configured");
+    logger.error("Proxy: backend URL not configured", { requestId });
     return errorResponse(
       "SERVICE_UNAVAILABLE",
       "Service temporarily unavailable",
@@ -210,15 +79,18 @@ async function proxyRequest(
   const url = new URL(request.url);
   const pathSegments = url.pathname.replace("/api/proxy", "");
 
+  // Child logger binds requestId + method + path to every log call in this request
+  const reqLog = logger.child({ requestId, method, path: pathSegments });
+
   // Security: Check for path traversal
   if (!isPathSafe(pathSegments)) {
-    console.warn(`[Proxy] Blocked suspicious path: ${pathSegments}`);
+    reqLog.warn("Proxy: blocked suspicious path");
     return errorResponse("BAD_REQUEST", "Invalid request path", 400);
   }
 
   // Security: Check path allowlist
   if (!isPathAllowed(pathSegments)) {
-    console.warn(`[Proxy] Blocked non-allowlisted path: ${pathSegments}`);
+    reqLog.warn("Proxy: blocked non-allowlisted path");
     return errorResponse("FORBIDDEN", "Access denied", 403);
   }
 
@@ -238,6 +110,9 @@ async function proxyRequest(
 
   // Create safe headers
   const safeHeaders = createSafeHeaders(request.headers, accessToken);
+
+  // Forward request ID to backend for end-to-end tracing
+  safeHeaders.set("X-Request-ID", requestId);
 
   // Forward auth cookies to backend (Step-1 auth uses cookies, not just Bearer tokens)
   // Build cookie string for backend
@@ -270,14 +145,9 @@ async function proxyRequest(
         if (contentType) {
           safeHeaders.set("Content-Type", contentType);
         }
-        console.log('[Proxy] Forwarding multipart/form-data request:', {
-          method,
-          path: pathSegments,
-          contentType,
-          bodySize: body.byteLength,
-        });
+        reqLog.info("Proxy: forwarding multipart request", { contentType, bodySize: body.byteLength });
       } catch (error) {
-        console.error('[Proxy] Error reading multipart body:', error);
+        reqLog.error("Proxy: error reading multipart body", { error: error instanceof Error ? error.message : String(error) });
         return errorResponse(
           "BAD_REQUEST",
           "Failed to read request body",
@@ -315,10 +185,7 @@ async function proxyRequest(
 
   try {
     if (isMultipart) {
-      console.log('[Proxy] Sending multipart request to backend:', {
-        url: backendUrl, method, hasBody: !!body,
-        contentType: safeHeaders.get("content-type"),
-      });
+      reqLog.info("Proxy: sending multipart request to backend", { url: backendUrl, hasBody: !!body });
     }
 
     let response: Response;
@@ -326,20 +193,15 @@ async function proxyRequest(
       response = await fetch(backendUrl, fetchOptions);
     } catch (fetchError) {
       if (checkConnectionRefused(fetchError) && fallbackUrl) {
-        console.info("[Proxy] Local backend unavailable, switching to Vercel backend");
+        reqLog.info("Proxy: local backend unavailable, switching to Vercel backend");
         response = await fetch(fallbackUrl, fetchOptions);
       } else {
         throw fetchError;
       }
     }
-    
+
     if (isMultipart) {
-      console.log('[Proxy] Backend response for multipart request:', {
-        status: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get("content-type"),
-        ok: response.ok,
-      });
+      reqLog.info("Proxy: backend multipart response", { status: response.status, contentType: response.headers.get("content-type"), ok: response.ok });
     }
 
     clearTimeout(timeoutId);
@@ -354,24 +216,15 @@ async function proxyRequest(
         
         // Log backend errors for debugging (especially for multipart requests)
         if (!response.ok) {
-          console.error('[Proxy] Backend error response:', {
-            status: response.status,
-            statusText: response.statusText,
-            isMultipart,
-            path: pathSegments,
-            errorData: data,
-            errorMessage: typeof data === 'object' && data !== null && 'error' in data
-              ? (typeof (data as any).error === 'object' 
-                  ? (data as any).error.message 
-                  : (data as any).error)
-              : 'Unknown error',
-          });
+          const errorMessage = typeof data === 'object' && data !== null && 'error' in data
+            ? (typeof (data as Record<string, unknown>).error === 'object'
+                ? ((data as Record<string, Record<string, unknown>>).error?.message)
+                : (data as Record<string, unknown>).error)
+            : 'Unknown error';
+          reqLog.error("Proxy: backend error response", { status: response.status, isMultipart, errorMessage });
         }
       } catch (parseError) {
-        console.error('[Proxy] Failed to parse backend JSON response:', {
-          status: response.status,
-          parseError: parseError instanceof Error ? parseError.message : String(parseError),
-        });
+        reqLog.error("Proxy: failed to parse backend JSON response", { status: response.status, parseError: parseError instanceof Error ? parseError.message : String(parseError) });
         // Return error response
         return errorResponse(
           "PARSE_ERROR",
@@ -380,6 +233,10 @@ async function proxyRequest(
         );
       }
     } else {
+      // 204 No Content — body-less response
+      if (response.status === 204) {
+        return new NextResponse(null, { status: 204 });
+      }
       // For non-JSON responses (e.g., file downloads), stream through
       const responseBody = await response.arrayBuffer();
       return new NextResponse(responseBody, {
@@ -390,28 +247,24 @@ async function proxyRequest(
       });
     }
 
-    // Return JSON response with same status
+    // Return JSON response with same status, echoing requestId for client-side correlation
     return NextResponse.json(data, {
       status: response.status,
+      headers: { "X-Request-ID": requestId },
     });
   } catch (error) {
     clearTimeout(timeoutId);
 
     // Handle abort/timeout
     if (error instanceof Error && error.name === "AbortError") {
-      console.error("[Proxy] Request timeout");
+      reqLog.error("Proxy: request timeout");
       return errorResponse("TIMEOUT", "Request timed out", 504);
     }
 
-    // Log error server-side only (don't expose to client)
-    console.error("[Proxy] Error:", {
-      error,
+    reqLog.error("Proxy: unhandled error", {
+      isMultipart,
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      method,
-      path: pathSegments,
-      isMultipart,
     });
 
     // Return sanitized error

@@ -6,32 +6,19 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api/client';
+import { useOrganization } from '@/lib/hooks/queries/organizations';
 import { BillingOverview } from './components/billing-overview';
 import { InvoiceList } from './components/invoice-list';
 
 export default function BillingPage() {
-  const [organization, setOrganization] = useState<{ id: string; name: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { organization, loading, error } = useOrganization();
   const router = useRouter();
 
-  useEffect(() => {
-    loadOrganization();
-  }, []);
-
-  const loadOrganization = async () => {
-    try {
-      const organizationData = await api.organizations.get() as { id: string; name: string };
-      setOrganization({ id: organizationData.id, name: organizationData.name });
-    } catch (error) {
-      console.error('Error loading organization:', error);
-      router.push('/login');
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (error) {
+    router.push('/login');
+    return null;
+  }
 
   if (loading) {
     return (
@@ -45,19 +32,21 @@ export default function BillingPage() {
     return null;
   }
 
+  const org = organization as { id: string; name: string };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Track your usage and manage invoices for {organization.name}
+          Track your usage and manage invoices for {org.name}
         </p>
       </div>
 
       {/* Billing Overview */}
       <div className="mb-8">
-        <BillingOverview organizationId={organization.id} />
+        <BillingOverview organizationId={org.id} />
       </div>
 
       {/* Invoice History */}
@@ -65,7 +54,7 @@ export default function BillingPage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Invoice History
         </h2>
-        <InvoiceList organizationId={organization.id} />
+        <InvoiceList organizationId={org.id} />
       </div>
     </div>
   );
