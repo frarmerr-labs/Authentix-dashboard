@@ -185,7 +185,6 @@ export async function serverApiRequest<T>(
   } catch (error) {
     // If local backend is not running, automatically fall back to Vercel
     if (isConnectionRefused(error) && BACKEND_FALLBACK_URL) {
-      console.info("[API] Local backend unavailable, switching to Vercel backend");
       try {
         response = await fetch(`${BACKEND_FALLBACK_URL}${endpoint}`, {
           ...fetchOptions,
@@ -267,7 +266,6 @@ export async function backendAuthRequest<T>(
   } catch (error) {
     // If local backend is not running, automatically fall back to Vercel
     if (isConnectionRefused(error) && BACKEND_FALLBACK_URL) {
-      console.info("[BackendAuth] Local backend unavailable, switching to Vercel backend");
       try {
         response = await fetch(`${BACKEND_FALLBACK_URL}${endpoint}`, { ...options, headers: fetchHeaders });
       } catch (fallbackError) {

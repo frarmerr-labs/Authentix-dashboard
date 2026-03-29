@@ -17,7 +17,13 @@ import {
   Copy, Sparkles, ChevronLeft, ChevronRight, Clock, CheckCircle2, PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, type DeliveryTemplate } from "@/lib/api/client";
+import { type DeliveryTemplate } from "@/lib/api/client";
+import {
+  useDeliveryTemplates,
+  useCreateDeliveryTemplate,
+  useDeleteDeliveryTemplate,
+  useDuplicateDeliveryTemplate,
+} from "@/lib/hooks/queries/delivery";
 import { useOrg } from "@/lib/org";
 import { useRouter } from "next/navigation";
 import { PREDEFINED_TEMPLATES, type PredefinedTemplate } from "./PREDEFINED_TEMPLATES";
@@ -426,13 +432,7 @@ function TemplateCard({
 export default function EmailTemplatesPage() {
   const { orgPath } = useOrg();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [templates, setTemplates] = useState<DeliveryTemplate[]>([]);
-  const [error, setError] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
   // Sample chooser
   const [showSamples, setShowSamples] = useState(false);
@@ -444,20 +444,17 @@ export default function EmailTemplatesPage() {
   // Saved IDs from localStorage (loaded once)
   const [savedIds] = useState<Set<string>>(() => getSavedIds());
 
-  useEffect(() => { load(); }, []);
+  const { templates: rawTemplates, loading, error: fetchError } = useDeliveryTemplates();
+  const createTemplate = useCreateDeliveryTemplate();
+  const deleteTemplate = useDeleteDeliveryTemplate();
+  const duplicateTemplate = useDuplicateDeliveryTemplate();
 
-  const load = async () => {
-    try {
-      const list = await api.delivery.listTemplates();
-      // Sort by updated_at desc
-      list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-      setTemplates(list);
-    } catch (err: any) {
-      setError(err.message ?? "Failed to load templates");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Sort by updated_at desc
+  const templates = [...rawTemplates].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  );
+
+  const error = fetchError ?? createTemplate.error?.message ?? "";
 
   // Split templates
   const savedTemplates = templates.filter(t => isTemplateSaved(t, savedIds));
@@ -470,67 +467,52 @@ export default function EmailTemplatesPage() {
 
   const handleNameConfirm = async (name: string) => {
     if (!pendingCreate) return;
-    setCreating(true);
-    try {
-      let created: DeliveryTemplate;
-      if (pendingCreate.kind === "sample") {
-        const predefined = pendingCreate.template;
-        created = await api.delivery.createTemplate({
-          channel: "email",
+    const isFromSample = pendingCreate.kind === "sample";
+    const dto = isFromSample
+      ? {
+          channel: "email" as const,
           name,
-          email_subject: predefined.email_subject,
-          body: predefined.body,
-          variables: predefined.variables,
+          email_subject: pendingCreate.template.email_subject,
+          body: pendingCreate.template.body,
+          variables: pendingCreate.template.variables,
           is_default: templates.length === 0,
           is_active: true,
-        });
-        toast.success(`"${name}" created from sample`);
-      } else {
-        created = await api.delivery.createTemplate({
-          channel: "email",
+        }
+      : {
+          channel: "email" as const,
           name,
           email_subject: "Your Certificate from {{organization_name}}",
           body: "",
-          variables: [],
+          variables: [] as string[],
           is_default: templates.length === 0,
           is_active: true,
-        });
-        toast.success(`"${name}" created`);
-      }
-      setPendingCreate(null);
-      router.push(orgPath(`/email-templates/${created.id}`));
-    } catch (err: any) {
-      setError(err.message ?? "Failed to create template");
-    } finally {
-      setCreating(false);
-    }
+        };
+
+    createTemplate.mutate(dto, {
+      onSuccess: (created) => {
+        toast.success(isFromSample ? `"${name}" created from sample` : `"${name}" created`);
+        setPendingCreate(null);
+        router.push(orgPath(`/email-templates/${created.id}`));
+      },
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to create template");
+      },
+    });
   };
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
+  const handleDelete = (id: string) => {
     setConfirmDeleteId(null);
-    try {
-      await api.delivery.deleteTemplate(id);
-      toast.success("Template deleted");
-      setTemplates(prev => prev.filter(t => t.id !== id));
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to delete template");
-    } finally {
-      setDeletingId(null);
-    }
+    deleteTemplate.mutate(id, {
+      onSuccess: () => toast.success("Template deleted"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete template"),
+    });
   };
 
-  const handleDuplicate = async (id: string) => {
-    setDuplicatingId(id);
-    try {
-      const duplicated = await api.delivery.duplicateTemplate(id);
-      toast.success(`"${duplicated.name}" created`);
-      await load();
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to duplicate template");
-    } finally {
-      setDuplicatingId(null);
-    }
+  const handleDuplicate = (id: string) => {
+    duplicateTemplate.mutate(id, {
+      onSuccess: (duplicated) => toast.success(`"${duplicated.name}" created`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to duplicate template"),
+    });
   };
 
   const nameDialogProps = pendingCreate ? (
@@ -631,8 +613,8 @@ export default function EmailTemplatesPage() {
                     onEdit={() => router.push(orgPath(`/email-templates/${template.id}`))}
                     onDelete={() => setConfirmDeleteId(template.id)}
                     onDuplicate={() => handleDuplicate(template.id)}
-                    deleting={deletingId === template.id}
-                    duplicating={duplicatingId === template.id}
+                    deleting={deleteTemplate.isPending && deleteTemplate.variables === template.id}
+                    duplicating={duplicateTemplate.isPending && duplicateTemplate.variables === template.id}
                   />
                 ))}
               </div>
@@ -657,8 +639,8 @@ export default function EmailTemplatesPage() {
                     onEdit={() => router.push(orgPath(`/email-templates/${template.id}`))}
                     onDelete={() => setConfirmDeleteId(template.id)}
                     onDuplicate={() => handleDuplicate(template.id)}
-                    deleting={deletingId === template.id}
-                    duplicating={duplicatingId === template.id}
+                    deleting={deleteTemplate.isPending && deleteTemplate.variables === template.id}
+                    duplicating={duplicateTemplate.isPending && duplicateTemplate.variables === template.id}
                   />
                 ))}
               </div>
@@ -684,7 +666,7 @@ export default function EmailTemplatesPage() {
         title={nameDialogProps.title}
         placeholder={nameDialogProps.placeholder}
         description={nameDialogProps.description}
-        creating={creating}
+        creating={createTemplate.isPending}
         onConfirm={handleNameConfirm}
         onCancel={() => setPendingCreate(null)}
       />

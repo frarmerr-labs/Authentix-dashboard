@@ -194,24 +194,50 @@ Optional later:
 
 ## Phase 1 (1-2 weeks) — Stabilize foundation
 
-- Fix dependency declarations and remove verified unused packages.
-- Introduce logger facade and correlation ID propagation.
-- Create proxy validator unit tests.
-- Define coding standards doc (state, API, errors, logging).
+- ✅ Fix dependency declarations and remove verified unused packages. (2026-03-28)
+- ✅ Introduce logger facade (`src/lib/logger.ts`) — all `console.*` replaced in `client.ts` and proxy route. (2026-03-28)
+- ✅ `logger.child()` added — correlation ID support for requestId/organizationId/userId. (2026-03-28)
+- ✅ `extractApiError()` + `buildQueryString()` DRY utilities added to `client.ts`. (2026-03-28)
+- ✅ `src/lib/types/organization.ts` shared type — eliminates inline duplication. (2026-03-28)
+- ✅ `src/lib/errors.ts` — error taxonomy (`NETWORK/AUTH/VALIDATION/UPSTREAM/TIMEOUT`), `ErrorCodes`, `AppError`, `categorizeHttpError()`. (2026-03-28)
+- ✅ `src/lib/api/result.ts` — central `ApiResult<T>` type + `normalizeApiResponse()`, `ok()`, `err()`, `fromThrown()`, `mapResult()` utilities. (2026-03-28)
+- ✅ `src/lib/api/proxy-validators.ts` — `isPathSafe`, `isPathAllowed`, `createSafeHeaders` extracted as pure functions. (2026-03-28)
+- ✅ `__tests__/lib/proxy-validators.test.ts` — 62 unit tests covering traversal, allowlist, header filtering, allowed methods. (2026-03-28)
+- ✅ `app/api/proxy/[...path]/route.ts` — requestId generated per request, forwarded as `X-Request-ID` to backend, threaded through all log calls via `logger.child()`. (2026-03-28)
+- ✅ Define coding standards doc (`CODING_STANDARDS.md` — state, API, errors, logging, security, testing). (2026-03-29)
 
 ## Phase 2 (2-4 weeks) — Refactor high-risk hotspots
 
-- Split `generate-certificate/page.tsx` into modular architecture.
-- Split `src/lib/api/client.ts` by domain.
-- Refactor org layout bootstrap/retry logic into service module.
-- Add integration tests for auth/proxy routes.
+- ✅ Layered domain structure created for all 4 priority domains (2026-03-28):
+  - **Generate certificate**: `schema/types.ts` (state interface + factory), `state/generateCertificateReducer.ts` (full reducer, all 20+ useState actions), `services/generateCertificateService.ts` (API wrapper)
+  - **Email templates**: `[id]/schema/types.ts`, `[id]/state/emailEditorReducer.ts`, `[id]/services/emailTemplateService.ts`
+  - **Delivery settings**: `schema/types.ts`, `state/deliveryReducer.ts`, `services/deliveryService.ts`
+  - **Billing**: `schema/types.ts`, `services/billingService.ts`
+- ✅ 4.1 State machines defined for all 4 domains — `useReducer` drop-in ready. (2026-03-28)
+- ✅ 4.3 Error taxonomy (`src/lib/errors.ts`) and `ApiResult` normalization (`src/lib/api/result.ts`) complete. (2026-03-28)
+- ✅ `generate-certificate/page.tsx` migrated to `useGenerateCertificateState` (wraps `useReducer`, replaces 20+ `useState` hooks). (2026-03-28)
+- ✅ `src/lib/api/client.ts` split into 12 domain modules (`core`, `auth`, `templates`, `certificates`, `imports`, `billing`, `delivery`, `organizations`, `catalog`, `dashboard`, `verification`, `users`). Public API (`api.templates.list()` etc.) unchanged. (2026-03-28)
+- ✅ TanStack Query (React Query v5) installed and `QueryProvider` added to `app/layout.tsx`. (2026-03-28)
+- ✅ Query hook modules created under `src/lib/hooks/queries/` for all 10 domains (catalog, templates, certificates, billing, imports, delivery, organizations, users, dashboard). (2026-03-28)
+- ✅ All manual `useEffect` data-fetching replaced with TanStack Query hooks in: `certificates/page.tsx`, `billing/page.tsx`, `imports/page.tsx`, `email-templates/page.tsx`, `organization/page.tsx`, `settings/api/page.tsx`. (2026-03-28)
+- ✅ Old hooks (`use-catalog-categories`, `use-catalog-subcategories`, `use-certificate-categories`, `use-billing-overview`, `use-invoice-list`, `use-invoice-detail`) rewritten as TanStack-backed wrappers — backward compatible. (2026-03-28)
+- ✅ `src/lib/hooks/use-catalog-cache.ts` (manual `CatalogCacheManager`, ~130 lines) deleted — replaced by TanStack Query built-in caching. (2026-03-28)
+- ✅ Refactor org layout bootstrap/retry logic — replaced dual `/auth/me` + `/users/me` with single `GET /auth/access-context`. (2026-03-29)
+- ✅ Integration tests for auth + proxy route handlers — `__tests__/api/auth/login.test.ts` (12 cases), `__tests__/api/auth/signup.test.ts` (12 cases), `__tests__/api/proxy/proxy-route.test.ts` (15 cases: traversal, allowlist, forwarding). (2026-03-29)
 
 ## Phase 3 (4-8 weeks) — Enterprise hardening
 
-- CSP tightening rollout.
-- Major toolchain upgrades in controlled sequence.
+- ✅ H2: Zod runtime validation at API boundaries — `src/lib/api/schemas/auth.ts` created; `login`, `signup`, `refresh`, `access-context` BFF routes updated to use `safeParse`/`parse`. (2026-03-29)
+- ✅ H3: CSP tightening — `proxy.ts` generates per-request nonce, injects into `Content-Security-Policy`, forwards via `x-nonce` header; `unsafe-eval` removed from `script-src`; `app/layout.tsx` inline script receives nonce; static CSP removed from `next.config.ts`. (2026-03-29)
+- ✅ H5: TypeScript prep — `target` bumped to `ES2024` (Node 24). Next step: enable `verbatimModuleSyntax` (requires `import type` audit) and `exactOptionalPropertyTypes` in a dedicated branch once TS 6.0 lands. (2026-03-29)
+- ✅ H6: API contract tests — `__tests__/lib/schemas/auth.test.ts` added (29 test cases covering all auth Zod schemas: LoginRequest, SignupRequest, Session, AuthUser, LoginResponse, SignupResponse, RefreshResponse, AccessContextResponse). (2026-03-29)
+- ✅ H7: SBOM + license scanning in CI — `.github/workflows/ci.yml` (lint + typecheck + unit tests on every PR) and `.github/workflows/sbom.yml` (CycloneDX SBOM + license-checker on main push + weekly cron). (2026-03-29)
+- ✅ H8: Performance smoke tests — `e2e/perf.spec.ts` added; measures TTFB + DOMContentLoaded on login, signup, root via Navigation Timing Level 2 API; budget gates fail CI on regression. (2026-03-29)
+- ✅ H9: Sentry stubs — `sentry.client.config.ts` and `sentry.server.config.ts` created; activates once `npm install @sentry/nextjs` + `NEXT_PUBLIC_SENTRY_DSN` env var are set; PII scrubbing and X-Request-ID correlation included. (2026-03-29)
+- ✅ F12: Dependabot configured — `.github/dependabot.yml`; monthly npm + GitHub Actions updates; patch/minor batched into one PR; major versions blocked for manual review. (2026-03-29)
+- ✅ H4: `@vercel/otel` installed — OpenTelemetry spans now active. (2026-03-29)
 - Expand E2E failure-path coverage.
-- Add SLO-style dashboards based on structured logs/metrics.
+- ✅ H4: OpenTelemetry tracing — `instrumentation.ts` created; `@vercel/otel` installed; proxy threads `X-Request-ID` end-to-end; spans active. (2026-03-29)
 
 ---
 

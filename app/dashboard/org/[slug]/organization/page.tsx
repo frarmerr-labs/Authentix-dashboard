@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Building2, Upload, Loader2, CheckCircle2, Globe, MapPin, Phone, Mail, UserCircle, Receipt } from "lucide-react";
-import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { getOrganizationLogoUrl } from "@/lib/utils/organization-logo";
+import { useOrganization, useUpdateOrganization } from "@/lib/hooks/queries/organizations";
+import { useUserProfile, useUpdateUserProfile } from "@/lib/hooks/queries/users";
 
 export default function OrganizationPage() {
   const [organizationData, setOrganizationData] = useState({
@@ -47,86 +48,52 @@ export default function OrganizationPage() {
   const [billingSameAsOrg, setBillingSameAsOrg] = useState(true);
   const [logo, setLogo] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
-  const [applicationId, setApplicationId] = useState("");
 
+  const { organization, loading } = useOrganization();
+  const { profile: userProfile } = useUserProfile();
+  const updateOrganization = useUpdateOrganization();
+  const updateUserProfile = useUpdateUserProfile();
+
+  // Seed form fields once org data arrives
   useEffect(() => {
-    loadOrganizationData();
-  }, []);
+    if (!organization) return;
+    const org = organization as Record<string, any>;
+    setOrganizationData({
+      name: org.name || "",
+      email: org.email || "",
+      phone: org.phone || "",
+      website: org.website || "",
+      industry: org.industry || "",
+      address: org.address || "",
+      city: org.city || "",
+      state: org.state || "",
+      country: org.country || "",
+      postal_code: org.postal_code || "",
+      gst_number: org.gst_number || "",
+      cin_number: org.cin_number || "",
+      billing_email: org.billing_email || "",
+      billing_currency: org.billing_currency || "USD",
+      billing_address: org.billing_address || "",
+      billing_city: org.billing_city || "",
+      billing_state: org.billing_state || "",
+      billing_country: org.billing_country || "",
+      billing_postal_code: org.billing_postal_code || "",
+    });
+    setBillingSameAsOrg(!(org.billing_address && org.billing_address !== org.address));
+    const logoUrl = getOrganizationLogoUrl(organization);
+    setLogoPreview(logoUrl || "");
+  }, [organization]);
 
-  const loadOrganizationData = async () => {
-    try {
-      const organization = await api.organizations.get();
-
-      setOrganizationData({
-        name: organization.name || "",
-        email: organization.email || "",
-        phone: organization.phone || "",
-        website: organization.website || "",
-        industry: organization.industry || "",
-        address: organization.address || "",
-        city: organization.city || "",
-        state: organization.state || "",
-        country: organization.country || "",
-        postal_code: organization.postal_code || "",
-        gst_number: organization.gst_number || "",
-        cin_number: organization.cin_number || "",
-        // Billing fields mapping
-        billing_email: organization.billing_email || "",
-        billing_currency: organization.billing_currency || "USD",
-        billing_address: organization.billing_address || "",
-        billing_city: organization.billing_city || "",
-        billing_state: organization.billing_state || "",
-        billing_country: organization.billing_country || "",
-        billing_postal_code: organization.billing_postal_code || "",
-      });
-
-      // Attempt to intelligently set the billing toggle if they differ
-      if (
-        organization.billing_address && 
-        organization.billing_address !== organization.address
-      ) {
-        setBillingSameAsOrg(false);
-      } else {
-        setBillingSameAsOrg(true);
-      }
-
-      // Use utility to construct logo URL from backend response structure
-      const logoUrl = getOrganizationLogoUrl(organization);
-      setLogoPreview(logoUrl || "");
-
-      // Load user profile concurrently (safely catch if disabled/not implemented)
-      try {
-        const userProfile = await api.users.getProfile();
-        if (userProfile) {
-          setUserData({
-            full_name: userProfile.full_name || "",
-            email: userProfile.email || "",
-          });
-          if ((userProfile as any).avatar_url) {
-            setUserAvatarPreview((userProfile as any).avatar_url);
-          }
-        }
-      } catch (e) {
-        console.warn('User profile API not ready or unavailable:', e);
-      }
-
-      // Load application_id from API settings separately
-      try {
-        const apiSettings = await api.organizations.getAPISettings();
-        setApplicationId(apiSettings.application_id || "");
-      } catch {
-        // API settings may not be available yet
-      }
-    } catch (error) {
-      console.error('Error loading organization data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Seed user fields once profile arrives
+  useEffect(() => {
+    if (!userProfile) return;
+    const p = userProfile as Record<string, any>;
+    setUserData({ full_name: p.full_name || "", email: p.email || "" });
+    if (p.avatar_url) setUserAvatarPreview(p.avatar_url);
+  }, [userProfile]);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,27 +144,19 @@ export default function OrganizationPage() {
     }
 
     try {
-      const orgPromise = api.organizations.update(
-        payload,
-        logo || undefined
-      );
+      const [updatedOrganization] = await Promise.all([
+        updateOrganization.mutateAsync({ data: payload, logoFile: logo || undefined }),
+        updateUserProfile
+          .mutateAsync({ data: { full_name: userData.full_name }, avatarFile: userAvatar || undefined })
+          .catch((err) => console.warn("User profile update may not be implemented on backend", err)),
+      ]);
 
-      // Attempt saving the user profile if full_name or avatar is present
-      const userPromise = api.users.updateProfile({ full_name: userData.full_name }, userAvatar || undefined).catch(err => {
-        console.warn("User profile update may not be implemented on backend", err);
-      });
-
-      const [updatedOrganization] = await Promise.all([orgPromise, userPromise]);
-
-      // After save, use utility to construct logo URL from backend response
       const updatedLogoUrl = getOrganizationLogoUrl(updatedOrganization);
-      if (updatedLogoUrl) {
-        setLogoPreview(updatedLogoUrl);
-      }
+      if (updatedLogoUrl) setLogoPreview(updatedLogoUrl);
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-      setLogo(null); // Clear logo file after successful upload
+      setLogo(null);
     } catch (err: any) {
       setError(err.message || "Failed to save organization profile");
     } finally {

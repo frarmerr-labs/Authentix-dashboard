@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ import {
 } from "./EmailBlockBuilder";
 import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
+import { useEmailEditorState } from "./state/useEmailEditorState";
 
 // ── Cert field dock items ─────────────────────────────────────────────────────
 
@@ -90,49 +91,25 @@ export default function EmailTemplateEditorPage() {
   const templateId = params.id as string;
   const returnToSend = searchParams.get("returnToSend") === "1";
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const {
+    loading, saving, error,
+    name, subject, body, isDefault, isActive, variables, senderName,
+    blocks, selectedId,
+    previewMode, panelWidth, leftPanelVisible, leftPanelTab,
+    dockMinimized, selectedVar, testEmail, testSending, autoSaveStatus,
+    setName, setSubject, setBody, setIsDefault, setIsActive, setVariables, setSenderName,
+    setBlocks, setSelectedId,
+    setSaving, setError, setAutoSaveStatus,
+    setPreviewMode, setPanelWidth, setLeftPanelVisible, setLeftPanelTab,
+    setDockMinimized, setSelectedVar, setTestEmail, setTestSending,
+    onLoadSuccess,
+  } = useEmailEditorState();
 
-  // Template data
-  const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
-  const [isActive, setIsActive] = useState(true);
-  const [variables, setVariables] = useState<string[]>([]);
-
-  // Builder state
-  const [blocks, setBlocks] = useState<EmailBlock[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Refs (DOM/timing — not part of state machine)
   const builderInitRef = useRef(false);
-
-  // UI state
-  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
-  const [panelWidth, setPanelWidth] = useState(359);
   const isDraggingPanel = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
-
-  // Left panel state (cert-builder floating style)
-  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  const [leftPanelTab, setLeftPanelTab] = useState<"blocks" | "settings">("blocks");
-
-  // Floating dock state
-  const [dockMinimized, setDockMinimized] = useState(false);
-
-  // Sender name
-  const [senderName, setSenderName] = useState("Your Organization");
-
-  // Variable replacement: which var chip was last clicked in a block
-  const [selectedVar, setSelectedVar] = useState<string | null>(null);
-
-  // Test send
-  const [testEmail, setTestEmail] = useState("");
-  const [testSending, setTestSending] = useState(false);
-
-  // Auto-save state
-  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
@@ -201,33 +178,36 @@ export default function EmailTemplateEditorPage() {
         router.push(orgPath("/email-templates"));
         return;
       }
-      setName(template.name);
-      setSubject(template.email_subject ?? "");
-      setIsDefault(template.is_default);
-      setIsActive(template.is_active);
-      setVariables(template.variables ?? []);
 
-      const bodyHtml = template.body ?? "";
-      setBody(bodyHtml);
+      let bodyHtml = template.body ?? "";
 
       if (!builderInitRef.current) {
         builderInitRef.current = true;
         // Always initialise with starter blocks — no "existing content" prompt
         const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
         setBlocks(starters);
-        const starterHtml = blocksToHtml(starters);
-        setBody(starterHtml);
-        syncVariables(starterHtml, template.email_subject ?? "");
+        bodyHtml = blocksToHtml(starters);
       }
+
+      const subject = template.email_subject ?? "";
+      const vars = extractVars(bodyHtml, subject);
+
+      onLoadSuccess({
+        name: template.name,
+        subject,
+        body: bodyHtml,
+        isDefault: template.is_default,
+        isActive: template.is_active,
+        variables: vars,
+      });
     } catch (err: any) {
       setError(err.message ?? "Failed to load template");
     } finally {
-      setLoading(false);
       setTimeout(() => { isInitialLoad.current = false; }, 500);
     }
   };
 
-  const syncVariables = useCallback((bodyText: string, subjectText: string) => {
+  const extractVars = useCallback((bodyText: string, subjectText: string): string[] => {
     const matches = new Set<string>();
     const pattern = /\{\{(\s*[\w.]+\s*)\}\}/g;
     let m;
@@ -235,8 +215,12 @@ export default function EmailTemplateEditorPage() {
     while ((m = pattern.exec(combined)) !== null) {
       matches.add(m[1]!.trim());
     }
-    setVariables(Array.from(matches));
+    return Array.from(matches);
   }, []);
+
+  const syncVariables = useCallback((bodyText: string, subjectText: string) => {
+    setVariables(extractVars(bodyText, subjectText));
+  }, [extractVars]);
 
   // ── Block handlers ──────────────────────────────────────────
 

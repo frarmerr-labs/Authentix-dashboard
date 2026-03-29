@@ -110,20 +110,20 @@ Source: `npm outdated --json` (run on 2026-03-26).
 
 ## P0 (immediate, enterprise-blocking)
 
-| Action | Outcome |
-|---|---|
-| Formalize observability stack (structured logs + error tracking + trace IDs) | Production support readiness |
-| Add missing declared lint/runtime dependencies (`pdfjs-dist`, eslint plugin set) | Deterministic CI and reproducible builds |
-| Establish dependency update policy (monthly + emergency patch lane) | Reduce supply-chain and stale-version risk |
+| Action | Status | Outcome |
+|---|---|---|
+| Formalize observability stack (structured logs + error tracking + trace IDs) | ✅ DONE 2026-03-28 — `src/lib/logger.ts` facade; all `console.*` replaced in `client.ts` and proxy route | Production support readiness |
+| Add missing declared lint/runtime dependencies (`pdfjs-dist`, eslint plugin set) | ✅ DONE 2026-03-28 | Deterministic CI and reproducible builds |
+| Establish dependency update policy (monthly + emergency patch lane) | ✅ DONE 2026-03-29 — `.github/dependabot.yml`; monthly npm + GitHub Actions updates; patch/minor batched; majors blocked for manual review | Reduce supply-chain and stale-version risk |
 
 ## P1 (next 1-2 sprints)
 
-| Action | Outcome |
-|---|---|
-| Upgrade safe patch/minor packages (`react`, `react-dom`, `next`, `tailwind`, `recharts`, etc.) | Better security/perf with low break risk |
-| Validate and remove unused dependencies (`date-fns-tz`, `react-resizable`, checkbox pkg if unused) | Leaner bundle and lower maintenance |
-| Tighten CSP in staged rollout | Better web security posture |
-| Reduce `any` in generation and settings hot paths | Stronger type contracts |
+| Action | Status | Outcome |
+|---|---|---|
+| Upgrade safe patch/minor packages (`react`, `react-dom`, `next`, `tailwind`, `recharts`, etc.) | ✅ DONE 2026-03-28 | Better security/perf with low break risk |
+| Validate and remove unused dependencies (`date-fns-tz`, `react-resizable`, checkbox pkg if unused) | ✅ DONE 2026-03-28 | Leaner bundle and lower maintenance |
+| Tighten CSP in staged rollout | ✅ DONE 2026-03-29 — `proxy.ts` nonce-based CSP; `unsafe-eval` removed | Better web security posture |
+| Reduce `any` in generation and settings hot paths | Pending — future sprint | Stronger type contracts |
 
 ## P2 (planned migration stream)
 

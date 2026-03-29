@@ -1,0 +1,32 @@
+version: 2
+
+updates:
+  # npm — monthly cadence for routine updates
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 10
+    groups:
+      # Batch all patch + minor updates into one PR per month
+      non-major:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Major version bumps require manual review — handled in dedicated migration branches
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions — keep CI runners up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5

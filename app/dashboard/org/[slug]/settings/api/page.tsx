@@ -1,89 +1,61 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Key, Copy, RefreshCw, AlertTriangle, CheckCircle2, Eye, EyeOff, Shield } from "lucide-react";
-import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  useOrganizationAPISettings,
+  useRotateAPIKey,
+  useBootstrapIdentity,
+  useUpdateAPIEnabled,
+} from "@/lib/hooks/queries/organizations";
 
 export default function APISettingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [apiEnabled, setApiEnabled] = useState(false);
-  const [apiKeyExists, setApiKeyExists] = useState(false);
-  const [apiKeyCreatedAt, setApiKeyCreatedAt] = useState<string | null>(null);
-  const [apiKeyLastRotatedAt, setApiKeyLastRotatedAt] = useState<string | null>(null);
-  const [applicationId, setApplicationId] = useState("");
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadAPIData();
-  }, []);
+  const { settings, loading } = useOrganizationAPISettings();
+  const rotateAPIKey = useRotateAPIKey();
+  const bootstrapIdentity = useBootstrapIdentity();
+  const updateAPIEnabled = useUpdateAPIEnabled();
 
-  const loadAPIData = async () => {
-    try {
-      const settings = await api.organizations.getAPISettings();
-
-      setApplicationId(settings.application_id || "");
-      setApiEnabled(settings.api_enabled || false);
-      setApiKeyExists(settings.api_key_exists || false);
-      setApiKeyCreatedAt(settings.api_key_created_at);
-      setApiKeyLastRotatedAt(settings.api_key_last_rotated_at);
-    } catch (error) {
-      console.error('Error loading API data:', error);
-      setError("Failed to load API settings");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const apiEnabled = settings?.api_enabled ?? false;
+  const apiKeyExists = settings?.api_key_exists ?? false;
+  const applicationId = settings?.application_id ?? "";
+  const apiKeyCreatedAt = settings?.api_key_created_at ?? null;
+  const apiKeyLastRotatedAt = settings?.api_key_last_rotated_at ?? null;
 
   const handleGenerateKey = async () => {
-    setGenerating(true);
     setError("");
     setNewApiKey(null);
 
     try {
-      // Use backend API for bootstrap or rotation
       const result = apiKeyExists
-        ? await api.organizations.rotateAPIKey()
-        : await api.organizations.bootstrapIdentity();
-
-      // Update application_id if bootstrap generated a new one
-      if (result.application_id) {
-        setApplicationId(result.application_id);
-      }
-
+        ? await rotateAPIKey.mutateAsync()
+        : await bootstrapIdentity.mutateAsync();
       setNewApiKey(result.api_key || null);
-      setApiKeyExists(true);
-      setApiEnabled(true);
-      setApiKeyCreatedAt(new Date().toISOString());
-      setApiKeyLastRotatedAt(new Date().toISOString());
       setShowKey(true);
-
-      // Reload to get fresh data
-      await loadAPIData();
     } catch (err: any) {
       setError(err.message || "Failed to generate API key");
-    } finally {
-      setGenerating(false);
     }
   };
 
   const handleToggleAPI = async () => {
     try {
-      await api.organizations.updateAPIEnabled(!apiEnabled);
-      setApiEnabled(!apiEnabled);
+      await updateAPIEnabled.mutateAsync(!apiEnabled);
     } catch (err: any) {
       setError(err.message || "Failed to update API status");
     }
   };
+
+  const generating = rotateAPIKey.isPending || bootstrapIdentity.isPending;
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);

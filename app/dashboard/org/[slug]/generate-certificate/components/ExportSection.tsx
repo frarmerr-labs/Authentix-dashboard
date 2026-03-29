@@ -1130,46 +1130,64 @@ export function ExportSection({
     const totalRows = importedData.rowCount;
     const allCerts: GeneratedCertificate[] = [];
     const summary: Array<{ label: string; count: number }> = [];
-    let lastZipUrl: string | null = null;
+
+    setProgressLabel(`Generating ${totalRows} certificate${totalRows !== 1 ? 's' : ''}…`);
+
+    // Simulate progress during submit + poll — cap at 90% until job completes
+    const estimatedMs = Math.max(5000, totalRows * configsToRun.length * 200);
+    const tickMs = 200;
+    let elapsed = 0;
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    progressTimerRef.current = setInterval(() => {
+      elapsed += tickMs;
+      const frac = Math.min(elapsed / estimatedMs, 0.9);
+      setProgress(Math.round(frac * 90));
+      setSimulatedCount(Math.max(1, Math.round(frac * totalRows)));
+    }, tickMs);
+
     let firstJobId: string | null = null;
+    let lastZipUrl: string | null = null;
 
-    for (let i = 0; i < configsToRun.length; i++) {
-      const cfg = configsToRun[i]!;
-
-      // Per-template progress label
-      const templateLabel = configsToRun.length > 1
-        ? `Template ${i + 1} of ${configsToRun.length}: ${cfg.label} — ${totalRows} recipient${totalRows !== 1 ? 's' : ''}`
-        : `Generating ${totalRows} certificate${totalRows !== 1 ? 's' : ''}…`;
-      setProgressLabel(templateLabel);
-
-      // Simulate time-based progress while the API call is in-flight
-      const templateBaseProgress = (i / configsToRun.length) * 100;
-      const templateProgressShare = (1 / configsToRun.length) * 100;
-      const estimatedMs = Math.max(3000, totalRows * 150);
-      const tickMs = 200;
-      let elapsed = 0;
-      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-      progressTimerRef.current = setInterval(() => {
-        elapsed += tickMs;
-        const frac = Math.min(elapsed / estimatedMs, 0.98);
-        const within = frac * templateProgressShare * 0.98;
-        setProgress(Math.round(templateBaseProgress + within));
-        setSimulatedCount(Math.max(1, Math.round(frac * totalRows)));
-      }, tickMs);
-
-      try {
-        const result = await api.certificates.generate({
+    try {
+      // Submit — returns 202 immediately with job_id
+      const { job_id } = await api.certificates.batchGenerate({
+        data: importedData.rows,
+        options,
+        configs: configsToRun.map(cfg => ({
           template_id: cfg.template.id!,
-          data: importedData.rows,
           field_mappings: cfg.fieldMappings,
-          options,
-        });
+          label: cfg.label,
+        })),
+      });
 
-        if (result.job_id && !firstJobId) firstJobId = result.job_id;
+      // Poll until completed or failed (max 10 minutes)
+      const POLL_INTERVAL_MS = 2000;
+      const MAX_POLLS = 300; // 10 min
+      let polls = 0;
+      let jobResult: Awaited<ReturnType<typeof api.certificates.pollJobStatus>> | null = null;
 
-        if (result.certificates?.length) {
-          const savedTpl = savedTemplates.find((t: any) => t.id === cfg.template.id);
-          const certs: GeneratedCertificate[] = result.certificates.map((cert: any) => ({
+      while (polls < MAX_POLLS) {
+        if (!isMountedRef.current) break;
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        polls++;
+
+        const status = await api.certificates.pollJobStatus(job_id);
+        if (status.status === 'completed' || status.status === 'failed') {
+          jobResult = status;
+          break;
+        }
+      }
+
+      if (jobResult?.status === 'completed' && jobResult.result?.results) {
+        firstJobId = jobResult.result.first_job_id ?? null;
+        lastZipUrl = jobResult.result.last_download_url ?? null;
+
+        for (const r of jobResult.result.results) {
+          const matchingCfg = configsToRun.find(c => c.label === r.label);
+          const savedTpl = matchingCfg
+            ? savedTemplates.find((t: any) => t.id === matchingCfg.template.id)
+            : null;
+          const certs: GeneratedCertificate[] = r.certificates.map((cert: any) => ({
             id: cert.id,
             certificate_number: cert.certificate_number,
             recipient_name: cert.recipient_name,
@@ -1182,21 +1200,22 @@ export function ExportSection({
             subcategory: savedTpl?.certificate_subcategory || null,
           }));
           allCerts.push(...certs);
-          summary.push({ label: cfg.label, count: certs.length });
+          summary.push({ label: r.label, count: certs.length });
         }
-        if (result.zip_download_url ?? result.download_url) {
-          lastZipUrl = result.zip_download_url ?? result.download_url ?? null;
+      } else {
+        // Timed out or failed
+        for (const cfg of configsToRun) {
+          summary.push({ label: cfg.label, count: 0 });
         }
-      } catch (err: any) {
-        console.error(`Generation failed for config "${cfg.label}":`, err);
+      }
+    } catch (err: any) {
+      console.error('Batch generation failed:', err);
+      for (const cfg of configsToRun) {
         summary.push({ label: cfg.label, count: 0 });
       }
-
-      // Complete this template's progress segment
-      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
-      setSimulatedCount(totalRows);
-      setProgress(Math.round(((i + 1) / configsToRun.length) * 100));
     }
+
+    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
 
     if (!isMountedRef.current) return;
 

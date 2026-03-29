@@ -64,25 +64,52 @@ These are correct frontend responsibilities and should stay:
 
 ## 5) Migration Strategy (Low Risk)
 
-## Phase 1: Add backend contracts
+## Phase 1: Frontend cleanups (done 2026-03-28)
 
-- Introduce new backend endpoints for:
-  - dashboard resolution
-  - access context
-  - platform delivery defaults
-  - generation job orchestration
-  - normalized import data retrieval
+Frontend simplifications shipped — **no backend endpoints needed for these**:
 
-## Phase 2: Dual-path frontend support
+| Item | Status | Notes |
+|---|---|---|
+| `dashboard/page.tsx` bootstrap+retry removal | ✅ Done | Shows error if org missing; no longer attempts bootstrap |
+| `layout.tsx` email-verified fallback (`session.valid → true`) | ✅ Done | Now strict: unknown → redirect to `/verify-email` |
+| `delivery/page.tsx` localStorage removal | ✅ Done | Settings live in React state only; persist to backend once `GET/PUT /delivery/platform-default-settings` ships |
+| `with-previews/route.ts` N+1 category lookup | ✅ Done | Backend must JOIN category/subcategory names into `v_templates_list` |
+| `organization-logo.ts` URL construction | ✅ Done | Only uses `logo_url`; backend must return canonical `logo_url` on all org endpoints |
+| `generate-certificate/page.tsx` XLSX re-parse | ✅ Done | Uses `GET /import-jobs/:id/data` (already exists) — no client-side XLSX parsing |
 
-- Feature-flag frontend to prefer new contracts.
-- Keep existing frontend fallback path temporarily.
+## Phase 2: Backend contracts shipped (done 2026-03-29)
 
-## Phase 3: Remove old frontend logic
+All remaining backend contracts are now implemented:
 
-- Delete bootstrap/retry inferencing and localStorage domain config logic.
-- Remove storage URL reconstruction utilities if backend contracts are complete.
-- Simplify generation flow to job submit + poll/subscription.
+| Contract | Status | Notes |
+|---|---|---|
+| `POST /auth/resolve-dashboard` | ✅ Done | Backend: `AuthService.resolveDashboard()` + route. Frontend: BFF `/api/auth/resolve-dashboard/route.ts`, `authApi.resolveDashboard()`, `dashboard/page.tsx` updated. |
+| `GET /auth/access-context` | ✅ Done | Backend: `AuthService.getAccessContext()` + route (jwtOnly). Frontend: BFF `/api/auth/access-context/route.ts` created. |
+| `GET/PUT /delivery/platform-default-settings` | ✅ Done | Backend: `deliveryService.getPlatformDefaultSettings/updatePlatformDefaultSettings()` + routes. Frontend: `deliveryApi`, `useDeliveryPlatformSettings`, `useUpdateDeliveryPlatformSettings` hooks. |
+| `POST /delivery/templates/:id/duplicate` | ✅ Done (bonus) | Backend: new route. Frontend: `deliveryApi.duplicateTemplate()` now calls backend directly. |
+| `POST /certificates/generation-jobs` (batch) | ✅ Done | Backend: `CertificateService.batchGenerateCertificates()` + route. Frontend: `certificatesApi.batchGenerate()`. |
+| `GET /certificates/generation-jobs` | ✅ Done | Backend: `CertificateService.listGenerationJobs()` + route. |
+| `GET /certificates/generation-jobs/:id` | ✅ Done | Backend: `CertificateService.getGenerationJobById()` + route. |
+| Billing `payable`/`payable_reason`/`payment_cta_url` | ✅ Done | Backend: `withPayableFields()` helper applied in `BillingService.getInvoice/listInvoices()`. |
+| Delivery template `state` field | ✅ Done | Backend: `withTemplateState()` helper (`is_active → published/archived`) applied in all `DeliveryService` methods. |
+
+## Phase 2 (continued): Additional backend contracts (done 2026-03-29)
+
+| Contract | Status | Notes |
+|---|---|---|
+| `GET /jobs/:id` (background job poll) | ✅ Done | New `src/api/v1/jobs.ts` route — returns `background_jobs` status + result. Registered in `index.ts`. `/jobs/` added to proxy allowlist. |
+| `batch_certificate_generation` job type | ✅ Done | `batchCertificateGenerationHandler` added; migration `006_add_batch_certificate_job_type.sql` created; worker registers handler. |
+
+## Phase 3: Frontend logic replaced (done 2026-03-29)
+
+| Item | Status | Notes |
+|---|---|---|
+| `layout.tsx` dual `/auth/me` + `/users/me` with retry | ✅ Done | Replaced with single `GET /auth/access-context` call. Exponential backoff retry removed. |
+| `ExportSection` per-template generation loop | ✅ Done | Replaced with single `api.certificates.batchGenerate()` call to `POST /certificates/generation-jobs`. |
+| `ExportSection` 120s timeout risk | ✅ Done | `batchGenerate` returns `{ job_id }` immediately (202); ExportSection polls `pollJobStatus()` every 2s until completed. No Vercel timeout. |
+| FS4 — XLSX re-parsing on restore | ✅ Already done | `api.imports.getData()` was already in place; no client-side re-parse on load. |
+| FS5 — Async generation job model | ✅ Done | `JobQueue` + `background_jobs` table + `batchCertificateGenerationHandler` + worker cron endpoint all shipped. |
+| FS6 — Delivery queue worker | ✅ Done | `deliverySendHandler` + `delivery_send` job type + worker + cron endpoint — delivery `POST /send` uses async mode. |
 
 ---
 

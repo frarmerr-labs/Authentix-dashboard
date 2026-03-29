@@ -5,16 +5,9 @@ import {
   clearServerAuthCookies,
   sanitizeErrorMessage,
 } from "@/lib/api/server";
+import { RefreshResponseSchema } from "@/lib/api/schemas/auth";
 
 import { BACKEND_PRIMARY_URL, BACKEND_FALLBACK_URL, isConnectionRefused } from "@/lib/config/env";
-
-interface RefreshResponse {
-  session: {
-    access_token: string;
-    refresh_token: string;
-    expires_at: number;
-  };
-}
 
 export async function POST() {
   try {
@@ -55,8 +48,8 @@ export async function POST() {
       );
     }
 
-    const result = data.data as RefreshResponse;
-    await setServerAuthCookies(result.session);
+    const validated = RefreshResponseSchema.parse(data.data);
+    await setServerAuthCookies(validated.session);
 
     return NextResponse.json({ success: true });
   } catch (error) {

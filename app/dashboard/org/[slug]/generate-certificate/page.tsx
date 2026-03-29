@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { useGenerateCertificateState } from './state/useGenerateCertificateState';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import type { Asset } from './components/AssetLibrary';
 import { api } from '@/lib/api/client';
 import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 import type { CertificateConfig } from './components/ExportSection';
-import { getPdfLib, getXlsx } from '@/lib/utils/dynamic-imports';
+import { getPdfLib } from '@/lib/utils/dynamic-imports';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,86 +47,41 @@ export default function GenerateCertificatePage() {
   // Tracks whether we've pushed a history entry for the design step (for browser-back interception)
   const designHistoryPushedRef = useRef(false);
 
-  // Template state
-  const [template, setTemplate] = useState<CertificateTemplate | null>(null);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
-  const [templateVersionId, setTemplateVersionId] = useState<string | null>(null);
+  const {
+    template, pdfFile, savedTemplates, templateVersionId,
+    fields, selectedFieldId, hiddenFields,
+    importedData, savedImports, fieldMappings, additionalCertConfigs,
+    templateMode, templateConfigs, activeTemplateIndex,
+    recentGenerated, inProgressTemplates, recentLoading,
+    canvasScale, currentStep, isTemplateLoading, activeTab, useInfiniteCanvas, libraryAssets,
+    snapToGrid, fitTrigger, currentPage, totalPages,
+    leftPanelVisible, leftPanelPos, rightPanelVisible,
+    previewOpen, templateMeta,
+    stepperExpanded, panelPos, panelReady,
+    canUndo, canRedo, saveStatus, showNavGuard,
+    setCurrentStep, setTemplate, setSavedTemplates, setIsTemplateLoading,
+    setTemplateMeta, setPdfFile, setTemplateVersionId,
+    setTemplateMode, setTemplateConfigs, setActiveTemplateIndex,
+    setFields, setSelectedFieldId, setHiddenFields,
+    setImportedData, setSavedImports, setFieldMappings, setAdditionalCertConfigs,
+    setRecentGenerated, setInProgressTemplates, setRecentLoading,
+    setCanUndo, setCanRedo, setSaveStatus,
+    setCanvasScale, setActiveTab, setUseInfiniteCanvas, setCurrentPage, setTotalPages,
+    setSnapToGrid, setFitTrigger,
+    setLeftPanelVisible, setLeftPanelPos, setRightPanelVisible, setStepperExpanded,
+    setPanelPos, setPanelReady, setPreviewOpen, setLibraryAssets, setShowNavGuard,
+  } = useGenerateCertificateState(templateIdFromUrl);
 
-  // Fields state
-  const [fields, setFields] = useState<CertificateField[]>([]);
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-
-  // Data import state
-  const [importedData, setImportedData] = useState<ImportedData | null>(null);
-  const [savedImports, setSavedImports] = useState<any[]>([]);
-  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
-
-  // Multi-certificate: additional templates to generate alongside the primary one
-  const [additionalCertConfigs, setAdditionalCertConfigs] = useState<CertificateConfig[]>([]);
-
-  // Multi-template mode
-  const [templateMode, setTemplateMode] = useState<'single' | 'multi'>('single');
-  // Backing store for all selected templates in multi mode (includes per-template undo/redo history)
-  const [templateConfigs, setTemplateConfigs] = useState<Array<{
-    template: CertificateTemplate;
-    fields: CertificateField[];
-    versionId: string | null;
-    history?: CertificateField[][];
-    future?: CertificateField[][];
-  }>>([]);
-  const [activeTemplateIndex, setActiveTemplateIndex] = useState(0);
   // Cancellation ref for parallel multi-select loads
   const multiSelectRequestRef = useRef(0);
 
-  // Recent templates state
-  const [recentGenerated, setRecentGenerated] = useState<RecentGeneratedTemplate[]>([]);
-  const [inProgressTemplates, setInProgressTemplates] = useState<InProgressTemplate[]>([]);
-  const [recentLoading, setRecentLoading] = useState(true);
-
-  // UI state
-  const [canvasScale, setCanvasScale] = useState(0.5);
-  // If a template ID is in the URL, skip the template chooser and go straight to the design step
-  const [currentStep, setCurrentStep] = useState<'template' | 'design' | 'data' | 'export'>(templateIdFromUrl ? 'design' : 'template');
-  const [isTemplateLoading, setIsTemplateLoading] = useState(!!templateIdFromUrl);
-  const [activeTab, setActiveTab] = useState('fields');
-  const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
-  const [useInfiniteCanvas, setUseInfiniteCanvas] = useState(true); // Toggle between canvas modes
-  // Asset library state (lifted from AssetLibrary to survive tab switches)
-  const [libraryAssets, setLibraryAssets] = useState<Asset[]>([]);
-
-  // Canvas controls lifted for RightPanel
-  const [snapToGrid, setSnapToGrid] = useState(false);
-  const [fitTrigger, setFitTrigger] = useState(0);
-
-  // Left floating panel
-  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  const [leftPanelPos, setLeftPanelPos] = useState({ x: 16, y: 24 });
-
-  // Right properties panel visibility (separate from field selection so it can be minimised)
-  const [rightPanelVisible, setRightPanelVisible] = useState(true);
-
-  // Preview panel
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  // Template metadata (category/subcategory for display in minimised panel)
-  const [templateMeta, setTemplateMeta] = useState({ category: '', subcategory: '' });
   const leftPanelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
-
-  // Stepper bottom bar
-  const [stepperExpanded, setStepperExpanded] = useState(true);
-
-  // Draggable properties panel
-  const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
-  const [panelReady, setPanelReady] = useState(false);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const panelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
 
   // ── Undo / Redo ───────────────────────────────────────────────────────────
   const historyRef = useRef<CertificateField[][]>([]);
   const futureRef  = useRef<CertificateField[][]>([]);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
 
   const pushToHistory = useCallback((snapshot: CertificateField[]) => {
     historyRef.current = [...historyRef.current.slice(-49), snapshot];
@@ -154,21 +110,11 @@ export default function GenerateCertificatePage() {
     setCanRedo(futureRef.current.length > 0);
   }, [fields]);
 
-  // ── Autosave status ────────────────────────────────────────────────────────
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-
-  // ── Navigation guard ───────────────────────────────────────────────────────
-  const [showNavGuard, setShowNavGuard] = useState(false);
-
   // Template resize tracking — used to scale fields proportionally
   const templateResizeOrigin = useRef<{ w: number; h: number; fields: CertificateField[] }>({ w: 0, h: 0, fields: [] });
 
   // Race-condition guard: cancel stale handleTemplateSelect calls
   const selectRequestRef = useRef(0);
-
-  // Multi-page PDF support
-  const [currentPage, setCurrentPage] = useState(0); // 0-indexed page number
-  const [totalPages, setTotalPages] = useState(1);
 
   // ── Session persistence ────────────────────────────────────────────────────
   // Track whether initial mount has passed so we don't wipe the session on first render.
@@ -1263,56 +1209,30 @@ export default function GenerateCertificatePage() {
 
   const handleLoadImport = async (importId: string) => {
     try {
-      // Get import job from backend
-      const importJob = await api.imports.get(importId);
+      // Fetch metadata and normalized rows from the backend — no client-side file parsing.
+      const [importJob, dataPage] = await Promise.all([
+        api.imports.get(importId),
+        api.imports.getData(importId, { limit: 10000 }),
+      ]);
 
-      // Get download URL from backend
-      const downloadUrl = await api.imports.getDownloadUrl(importId);
+      const rows = dataPage.items as Record<string, any>[];
+      if (rows.length === 0) throw new Error('The import file is empty or has no data.');
 
-      // Fetch the file
-      const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error('Failed to download file');
-
-      // Parse the Excel/CSV file (dynamic import for bundle optimization)
-      const arrayBuffer = await response.arrayBuffer();
-      const XLSX = await getXlsx();
-      const workbook = XLSX.read(arrayBuffer);
-      
-      const firstSheetName = workbook.SheetNames[0];
-      if (!firstSheetName) {
-        throw new Error('The workbook contains no sheets.');
-      }
-      
-      const firstSheet = workbook.Sheets[firstSheetName];
-      if (!firstSheet) {
-        throw new Error('Failed to read the first sheet.');
-      }
-      
-      const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-
-      if (jsonData.length === 0) {
-        throw new Error('The import file is empty or has no data.');
-      }
-
-      const headers = Object.keys(jsonData[0] as Record<string, any>);
-
-      // Parse the imported data
-      const importedData: ImportedData = {
+      const headers = Object.keys(rows[0]!);
+      setImportedData({
         fileName: importJob.file_name,
         headers,
-        rows: jsonData as Record<string, any>[],
-        rowCount: importJob.total_rows || jsonData.length,
-      };
+        rows,
+        rowCount: importJob.total_rows ?? rows.length,
+      });
 
-      setImportedData(importedData);
-
-      // Set field mappings if they exist
       if (importJob.mapping) {
-        const mappings = Object.entries(importJob.mapping).map(([fieldId, columnName]) => ({
-          fieldId,
-          columnName: columnName as string,
-        }));
-        setFieldMappings(mappings);
+        setFieldMappings(
+          Object.entries(importJob.mapping).map(([fieldId, columnName]) => ({
+            fieldId,
+            columnName: columnName as string,
+          }))
+        );
       }
 
       setCurrentStep('export');

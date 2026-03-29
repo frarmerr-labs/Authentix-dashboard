@@ -54,7 +54,7 @@ interface DashboardShellProps {
   children: React.ReactNode;
   slug: string;
   initialUser: UserData | null;
-  initialCompany: OrganizationData | null;
+  initialOrganization: OrganizationData | null;
 }
 
 interface NavItem {
@@ -249,7 +249,7 @@ export function DashboardShell({
   children,
   slug,
   initialUser,
-  initialCompany,
+  initialOrganization,
 }: DashboardShellProps) {
   // State
   const [mounted, setMounted] = useState(false);
@@ -262,8 +262,8 @@ export function DashboardShell({
   // Derived values
   const profileName =
     initialUser?.full_name ?? initialUser?.email?.split("@")[0] ?? "User";
-  const organizationName = initialCompany?.name ?? "Organization";
-  const organizationLogo = initialCompany?.logo ?? null;
+  const organizationName = initialOrganization?.name ?? "Organization";
+  const organizationLogo = initialOrganization?.logo ?? null;
 
   // Mounted effect for hydration safety
   useEffect(() => {

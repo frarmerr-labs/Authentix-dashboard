@@ -1,49 +1,25 @@
-/**
- * USE INVOICE LIST HOOK
- *
- * Fetches invoice history for organization.
- * Provides real-time updates via Supabase subscriptions.
- */
-
 'use client';
 
-import { useState, useEffect } from 'react';
+/**
+ * useInvoiceList — TanStack Query backed
+ */
+
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
-import { Invoice } from '../types';
+import type { Invoice } from '../types';
+import { billingKeys } from '@/lib/hooks/queries/billing';
 
-export function useInvoiceList(organizationId: string) {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch invoices
-  const fetchInvoices = async () => {
-    try {
-      const response = await api.billing.listInvoices({
-        sort_by: 'period_end',
-        sort_order: 'desc',
-      });
-
-      setInvoices(response.items as Invoice[]);
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Failed to fetch invoices:', err);
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  // Initial fetch
-  useEffect(() => {
-    if (organizationId) {
-      fetchInvoices();
-    }
-  }, [organizationId]);
+export function useInvoiceList(_organizationId: string) {
+  const query = useQuery({
+    queryKey: billingKeys.invoices({ sort_by: 'period_end', sort_order: 'desc' }),
+    queryFn: () => api.billing.listInvoices({ sort_by: 'period_end', sort_order: 'desc' }),
+    staleTime: 60 * 1000,
+  });
 
   return {
-    invoices,
-    loading,
-    error,
-    refresh: fetchInvoices,
+    invoices: ((query.data as { items?: unknown[] } | undefined)?.items ?? []) as Invoice[],
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refresh: () => query.refetch(),
   };
 }
