@@ -2,11 +2,9 @@
 
 /**
  * BILLING QUERY HOOKS
- *
- * Replaces use-billing-overview.ts and use-invoice-list.ts.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
 
 export const billingKeys = {
@@ -14,6 +12,7 @@ export const billingKeys = {
   overview: () => [...billingKeys.all, 'overview'] as const,
   invoices: (params?: Record<string, unknown>) => [...billingKeys.all, 'invoices', params ?? {}] as const,
   invoice: (id: string) => [...billingKeys.all, 'invoice', id] as const,
+  paymentMethods: () => [...billingKeys.all, 'payment-methods'] as const,
 };
 
 export function useBillingOverview() {
@@ -24,9 +23,11 @@ export function useBillingOverview() {
   });
 
   return {
-    overview: query.data,
+    overview: query.data ?? null,
+    priceBook: query.data?.price_book ?? null,
     usage: query.data?.current_usage ?? null,
-    billingProfile: query.data?.billing_profile ?? null,
+    recentInvoices: query.data?.recent_invoices ?? [],
+    totalOutstandingPaise: query.data?.total_outstanding_paise ?? 0,
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error.message : null,
     refresh: () => query.refetch(),
@@ -47,18 +48,88 @@ export function useInvoiceList(params?: {
   });
 
   return {
-    invoices: (query.data as { items?: unknown[] } | undefined)?.items ?? [],
-    pagination: (query.data as { pagination?: unknown } | undefined)?.pagination,
+    invoices: query.data?.items ?? [],
+    pagination: query.data?.pagination,
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error.message : null,
   };
 }
 
 export function useInvoice(id: string | null | undefined) {
-  return useQuery({
+  const query = useQuery({
     queryKey: billingKeys.invoice(id ?? ''),
     queryFn: () => api.billing.getInvoice(id!),
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
+  });
+
+  return {
+    invoice: query.data?.invoice ?? null,
+    lineItems: query.data?.line_items ?? [],
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+  };
+}
+
+export function useCreatePaymentOrder() {
+  return useMutation({
+    mutationFn: (invoiceId: string) => api.billing.createPaymentOrder(invoiceId),
+  });
+}
+
+export function useVerifyPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.billing.verifyPayment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
+}
+
+export function usePaymentMethods() {
+  const query = useQuery({
+    queryKey: billingKeys.paymentMethods(),
+    queryFn: () => api.billing.listPaymentMethods(),
+    staleTime: 60 * 1000,
+  });
+
+  return {
+    methods: query.data?.methods ?? [],
+    autopayEnabled: query.data?.autopay_enabled ?? false,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refresh: () => query.refetch(),
+  };
+}
+
+export function useDeletePaymentMethod() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.billing.deletePaymentMethod(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.paymentMethods() });
+    },
+  });
+}
+
+export function useSetAutopay() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.billing.setAutopay(enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.paymentMethods() });
+    },
+  });
+}
+
+export function useGenerateInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params?: { period_start?: string; period_end?: string }) =>
+      api.billing.generateInvoice(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
   });
 }

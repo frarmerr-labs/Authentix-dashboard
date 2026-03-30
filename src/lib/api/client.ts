@@ -32,6 +32,18 @@ export type { TemplateField, RecentGeneratedTemplate, InProgressTemplate } from 
 export type { Certificate } from "./certificates";
 export type { ImportJob } from "./imports";
 export type {
+  Invoice,
+  InvoiceLineItem,
+  InvoiceStatus,
+  BillingOverview,
+  BillingPriceBook,
+  BillingUsage,
+  RazorpayOrderResult,
+  PaymentMethod,
+  PaymentMethodsResult,
+  SetupPaymentMethodResult,
+} from "./billing";
+export type {
   DeliveryIntegration,
   DeliveryProviderType,
   DeliveryTemplate,

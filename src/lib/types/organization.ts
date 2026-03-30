@@ -30,14 +30,14 @@ export interface Organization extends OrganizationLogoFields {
   postal_code: string | null;
   gst_number: string | null;
   cin_number: string | null;
-  // Billing-specific address fields (may differ from org address)
-  billing_email?: string | null;
-  billing_currency?: string | null;
-  billing_address?: string | null;
-  billing_city?: string | null;
-  billing_state?: string | null;
-  billing_country?: string | null;
-  billing_postal_code?: string | null;
+  // Billing-specific fields (may differ from org address)
+  billing_email: string | null;
+  billing_currency: string | null;
+  billing_address: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_country: string | null;
+  billing_postal_code: string | null;
   created_at: string;
   updated_at: string;
 }

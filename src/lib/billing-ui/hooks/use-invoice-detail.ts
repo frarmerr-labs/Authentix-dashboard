@@ -1,26 +1,19 @@
 'use client';
 
 /**
- * useInvoiceDetail — TanStack Query backed
+ * useInvoiceDetail — delegates to the canonical useInvoice hook.
+ * @deprecated Use useInvoice from @/lib/hooks/queries/billing directly.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api/client';
-import type { InvoiceWithLineItems } from '../types';
-import { billingKeys } from '@/lib/hooks/queries/billing';
+import { useInvoice } from '@/lib/hooks/queries/billing';
 
 export function useInvoiceDetail(invoiceId: string) {
-  const query = useQuery({
-    queryKey: billingKeys.invoice(invoiceId),
-    queryFn: () => api.billing.getInvoice(invoiceId) as Promise<InvoiceWithLineItems>,
-    enabled: !!invoiceId,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { invoice, lineItems, loading, error } = useInvoice(invoiceId);
 
   return {
-    invoice: query.data ?? null,
-    loading: query.isLoading,
-    error: query.error instanceof Error ? query.error.message : null,
-    refresh: () => query.refetch(),
+    invoice: invoice ? { ...invoice, line_items: lineItems } : null,
+    loading,
+    error,
+    refresh: () => {},
   };
 }
