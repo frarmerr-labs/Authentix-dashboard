@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrganization } from "@/lib/hooks/queries/organizations";
+import { useOrganization, useUpdateOrganization } from "@/lib/hooks/queries/organizations";
 import {
   useBillingOverview,
   useInvoiceList,
@@ -19,6 +19,9 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Receipt, TrendingUp, AlertCircle, CheckCircle2, Clock, Ban,
@@ -29,6 +32,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { Invoice, PaymentMethod } from "@/lib/api/billing";
+import { api } from "@/lib/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -57,6 +61,16 @@ function cardLabel(m: PaymentMethod): string {
   }
   if (m.method_type === "upi") return m.upi_vpa ?? "UPI";
   return "Bank account";
+}
+
+function BillingDetailRow({ label, value, mono }: { label: string; value: string | null | undefined; mono?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className={`text-sm text-foreground ${mono ? "font-mono bg-muted px-2 py-0.5 rounded border border-border/50 w-fit" : "font-medium"}`}>{value}</span>
+    </div>
+  );
 }
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -140,6 +154,71 @@ export default function BillingPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
+  // UPI dialog state
+  const [upiDialogOpen, setUpiDialogOpen] = useState(false);
+  const [upiVpa, setUpiVpa] = useState("");
+  const [savingUpi, setSavingUpi] = useState(false);
+  const [upiError, setUpiError] = useState<string | null>(null);
+
+  const updateOrg = useUpdateOrganization();
+
+  // Billing details edit dialog state
+  const [billingEditOpen, setBillingEditOpen] = useState(false);
+  const [billingForm, setBillingForm] = useState({
+    billing_email: "",
+    billing_address: "",
+    billing_city: "",
+    billing_state: "",
+    billing_country: "",
+    billing_postal_code: "",
+    billing_currency: "",
+    gst_number: "",
+    cin_number: "",
+  });
+  const [billingEditError, setBillingEditError] = useState<string | null>(null);
+  const [billingEditSuccess, setBillingEditSuccess] = useState(false);
+
+  const openBillingEdit = () => {
+    if (!organization) return;
+    setBillingForm({
+      billing_email: organization.billing_email ?? "",
+      billing_address: organization.billing_address ?? "",
+      billing_city: organization.billing_city ?? "",
+      billing_state: organization.billing_state ?? "",
+      billing_country: organization.billing_country ?? "",
+      billing_postal_code: organization.billing_postal_code ?? "",
+      billing_currency: organization.billing_currency ?? "INR",
+      gst_number: organization.gst_number ?? "",
+      cin_number: organization.cin_number ?? "",
+    });
+    setBillingEditError(null);
+    setBillingEditSuccess(false);
+    setBillingEditOpen(true);
+  };
+
+  const saveBillingDetails = async () => {
+    setBillingEditError(null);
+    try {
+      await updateOrg.mutateAsync({
+        data: {
+          billing_email: billingForm.billing_email || null,
+          billing_address: billingForm.billing_address || null,
+          billing_city: billingForm.billing_city || null,
+          billing_state: billingForm.billing_state || null,
+          billing_country: billingForm.billing_country || null,
+          billing_postal_code: billingForm.billing_postal_code || null,
+          billing_currency: billingForm.billing_currency || null,
+          gst_number: billingForm.gst_number || null,
+          cin_number: billingForm.cin_number || null,
+        },
+      });
+      setBillingEditSuccess(true);
+      setTimeout(() => { setBillingEditOpen(false); setBillingEditSuccess(false); }, 1200);
+    } catch (err) {
+      setBillingEditError(err instanceof Error ? err.message : "Failed to save billing details");
+    }
+  };
+
   const { pay, loading: paying } = useRazorpayCheckout({
     orgName: organization?.name,
     billingEmail: organization?.billing_email ?? organization?.email ?? undefined,
@@ -197,7 +276,7 @@ export default function BillingPage() {
   const handleGenerateInvoice = async () => {
     setGeneratingInvoice(true);
     try {
-      const result = await generateInvoice.mutateAsync();
+      const result = await generateInvoice.mutateAsync({});
       setPaySuccess(`Invoice ${result.invoice.invoice_number} generated successfully.`);
       setTimeout(() => setPaySuccess(null), 5000);
     } catch (err) {
@@ -205,6 +284,29 @@ export default function BillingPage() {
       setTimeout(() => setPayError(null), 5000);
     } finally {
       setGeneratingInvoice(false);
+    }
+  };
+
+  const handleSaveUpi = async () => {
+    const vpa = upiVpa.trim();
+    if (!vpa) return;
+    if (!/^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/.test(vpa)) {
+      setUpiError("Invalid UPI ID — expected format: handle@bank (e.g. user@paytm)");
+      return;
+    }
+    setSavingUpi(true);
+    setUpiError(null);
+    try {
+      await api.billing.saveUpiMethod(vpa.toLowerCase());
+      setUpiDialogOpen(false);
+      setUpiVpa("");
+      setMethodSuccess("UPI ID saved successfully.");
+      setTimeout(() => setMethodSuccess(null), 4000);
+      refreshMethods();
+    } catch (err) {
+      setUpiError(err instanceof Error ? err.message : "Failed to save UPI ID");
+    } finally {
+      setSavingUpi(false);
     }
   };
 
@@ -518,20 +620,31 @@ export default function BillingPage() {
                         <TableCell className="text-right pr-6 py-4">
                           <div className="flex items-center justify-end gap-2.5">
                             {invoice.payable ? (
-                              <Button
-                                size="sm"
-                                variant="default"
-                                className="h-8 rounded-full px-4 text-xs font-semibold shadow-sm"
-                                disabled={paying && payingId === invoice.id}
-                                onClick={() => handlePay(invoice)}
-                              >
-                                {paying && payingId === invoice.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                                ) : (
-                                  <CreditCard className="h-3.5 w-3.5 mr-1.5" />
-                                )}
-                                Pay Now
-                              </Button>
+                              invoice.payment_cta_url ? (
+                                // Razorpay hosted invoice — open in new tab
+                                <a href={invoice.payment_cta_url} target="_blank" rel="noopener noreferrer">
+                                  <Button size="sm" variant="default" className="h-8 rounded-full px-4 text-xs font-semibold shadow-sm gap-1.5">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    Pay Now
+                                  </Button>
+                                </a>
+                              ) : (
+                                // Fallback: Checkout JS modal
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="h-8 rounded-full px-4 text-xs font-semibold shadow-sm"
+                                  disabled={paying && payingId === invoice.id}
+                                  onClick={() => handlePay(invoice)}
+                                >
+                                  {paying && payingId === invoice.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                                  ) : (
+                                    <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                                  )}
+                                  Pay Now
+                                </Button>
+                              )
                             ) : (
                               <Link
                                 href={`/dashboard/org/${slug}/billing/invoices/${invoice.id}`}
@@ -673,10 +786,9 @@ export default function BillingPage() {
                 <Button
                   variant="outline"
                   className="rounded-full shadow-sm bg-background hover:bg-muted font-medium text-xs h-10 border-border/60"
-                  disabled={savingMethod}
-                  onClick={() => saveMethod("upi")}
+                  onClick={() => { setUpiVpa(""); setUpiError(null); setUpiDialogOpen(true); }}
                 >
-                  {savingMethod ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                  <Plus className="h-4 w-4 mr-2" />
                   Add UPI
                 </Button>
               </div>
@@ -690,49 +802,52 @@ export default function BillingPage() {
             </div>
           </Card>
 
-          {organization && (organization.billing_email || organization.gst_number) && (
-            <Card className="border-border/40 shadow-sm bg-card/60 backdrop-blur-xl rounded-[1.5rem] overflow-hidden">
-              <div className="p-5 border-b border-border/30 flex items-center justify-between">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Receipt className="h-4 w-4 text-muted-foreground" />
-                  Billing Details
-                </h3>
-                <Link
-                  href={`/dashboard/org/${slug}/organization`}
-                  className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group"
-                >
-                  Edit
-                  <ExternalLink className="h-3 w-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                </Link>
-              </div>
-              <CardContent className="p-5">
-                <div className="space-y-4 text-sm">
-                  {organization.billing_email && (
-                    <div className="flex flex-col">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Billing Email</span>
-                      <span className="font-semibold">{organization.billing_email}</span>
-                    </div>
-                  )}
-                  {organization.gst_number && (
-                    <div className="flex flex-col">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">GSTIN</span>
-                      <span className="font-mono bg-muted px-2 py-0.5 rounded text-sm w-fit group cursor-default border border-border/50">
-                        {organization.gst_number}
+          <Card className="border-border/40 shadow-sm bg-card/60 backdrop-blur-xl rounded-[1.5rem] overflow-hidden">
+            <div className="p-5 border-b border-border/30 flex items-center justify-between">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+                Billing Details
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2.5 rounded-lg text-xs font-semibold text-primary hover:text-primary/80 hover:bg-primary/10"
+                onClick={openBillingEdit}
+              >
+                <FileText className="h-3.5 w-3.5 mr-1" />
+                Edit
+              </Button>
+            </div>
+            <CardContent className="p-5">
+              {organization ? (
+                <div className="space-y-3.5 text-sm">
+                  <BillingDetailRow label="Company" value={organization.name} />
+                  <BillingDetailRow label="Billing Email" value={organization.billing_email} />
+                  <BillingDetailRow label="Currency" value={organization.billing_currency ?? "INR"} mono />
+                  {(organization.billing_address || organization.billing_city) && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Billing Address</span>
+                      <span className="text-sm text-foreground leading-snug">
+                        {[organization.billing_address, organization.billing_city, organization.billing_state, organization.billing_country, organization.billing_postal_code]
+                          .filter(Boolean).join(", ")}
                       </span>
                     </div>
                   )}
-                  {organization.cin_number && (
-                    <div className="flex flex-col">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">CIN</span>
-                      <span className="font-mono bg-muted px-2 py-0.5 rounded text-sm w-fit group cursor-default border border-border/50">
-                        {organization.cin_number}
-                      </span>
-                    </div>
+                  <BillingDetailRow label="GSTIN" value={organization.gst_number} mono />
+                  <BillingDetailRow label="CIN" value={organization.cin_number} mono />
+                  {!organization.billing_email && !organization.gst_number && !organization.billing_address && (
+                    <p className="text-xs text-muted-foreground/60 text-center py-2">
+                      No billing details added yet. Click Edit to add your billing address and tax info.
+                    </p>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="space-y-3">
+                  {[0,1,2].map(i => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="text-center text-xs text-muted-foreground/40 mt-6 flex items-center justify-center gap-1.5 pb-2">
              Payments powered by{" "}
@@ -742,6 +857,168 @@ export default function BillingPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Billing details edit dialog ── */}
+      <Dialog open={billingEditOpen} onOpenChange={setBillingEditOpen}>
+        <DialogContent className="sm:max-w-lg rounded-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-primary" />
+              Edit Billing Details
+            </DialogTitle>
+            <DialogDescription>
+              Update your billing address and tax information used on invoices.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="b-email" className="text-xs font-semibold">Billing Email</Label>
+                <Input id="b-email" type="email" placeholder="billing@company.com"
+                  value={billingForm.billing_email}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_email: e.target.value }))} />
+              </div>
+
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="b-currency" className="text-xs font-semibold">Billing Currency</Label>
+                <Select value={billingForm.billing_currency} onValueChange={v => setBillingForm(f => ({ ...f, billing_currency: v }))}>
+                  <SelectTrigger id="b-currency" className="w-full">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">INR — Indian Rupee</SelectItem>
+                    <SelectItem value="USD">USD — US Dollar</SelectItem>
+                    <SelectItem value="EUR">EUR — Euro</SelectItem>
+                    <SelectItem value="GBP">GBP — British Pound</SelectItem>
+                    <SelectItem value="AED">AED — UAE Dirham</SelectItem>
+                    <SelectItem value="SGD">SGD — Singapore Dollar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="b-addr" className="text-xs font-semibold">Address Line</Label>
+                <Input id="b-addr" placeholder="Street address, Building, Floor"
+                  value={billingForm.billing_address}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_address: e.target.value }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-city" className="text-xs font-semibold">City</Label>
+                <Input id="b-city" placeholder="Bengaluru"
+                  value={billingForm.billing_city}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_city: e.target.value }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-state" className="text-xs font-semibold">State / Province</Label>
+                <Input id="b-state" placeholder="Karnataka"
+                  value={billingForm.billing_state}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_state: e.target.value }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-country" className="text-xs font-semibold">Country</Label>
+                <Input id="b-country" placeholder="India"
+                  value={billingForm.billing_country}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_country: e.target.value }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-pin" className="text-xs font-semibold">Postal Code</Label>
+                <Input id="b-pin" placeholder="560001"
+                  value={billingForm.billing_postal_code}
+                  onChange={e => setBillingForm(f => ({ ...f, billing_postal_code: e.target.value }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-gst" className="text-xs font-semibold">GSTIN</Label>
+                <Input id="b-gst" placeholder="22AAAAA0000A1Z5" className="font-mono uppercase"
+                  value={billingForm.gst_number}
+                  onChange={e => setBillingForm(f => ({ ...f, gst_number: e.target.value.toUpperCase() }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="b-cin" className="text-xs font-semibold">CIN</Label>
+                <Input id="b-cin" placeholder="U72900KA2020PTC..." className="font-mono uppercase"
+                  value={billingForm.cin_number}
+                  onChange={e => setBillingForm(f => ({ ...f, cin_number: e.target.value.toUpperCase() }))} />
+              </div>
+            </div>
+
+            {billingEditError && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />{billingEditError}
+              </p>
+            )}
+            {billingEditSuccess && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />Billing details saved!
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="rounded-full" onClick={() => setBillingEditOpen(false)} disabled={updateOrg.isPending}>
+              Cancel
+            </Button>
+            <Button className="rounded-full" onClick={saveBillingDetails} disabled={updateOrg.isPending}>
+              {updateOrg.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              Save Details
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── UPI ID dialog ── */}
+      <Dialog open={upiDialogOpen} onOpenChange={(open) => { setUpiDialogOpen(open); if (!open) { setUpiVpa(""); setUpiError(null); } }}>
+        <DialogContent className="sm:max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-primary" />
+              Add UPI ID
+            </DialogTitle>
+            <DialogDescription>
+              Enter your UPI ID to save it for future payments. Format: <span className="font-mono text-foreground">handle@bank</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="upi-vpa" className="text-sm font-medium">UPI ID</Label>
+              <Input
+                id="upi-vpa"
+                placeholder="e.g. yourname@paytm"
+                value={upiVpa}
+                onChange={(e) => { setUpiVpa(e.target.value); setUpiError(null); }}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveUpi()}
+                className="font-mono"
+                autoFocus
+              />
+              {upiError && (
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  {upiError}
+                </p>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+              Examples: <span className="font-mono">user@paytm</span>, <span className="font-mono">mobile@ybl</span>, <span className="font-mono">name@okaxis</span>
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="rounded-full" onClick={() => setUpiDialogOpen(false)} disabled={savingUpi}>
+              Cancel
+            </Button>
+            <Button className="rounded-full" onClick={handleSaveUpi} disabled={savingUpi || !upiVpa.trim()}>
+              {savingUpi ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Save UPI ID
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

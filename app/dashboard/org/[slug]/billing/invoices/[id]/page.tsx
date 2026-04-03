@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   ArrowLeft, CheckCircle2, Clock, AlertCircle, Ban, RotateCcw,
-  FileText, CreditCard, Loader2, Printer, Building2,
+  FileText, CreditCard, Loader2, Download, Building2, ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,6 +79,16 @@ export default function InvoiceDetailPage() {
     onError: (msg) => setPayError(msg),
   });
 
+  const handleDownloadPdf = () => {
+    const inv = invoice as Invoice | undefined;
+    if (!inv) return;
+    // Set title so browser names the PDF file after the invoice number
+    const prev = document.title;
+    document.title = `Invoice-${inv.invoice_number}`;
+    window.print();
+    document.title = prev;
+  };
+
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto space-y-6 pb-12">
@@ -127,9 +137,9 @@ export default function InvoiceDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to Billing
         </Link>
-        <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
-          <Printer className="h-3.5 w-3.5" />
-          Print
+        <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
+          <Download className="h-3.5 w-3.5" />
+          Download PDF
         </Button>
       </div>
 
@@ -293,10 +303,21 @@ export default function InvoiceDetailPage() {
                     {inv.payable_reason ?? "Please pay to continue using Authentix."}
                   </p>
                 </div>
-                <Button size="sm" className="shrink-0 gap-1.5" disabled={paying} onClick={() => pay(invoiceId)}>
-                  {paying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
-                  Pay {formatInr(inv.amount_due_paise)} via Razorpay
-                </Button>
+                {inv.payment_cta_url ? (
+                  // Razorpay hosted invoice page — opens in new tab, handles all payment methods
+                  <a href={inv.payment_cta_url} target="_blank" rel="noopener noreferrer">
+                    <Button size="sm" className="shrink-0 gap-1.5">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Pay {formatInr(inv.amount_due_paise)} via Razorpay
+                    </Button>
+                  </a>
+                ) : (
+                  // Fallback: Checkout JS modal (older invoices without rzp invoice url)
+                  <Button size="sm" className="shrink-0 gap-1.5" disabled={paying} onClick={() => pay(invoiceId)}>
+                    {paying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                    Pay {formatInr(inv.amount_due_paise)} via Razorpay
+                  </Button>
+                )}
               </div>
             </>
           )}

@@ -45,6 +45,8 @@ export interface Invoice {
   amount_due_paise: number;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
+  razorpay_invoice_id: string | null;   // Razorpay Invoice entity ID (inv_XXXX)
+  razorpay_invoice_url: string | null;  // Razorpay hosted payment page
   period_id: string | null;
   bill_to: Record<string, unknown> | null;
   created_at: string;
@@ -104,13 +106,11 @@ export interface PaymentMethodsResult {
   autopay_enabled: boolean;
 }
 
-export interface SetupPaymentMethodResult {
+export interface SetupCardResult {
   razorpay_order_id: string;
   razorpay_key_id: string;
-  razorpay_customer_id: string;
   amount_paise: number;
   currency: string;
-  method_type: "card" | "upi";
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -182,25 +182,32 @@ export const billingApi = {
     return response.data!;
   },
 
-  /** Create a Razorpay mandate-setup order for adding a card or UPI. */
-  setupPaymentMethod: async (methodType: "card" | "upi"): Promise<SetupPaymentMethodResult> => {
-    const response = await apiRequest<SetupPaymentMethodResult>("/billing/payment-methods/setup", {
+  /** Create a Razorpay ₹1 order for adding a card (standard payment, no mandate). */
+  setupCardPayment: async (): Promise<SetupCardResult> => {
+    const response = await apiRequest<SetupCardResult>("/billing/payment-methods/setup-card", {
       method: "POST",
-      body: JSON.stringify({ method_type: methodType }),
     });
     return response.data!;
   },
 
-  /** Save a payment method after Checkout JS mandate setup completes. */
-  savePaymentMethod: async (params: {
+  /** Save a card after Razorpay checkout completes. */
+  saveCardFromCheckout: async (params: {
     razorpay_payment_id: string;
     razorpay_order_id: string;
     razorpay_signature: string;
-    method_type: "card" | "upi";
   }): Promise<{ method: PaymentMethod }> => {
     const response = await apiRequest<{ method: PaymentMethod }>("/billing/payment-methods", {
       method: "POST",
-      body: JSON.stringify(params),
+      body: JSON.stringify({ ...params, method_type: "card" }),
+    });
+    return response.data!;
+  },
+
+  /** Save a UPI VPA directly (no Razorpay checkout needed). */
+  saveUpiMethod: async (upiVpa: string): Promise<{ method: PaymentMethod }> => {
+    const response = await apiRequest<{ method: PaymentMethod }>("/billing/payment-methods/save-upi", {
+      method: "POST",
+      body: JSON.stringify({ upi_vpa: upiVpa }),
     });
     return response.data!;
   },

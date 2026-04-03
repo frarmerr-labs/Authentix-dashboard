@@ -41,7 +41,7 @@ export type {
   RazorpayOrderResult,
   PaymentMethod,
   PaymentMethodsResult,
-  SetupPaymentMethodResult,
+  SetupCardResult,
 } from "./billing";
 export type {
   DeliveryIntegration,

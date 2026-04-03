@@ -58,7 +58,21 @@
       "Bash(npx @sentry/wizard@latest -i nextjs --saas --org authentix --project authentix-frontend)",
       "Bash(npx --yes @sentry/wizard@8 -i nextjs --saas --org authentix --project authentix-frontend)",
       "Bash(npm show:*)",
-      "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")"
+      "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git -C /Users/harshitsaxena/Documents/GitHub/Authentix-backend status --short)",
+      "Bash(git -C /Users/harshitsaxena/Documents/GitHub/Authentix-backend add -A)",
+      "Bash(git -C:*)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts|jsx|js\\)$\")",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(ls -la /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/billing/)",
+      "Bash(find /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/billing -type f -name \"*.tsx\" -o -name \"*.ts\")",
+      "WebFetch(domain:razorpay.com)",
+      "WebFetch(domain:www.postman.com)",
+      "Bash(grep -n \"ExternalLink\" /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/billing/page.tsx)",
+      "Bash(find /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard -type f -name *email*)",
+      "Bash(find /Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\" \\\\\\))"
     ],
     "additionalDirectories": [
       "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"

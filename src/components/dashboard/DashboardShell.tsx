@@ -169,6 +169,7 @@ interface UserMenuProps {
   readonly onLogout: () => void;
   readonly mounted: boolean;
   readonly expanded: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
 }
 
 function UserMenu({
@@ -180,9 +181,10 @@ function UserMenu({
   onLogout,
   mounted,
   expanded,
+  onOpenChange,
 }: UserMenuProps) {
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
           className={cn(
@@ -254,6 +256,7 @@ export function DashboardShell({
   // State
   const [mounted, setMounted] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>("system");
 
   const pathname = usePathname();
@@ -324,7 +327,7 @@ export function DashboardShell({
             sidebarExpanded ? "w-52" : "w-14"
           )}
           onMouseEnter={() => setSidebarExpanded(true)}
-          onMouseLeave={() => setSidebarExpanded(false)}
+          onMouseLeave={() => { if (!dropdownOpen) setSidebarExpanded(false); }}
         >
           <div className="flex flex-col h-full">
             {/* Logo */}
@@ -385,6 +388,7 @@ export function DashboardShell({
                 onLogout={handleLogout}
                 mounted={mounted}
                 expanded={sidebarExpanded}
+                onOpenChange={setDropdownOpen}
               />
 
               <ThemeButton
