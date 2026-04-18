@@ -476,7 +476,7 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
     if (!labelInputRef.current?.matches(':focus')) {
       setLabelDraft(selectedField?.label ?? '');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [selectedField?.id, selectedField?.label]);
 
   useEffect(() => {

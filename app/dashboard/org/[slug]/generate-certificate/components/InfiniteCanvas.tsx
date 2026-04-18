@@ -526,7 +526,7 @@ export function InfiniteCanvas({
     };
   // Intentionally omit `scale` — we use scaleRef.current to read the latest value
   // without re-creating the listener (which caused jitter during resize)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isResizingTemplate, onTemplateResize]);
 
   // ── Template rotation ─────────────────────────────────────────────────────

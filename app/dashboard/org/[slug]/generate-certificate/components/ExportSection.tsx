@@ -1002,7 +1002,7 @@ export function ExportSection({
       setGenerationStatus('completed');
       setSendModalOpen(true);
     } catch { /* storage unavailable or malformed */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   // Template picker for adding extra configs
