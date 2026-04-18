@@ -250,7 +250,7 @@ describe('ManualDataEntry — submit behaviour', () => {
     await user.click(screen.getByTitle(/Confirm/i));
     await user.click(screen.getByRole('button', { name: /Confirm Data/i }));
     expect(onDataSubmit).toHaveBeenCalledOnce();
-    const arg: ImportedData = onDataSubmit.mock.calls[0][0];
+    const arg: ImportedData = onDataSubmit.mock.calls[0]![0];
     expect(arg.fileName).toBe('Manual Entry');
     expect(arg.headers).toContain('Email');
     expect(arg.rows[0]).toMatchObject({ Email: 'submit@test.com' });
@@ -265,7 +265,7 @@ describe('ManualDataEntry — submit behaviour', () => {
     // Click "Confirm Data" directly — should auto-commit the row
     await user.click(screen.getByRole('button', { name: /Confirm Data/i }));
     expect(onDataSubmit).toHaveBeenCalledOnce();
-    const arg: ImportedData = onDataSubmit.mock.calls[0][0];
+    const arg: ImportedData = onDataSubmit.mock.calls[0]![0];
     expect(arg.rows[0]).toMatchObject({ Email: 'autocommit@test.com' });
   });
 

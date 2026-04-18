@@ -248,6 +248,7 @@ function IntegrationForm({ initial, onSave, onCancel, saving }: IntegrationFormP
     setProvider(p);
     if (p === "google_workspace" || p === "microsoft_365" || p === "smtp") {
       const preset = SMTP_HOSTS[p];
+      if (!preset) return;
       if (preset.host) setSmtpHost(preset.host);
       setSmtpPort(preset.port);
       setSmtpSecure(preset.secure);

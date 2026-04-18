@@ -28,6 +28,7 @@ async function getNavTimings(
     const [entry] = performance.getEntriesByType(
       "navigation"
     ) as PerformanceNavigationTiming[];
+    if (!entry) return { ttfb: 0, domContentLoaded: 0, load: 0 };
     return {
       ttfb: Math.round(entry.responseStart - entry.requestStart),
       domContentLoaded: Math.round(
