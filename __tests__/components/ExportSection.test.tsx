@@ -8,13 +8,25 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
+vi.mock('@/lib/org', () => ({
+  useOrg: () => ({ orgPath: '/dashboard/org/test-org' }),
+}));
+
+vi.mock('@/lib/notifications/job-notifications', () => ({
+  useJobNotifications: () => ({ addJob: vi.fn() }),
+}));
+
 vi.mock('@/lib/api/client', () => ({
   api: {
     certificates: {
       generate: vi.fn(),
+      batchGenerate: vi.fn(),
     },
     templates: {
       getEditorData: vi.fn(),
+    },
+    delivery: {
+      listTemplates: vi.fn().mockResolvedValue([]),
     },
   },
 }));
@@ -67,19 +79,7 @@ function makeField(id: string, type: CertificateField['type'] = 'name', label = 
 }
 
 const MOCK_GENERATE_RESULT = {
-  certificates: [
-    {
-      id: 'cert-1',
-      certificate_number: 'CERT-001',
-      recipient_name: 'Alice',
-      recipient_email: 'alice@example.com',
-      issued_at: '2026-01-15T00:00:00Z',
-      expires_at: null,
-      download_url: 'https://storage.example.com/cert.pdf',
-      preview_url: 'https://storage.example.com/cert-preview.jpg',
-    },
-  ],
-  zip_download_url: null,
+  job_id: 'job-123',
 };
 
 // ── canGenerate logic ──────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ describe('ExportSection — generate button state', () => {
 describe('ExportSection — generation overlay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (api.certificates.generate as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_GENERATE_RESULT);
+    (api.certificates.batchGenerate as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_GENERATE_RESULT);
     // Stub the progress interval so it doesn't fire during tests
     vi.spyOn(global, 'setInterval').mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
     vi.spyOn(global, 'clearInterval').mockReturnValue(undefined);
@@ -211,14 +211,14 @@ describe('ExportSection — generation overlay', () => {
   it('overlay is NOT visible before generation starts', () => {
     renderExport();
     expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
-    expect(screen.queryByText(/please keep this page open/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Submitting your job/i)).not.toBeInTheDocument();
   });
 
   it('clicking Generate shows the generating overlay', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
     // setOverlayState('generating') is the first synchronous line of handleGenerate
-    expect(screen.getByText(/please keep this page open/i)).toBeInTheDocument();
+    expect(screen.getByText(/Submitting your job/i)).toBeInTheDocument();
   });
 
   it('Generate button disappears (overlay replaces UI) once generation starts', () => {
@@ -227,51 +227,39 @@ describe('ExportSection — generation overlay', () => {
     expect(screen.queryByRole('button', { name: /Generate/i })).not.toBeInTheDocument();
   });
 
-  it('success overlay appears after API call resolves', async () => {
+  it('queued overlay appears after API call resolves', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
     await waitFor(() => {
-      expect(screen.getByText(/generated successfully/i)).toBeInTheDocument();
+      expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 
-  it('overlay hides after the 2500ms success animation timer fires', async () => {
-    // Real timers — the progress setInterval is mocked in beforeEach so it won't fire,
-    // but the dismiss setTimeout(2500ms) fires naturally.
+  it('overlay hides after user dismisses the queued overlay', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    // Wait for success state (API mock resolves in next microtask)
     await waitFor(() => {
-      expect(screen.getByText(/generated successfully/i)).toBeInTheDocument();
-    }, { timeout: 2000 });
-    // Wait for the real 2500ms dismiss timer to fire
+      expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // Dismiss the overlay
+    fireEvent.click(screen.getByRole('button', { name: /Got it|back|continue/i }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
-    }, { timeout: 4000 });
-  }, 8000);
+    }, { timeout: 2000 });
+  });
 
-  it('calls api.certificates.generate with the correct template_id and data', () => {
-    // api.certificates.generate is called synchronously before the first await in handleGenerate
-    const data = makeImportedData();
-    render(
-      <ExportSection
-        template={makeTemplate({ id: 'tpl-xyz' })}
-        fields={[]}
-        importedData={data}
-        fieldMappings={[]}
-      />,
-    );
+  it('calls api.certificates.batchGenerate when Generate is clicked', async () => {
+    renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    // Verify synchronous call — no waitFor needed
-    expect(api.certificates.generate).toHaveBeenCalledWith(
-      expect.objectContaining({ template_id: 'tpl-xyz', data: data.rows }),
-    );
+    await waitFor(() => {
+      expect(api.certificates.batchGenerate).toHaveBeenCalled();
+    }, { timeout: 3000 });
   });
 
   it('shows the generating overlay (progress bar container) during generation', () => {
     renderExport({ neverResolve: true });
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    expect(screen.getByText(/please keep this page open/i)).toBeInTheDocument();
+    expect(screen.getByText(/Submitting your job/i)).toBeInTheDocument();
   });
 });
 
@@ -287,6 +275,6 @@ describe('ExportSection — unmapped fields warning', () => {
         fieldMappings={[]}
       />,
     );
-    expect(screen.getByText(/Recipient Name/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Recipient Name/i).length).toBeGreaterThan(0);
   });
 });

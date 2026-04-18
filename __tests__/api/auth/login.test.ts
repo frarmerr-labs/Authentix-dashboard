@@ -16,11 +16,12 @@ vi.mock("@/lib/api/server", () => ({
     e instanceof Error ? e.message : "An unexpected error occurred"
   ),
   ServerApiError: class ServerApiError extends Error {
-    constructor(
-      public status: number,
-      message: string
-    ) {
+    code: string;
+    status: number;
+    constructor(code: string, message: string, status = 500) {
       super(message);
+      this.code = code;
+      this.status = status;
     }
   },
 }));
