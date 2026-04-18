@@ -126,7 +126,7 @@ export function CanvasMinimap({
             draggable={false}
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-muted/30 to-muted/50" />
+          <div className="absolute inset-0 bg-linear-to-br from-muted/30 to-muted/50" />
         )}
 
         {/* Fields (as dots/rectangles) */}

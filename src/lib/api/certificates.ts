@@ -134,7 +134,9 @@ export const certificatesApi = {
 
   /** Submit a batch generation job. Returns immediately with job_id — poll with pollJobStatus. */
   batchGenerate: async (params: {
-    data: Array<Record<string, unknown>>;
+    data?: Array<Record<string, unknown>>;
+    import_id?: string;
+    additional_rows?: Array<Record<string, unknown>>;
     options?: {
       includeQR?: boolean;
       fileName?: string;
@@ -207,6 +209,23 @@ export const certificatesApi = {
   getDownloadUrl: async (certificateId: string): Promise<{ url: string }> => {
     const response = await apiRequest<{ url: string }>(
       `/certificates/${certificateId}/download`,
+    );
+    return response.data!;
+  },
+
+  /**
+   * Render a single certificate row in-memory on the server and return a data URL.
+   * No DB writes or storage uploads — fast UI preview only.
+   */
+  previewRender: async (params: {
+    template_id: string;
+    row_data: Record<string, unknown>;
+    field_mappings: Array<{ fieldId: string; columnName: string }>;
+    options?: { includeQR?: boolean };
+  }): Promise<{ mime_type: string; data_url: string }> => {
+    const response = await apiRequest<{ mime_type: string; data_url: string }>(
+      "/certificates/preview-render",
+      { method: "POST", body: JSON.stringify(params) },
     );
     return response.data!;
   },

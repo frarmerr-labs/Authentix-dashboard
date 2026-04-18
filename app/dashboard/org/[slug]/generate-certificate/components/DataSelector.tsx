@@ -8,17 +8,21 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDropzone } from 'react-dropzone';
 import { CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
-import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard, AlertTriangle, AlertCircle, Link2 } from 'lucide-react';
-
-// Semantic field types that are logically unique per person across templates
-const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
+import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard, AlertCircle, Link2, ChevronDown, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { api } from '@/lib/api/client';
 import { getXlsx } from '@/lib/utils/dynamic-imports';
 import { DataPreview } from './DataPreview';
 import { ManualDataEntry } from './ManualDataEntry';
 
+// Semantic field types that are logically unique per person across templates
+const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
+
+const MAX_DATA_FILE_MB = 100;
+const MAX_DATA_FILE_BYTES = MAX_DATA_FILE_MB * 1024 * 1024;
+
 interface DataSelectorProps {
   fields: CertificateField[];
-  /** When multiple templates are selected, provides per-template grouping for the mapping UI */
   templateGroups?: Array<{ templateName: string; fields: CertificateField[] }>;
   savedImports: any[];
   importedData: ImportedData | null;
@@ -27,6 +31,8 @@ interface DataSelectorProps {
   onMappingChange: (mappings: FieldMapping[]) => void;
   onLoadImport?: (importId: string) => Promise<void>;
   onContinueToGenerate?: () => void;
+  onAdditionalRows?: (rows: Record<string, unknown>[]) => void;
+  additionalRows?: Record<string, unknown>[];
 }
 
 export function DataSelector({
@@ -39,72 +45,91 @@ export function DataSelector({
   onMappingChange,
   onLoadImport,
   onContinueToGenerate,
+  onAdditionalRows,
+  additionalRows,
 }: DataSelectorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUpload, setShowUpload] = useState(!importedData);
   const [entryMode, setEntryMode] = useState<'upload' | 'manual'>('upload');
-  const [columnWarnings, setColumnWarnings] = useState<string[]>([]);
   const [isManualEntry, setIsManualEntry] = useState(false);
-  // Holds the last manually-entered data so ManualDataEntry can be pre-populated on edit
   const [manualEditSeed, setManualEditSeed] = useState<ImportedData | undefined>(undefined);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [loadImportError, setLoadImportError] = useState<string | null>(null);
+  const [showAdditionalRows, setShowAdditionalRows] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string>('Uploading…');
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[], rejectedFiles: any[]) => {
+      if (rejectedFiles.length > 0) {
+        const reason = rejectedFiles[0]?.errors?.[0]?.code;
+        setUploadError(
+          reason === 'file-too-large'
+            ? `File exceeds the ${MAX_DATA_FILE_MB} MB limit.`
+            : 'Invalid file. Please upload a .csv, .tsv, .xls, or .xlsx file.',
+        );
+        return;
+      }
       const file = acceptedFiles[0];
       if (!file) return;
 
+      setUploadError(null);
       setIsProcessing(true);
+      setProcessingStatus('Uploading…');
 
       try {
-        const XLSX = await getXlsx();
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer);
-        const sheetName = workbook.SheetNames[0];
-        if (!sheetName) {
-          throw new Error('No sheets found in workbook');
-        }
-        const firstSheet = workbook.Sheets[sheetName];
-        if (!firstSheet) {
-          throw new Error('Sheet not found');
-        }
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+        let importJob = await api.imports.create(file, { file_name: file.name });
 
-        if (jsonData.length === 0) {
-          alert('The file is empty or has no data.');
+        // Poll until the server finishes parsing the file
+        if (importJob.status !== 'completed' && importJob.status !== 'failed') {
+          setProcessingStatus('Processing file…');
+          const deadline = Date.now() + 120_000;
+          while (
+            (importJob.status === 'queued' ||
+              importJob.status === 'pending' ||
+              importJob.status === 'processing') &&
+            Date.now() < deadline
+          ) {
+            await new Promise(r => setTimeout(r, 2000));
+            importJob = await api.imports.get(importJob.id);
+          }
+        }
+
+        if (importJob.status === 'failed') {
+          setUploadError(importJob.error_message ?? 'File processing failed. Please try again.');
+          return;
+        }
+        if (importJob.status !== 'completed') {
+          setUploadError('File processing timed out. Please try again.');
           return;
         }
 
-        const firstRow = jsonData[0];
-        if (!firstRow || typeof firstRow !== 'object') {
-          throw new Error('Invalid data format');
-        }
-        const headers = Object.keys(firstRow as Record<string, unknown>);
+        setProcessingStatus('Loading preview…');
+        const previewResult = await api.imports.getData(importJob.id, { limit: 10 });
+        const previewRows = previewResult.items as Record<string, unknown>[];
 
+        if (previewRows.length === 0) {
+          setUploadError('The file is empty or has no data rows.');
+          return;
+        }
+
+        const headers = Object.keys(previewRows[0]!);
         const data: ImportedData = {
           fileName: file.name,
           headers,
-          rows: jsonData as Record<string, unknown>[],
-          rowCount: jsonData.length,
+          rows: previewRows,
+          rowCount: importJob.total_rows ?? previewResult.pagination.total,
+          importId: importJob.id,
         };
-
-        // Validate: warn about field labels not found in uploaded headers
-        // Exclude qr_code, image, and custom_text — they don't need CSV column mapping
-        const mappableFields = fields.filter(f => f.type !== 'qr_code' && f.type !== 'image' && f.type !== 'custom_text');
-        const warnings = mappableFields
-          .filter(f => !headers.some(h => h.toLowerCase().trim() === f.label.toLowerCase().trim()))
-          .map(f => f.label);
-        setColumnWarnings(warnings);
 
         onDataImport(data);
         setShowUpload(false);
-      } catch (error) {
-        console.error('Error parsing file:', error);
-        alert('Failed to parse file. Please ensure it is a valid Excel or CSV file.');
+      } catch {
+        setUploadError('Failed to upload file. Please try again.');
       } finally {
         setIsProcessing(false);
       }
     },
-    [onDataImport]
+    [onDataImport],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -113,15 +138,17 @@ export function DataSelector({
       'application/vnd.ms-excel': ['.xls'],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'text/csv': ['.csv'],
+      'text/tab-separated-values': ['.tsv'],
+      'text/plain': ['.tsv'],
     },
     maxFiles: 1,
+    maxSize: MAX_DATA_FILE_BYTES,
     disabled: isProcessing,
   });
 
   const downloadSampleFile = async () => {
     const XLSX = await getXlsx();
 
-    // Helper: generate a plausible sample value per field type / label
     const sampleValue = (field: CertificateField, i: number): string => {
       const t = field.type;
       if (t === 'name') return `John Doe ${i}`;
@@ -135,12 +162,7 @@ export function DataSelector({
       return `${field.label} ${i}`;
     };
 
-    // Dedupe fields across all templates by type (for semantic types) then by label.
-    // This prevents duplicate columns when templates use different labels for the same concept
-    // (e.g. "Recipient Name" vs "Student Name" — both are type 'name', one column is enough).
-    const allRawFields = templateGroups
-      ? templateGroups.flatMap(g => g.fields)
-      : fields;
+    const allRawFields = templateGroups ? templateGroups.flatMap(g => g.fields) : fields;
     const seenTypes = new Set<string>();
     const seenLabels = new Set<string>();
     const mappableFields = allRawFields.filter(f => {
@@ -156,16 +178,11 @@ export function DataSelector({
     });
 
     const hasEmailCol = mappableFields.some(f => f.label.toLowerCase().includes('email'));
-
     const sampleData = [];
     for (let i = 1; i <= 5; i++) {
       const row: Record<string, unknown> = {};
-      mappableFields.forEach(f => {
-        row[f.label] = sampleValue(f, i);
-      });
-      if (!hasEmailCol) {
-        row['Email'] = `student${i}@example.com`;
-      }
+      mappableFields.forEach(f => { row[f.label] = sampleValue(f, i); });
+      if (!hasEmailCol) row['Email'] = `student${i}@example.com`;
       sampleData.push(row);
     }
 
@@ -175,11 +192,59 @@ export function DataSelector({
     XLSX.writeFile(wb, 'certificate_data_sample.xlsx');
   };
 
+  const downloadSampleFileCSV = async () => {
+    const XLSX = await getXlsx();
+
+    const sampleValue = (field: CertificateField, i: number): string => {
+      const t = field.type;
+      if (t === 'name') return `John Doe ${i}`;
+      if (t === 'course') return 'Web Development Fundamentals';
+      if (t === 'start_date') return '01/15/2026';
+      if (t === 'end_date') return '03/15/2026';
+      const lower = field.label.toLowerCase();
+      if (lower.includes('email')) return `student${i}@example.com`;
+      if (lower.includes('grade') || lower.includes('score')) return `${85 + i}%`;
+      if (lower.includes('date')) return `01/${String(i).padStart(2, '0')}/2026`;
+      return `${field.label} ${i}`;
+    };
+
+    const allRawFields = templateGroups ? templateGroups.flatMap(g => g.fields) : fields;
+    const seenTypes = new Set<string>();
+    const seenLabels = new Set<string>();
+    const mappableFields = allRawFields.filter(f => {
+      if (f.type === 'qr_code' || f.type === 'image') return false;
+      if (SEMANTIC_TYPES.has(f.type)) {
+        if (seenTypes.has(f.type)) return false;
+        seenTypes.add(f.type);
+      }
+      const key = f.label.toLowerCase();
+      if (seenLabels.has(key)) return false;
+      seenLabels.add(key);
+      return true;
+    });
+
+    const hasEmailCol = mappableFields.some(f => f.label.toLowerCase().includes('email'));
+    const headers = [...mappableFields.map(f => f.label), ...(hasEmailCol ? [] : ['Email'])];
+    const rows: string[][] = [];
+    for (let i = 1; i <= 5; i++) {
+      const row = mappableFields.map(f => sampleValue(f, i));
+      if (!hasEmailCol) row.push(`student${i}@example.com`);
+      rows.push(row);
+    }
+
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'certificate_data_sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleMappingChange = (fieldId: string, columnName: string) => {
     const mappedField = fields.find((f) => f.id === fieldId);
-
-    // For semantic types, fan out to ALL same-type fields across all templates so the user
-    // only has to map once even when two templates use different labels for the same concept.
     const fieldsToMap = mappedField && SEMANTIC_TYPES.has(mappedField.type)
       ? fields.filter((f) => f.type === mappedField.type)
       : fields.filter((f) => f.id === fieldId);
@@ -197,13 +262,11 @@ export function DataSelector({
     return fieldMappings.find((m) => m.fieldId === fieldId)?.columnName;
   };
 
-  // Handle manual data entry submission
   const handleManualDataSubmit = (data: ImportedData) => {
     onDataImport(data);
     setShowUpload(false);
     setIsManualEntry(true);
 
-    // Build a type→column lookup first (from the deduplicated columns ManualDataEntry produced)
     const typeToColumn: Record<string, string> = {};
     data.headers.forEach((header) => {
       const matchedField = fields.find((f) =>
@@ -214,7 +277,6 @@ export function DataSelector({
       }
     });
 
-    // Map every field: exact label match first, then type-based match for semantic types
     const autoMappings = fields
       .filter((f) => f.type !== 'qr_code' && f.type !== 'image')
       .map((field) => {
@@ -232,9 +294,6 @@ export function DataSelector({
     onMappingChange(autoMappings);
   };
 
-  // Columns that are mapped to more than one field (duplicate mapping).
-  // In multi-template mode, semantic fields are intentionally fanned out to all same-type fields
-  // across templates — exclude them from the duplication check so no false-positive warning.
   const semanticFieldIds = templateGroups
     ? new Set(fields.filter(f => SEMANTIC_TYPES.has(f.type)).map(f => f.id))
     : new Set<string>();
@@ -252,7 +311,7 @@ export function DataSelector({
       {showUpload && (
         <>
           <div className="text-center space-y-2">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            <h2 className="text-3xl font-bold bg-linear-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
               Import Recipient Data
             </h2>
             <p className="text-muted-foreground">
@@ -266,9 +325,7 @@ export function DataSelector({
                 <Download className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-foreground mb-1">
-                  Need a template?
-                </h3>
+                <h3 className="font-semibold text-foreground mb-1">Need a template?</h3>
                 <p className="text-sm text-muted-foreground mb-1">
                   Download a sample spreadsheet pre-filled with your certificate field columns
                   {templateGroups && templateGroups.length > 1
@@ -280,10 +337,16 @@ export function DataSelector({
                 <p className="text-xs text-muted-foreground/70 mb-3">
                   Column headers match your field names exactly — including any renames you made in the designer.
                 </p>
-                <Button onClick={downloadSampleFile} variant="outline" size="sm" className="border-primary/30 hover:border-primary/60">
-                  <Download className="w-4 h-4 mr-2" />
-                  Download Sample File
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={downloadSampleFile} variant="outline" size="sm" className="border-primary/30 hover:border-primary/60">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download .xlsx
+                  </Button>
+                  <Button onClick={downloadSampleFileCSV} variant="outline" size="sm" className="border-primary/30 hover:border-primary/60">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download .csv
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -294,29 +357,31 @@ export function DataSelector({
       {savedImports.length > 0 && showUpload && (
         <div>
           <h3 className="text-lg font-semibold mb-4">Recent Imports</h3>
+          {loadImportError && (
+            <p className="text-sm text-destructive mb-3">{loadImportError}</p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {savedImports.map((importJob) => (
               <Card
                 key={importJob.id}
                 className="p-4 hover:shadow-md transition-all cursor-pointer group"
                 onClick={async () => {
-                  if (onLoadImport) {
-                    setIsProcessing(true);
-                    try {
-                      await onLoadImport(importJob.id);
-                    } catch (error) {
-                      console.error('Error loading import:', error);
-                      alert('Failed to load import data');
-                    } finally {
-                      setIsProcessing(false);
-                    }
+                  if (!onLoadImport) return;
+                  setLoadImportError(null);
+                  setIsProcessing(true);
+                  try {
+                    await onLoadImport(importJob.id);
+                  } catch {
+                    setLoadImportError('Failed to load import data. Please try again.');
+                  } finally {
+                    setIsProcessing(false);
                   }
                 }}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <FileSpreadsheet className="w-4 h-4 text-muted-foreground shrink-0" />
                       <h4 className="font-medium truncate">{importJob.file_name}</h4>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -362,56 +427,60 @@ export function DataSelector({
           </div>
 
           {entryMode === 'upload' ? (
-            <Card className="border-2 border-dashed">
-              <div
-                {...getRootProps()}
-                className={`
-                  p-12 text-center cursor-pointer transition-all
-                  ${isDragActive ? 'bg-primary/5' : 'hover:bg-muted/50'}
-                `}
-              >
-                <input {...getInputProps()} />
-
-                <div className="flex flex-col items-center gap-4">
-                  {isProcessing ? (
-                    <>
-                      <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                      <p className="text-sm text-muted-foreground">Processing file...</p>
-                    </>
-                  ) : isDragActive ? (
-                    <>
-                      <FileSpreadsheet className="w-16 h-16 text-primary" />
-                      <p className="text-lg font-medium">Drop your file here</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-4 rounded-full bg-gradient-to-br from-primary/10 to-primary/20">
-                        <Upload className="w-12 h-12 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium mb-1">Upload Spreadsheet</p>
-                        <p className="text-sm text-muted-foreground">
-                          Excel, CSV, or export from Google Sheets • .xlsx, .xls, .csv
-                        </p>
-                      </div>
-                      <Button variant="outline">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Choose File
-                      </Button>
-                    </>
+            <div className="space-y-3">
+              <Card className="border-2 border-dashed">
+                <div
+                  {...getRootProps()}
+                  className={cn(
+                    'p-12 text-center cursor-pointer transition-all',
+                    isDragActive ? 'bg-primary/5' : 'hover:bg-muted/50',
                   )}
+                >
+                  <input {...getInputProps()} />
+                  <div className="flex flex-col items-center gap-4">
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-16 h-16 text-primary animate-spin" />
+                        <p className="text-sm text-muted-foreground">{processingStatus}</p>
+                      </>
+                    ) : isDragActive ? (
+                      <>
+                        <FileSpreadsheet className="w-16 h-16 text-primary" />
+                        <p className="text-lg font-medium">Drop your file here</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-4 rounded-full bg-linear-to-br from-primary/10 to-primary/20">
+                          <Upload className="w-12 h-12 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-medium mb-1">Upload Spreadsheet</p>
+                          <p className="text-sm text-muted-foreground">
+                            Spreadsheet upload • .csv or .tsv recommended for smaller file sizes
+                          </p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls supported • Up to {MAX_DATA_FILE_MB} MB</p>
+                        </div>
+                        <Button variant="outline">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Choose File
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+              {uploadError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-sm text-destructive">{uploadError}</p>
+                </div>
+              )}
+            </div>
           ) : (
             <ManualDataEntry
               fields={fields}
-              onDataChange={(data) => {
-                // Live sync: keep parent importedData current without navigating to preview
-                onDataImport(data);
-              }}
+              onDataChange={(data) => { onDataImport(data); }}
               onDataSubmit={(data) => {
-                // Explicit confirm: navigate to data preview
                 setManualEditSeed(undefined);
                 handleManualDataSubmit(data);
               }}
@@ -428,7 +497,6 @@ export function DataSelector({
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Data Preview</h3>
                 <Button variant="outline" size="sm" onClick={() => {
-                  setColumnWarnings([]);
                   if (isManualEntry) {
                     setEntryMode('manual');
                     setManualEditSeed(importedData ?? undefined);
@@ -436,6 +504,7 @@ export function DataSelector({
                     setManualEditSeed(undefined);
                   }
                   setIsManualEntry(false);
+                  setUploadError(null);
                   setShowUpload(true);
                   onDataImport(null);
                 }}>
@@ -443,24 +512,6 @@ export function DataSelector({
                   {isManualEntry ? 'Edit Entries' : 'Change File'}
                 </Button>
               </div>
-
-              {/* Column mismatch warning */}
-              {columnWarnings.length > 0 && (
-                <div className="flex gap-2 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <p className="font-medium text-yellow-900 dark:text-yellow-100 mb-1">
-                      Some field columns weren't found in your file
-                    </p>
-                    <p className="text-yellow-700 dark:text-yellow-300">
-                      Missing: <span className="font-medium">{columnWarnings.join(', ')}</span>
-                    </p>
-                    <p className="text-yellow-600 dark:text-yellow-400 mt-1">
-                      Map these fields manually below, or download the sample file to see the expected column names.
-                    </p>
-                  </div>
-                </div>
-              )}
 
               <DataPreview data={importedData} maxHeight="350px" />
             </div>
@@ -474,14 +525,12 @@ export function DataSelector({
               {templateGroups && templateGroups.length > 1 && ' — grouped by template'}
             </p>
 
-            {/* Render grouped (multi-template) or flat (single) mapping rows */}
             {templateGroups && templateGroups.length > 1 ? (
               <div className="space-y-5">
                 {templateGroups.map((group, gi) => {
                   const mappableGroupFields = group.fields.filter(f => f.type !== 'qr_code' && f.type !== 'image');
                   if (mappableGroupFields.length === 0) return null;
 
-                  // Count how many templates share each semantic field type
                   const allMappableFields = templateGroups.flatMap(g => g.fields.filter(f => f.type !== 'qr_code' && f.type !== 'image'));
                   const typeCountMap: Record<string, number> = {};
                   allMappableFields.forEach(f => {
@@ -490,7 +539,6 @@ export function DataSelector({
 
                   return (
                     <div key={gi}>
-                      {/* Template group header */}
                       <div className="flex items-center gap-2 mb-3">
                         <span className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 rounded-full text-[11px] font-semibold text-primary">
                           <span className="w-3.5 h-3.5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[8px] font-bold">{gi + 1}</span>
@@ -506,7 +554,6 @@ export function DataSelector({
                           const mappedColumn = getMappedColumn(field.id);
                           const isMapped = !!mappedColumn;
                           const isDuplicate = !!mappedColumn && duplicatedColumns.has(mappedColumn);
-                          // True when this field type exists in multiple templates — mapping it will fan out
                           const isSynced = SEMANTIC_TYPES.has(field.type) && (typeCountMap[field.type] ?? 0) > 1;
                           return (
                             <div key={field.id} className={`flex items-center gap-4 p-3 rounded-lg ${isDuplicate ? 'bg-orange-50 dark:bg-orange-950/20' : 'bg-muted/30'}`}>
@@ -540,8 +587,8 @@ export function DataSelector({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />}
-                              {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0" />}
+                              {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
+                              {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />}
                             </div>
                           );
                         })}
@@ -582,15 +629,14 @@ export function DataSelector({
                           </SelectContent>
                         </Select>
                       </div>
-                      {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />}
-                      {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0" />}
+                      {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
+                      {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />}
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* Duplicate mapping warning */}
             {duplicatedColumns.size > 0 && (
               <div className="mt-4 flex gap-2 p-3 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
                 <AlertCircle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
@@ -603,8 +649,7 @@ export function DataSelector({
               </div>
             )}
 
-            {/* Mapping Summary */}
-            <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="mt-6 p-4 bg-linear-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border border-green-200 dark:border-green-800 rounded-lg">
               <div className="flex items-center gap-3">
                 <Database className="w-5 h-5 text-green-600 dark:text-green-400" />
                 <div>
@@ -621,14 +666,46 @@ export function DataSelector({
             </div>
           </Card>}
 
+          {/* Add manual entries accordion — only shown when there's already a file upload */}
+          {!isManualEntry && onAdditionalRows && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+                onClick={() => setShowAdditionalRows(v => !v)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Plus className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Add manual entries</span>
+                  {additionalRows && additionalRows.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {additionalRows.length} {additionalRows.length === 1 ? 'entry' : 'entries'}
+                    </Badge>
+                  )}
+                </div>
+                <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', showAdditionalRows && 'rotate-180')} />
+              </button>
+              {showAdditionalRows && (
+                <div className="border-t border-border p-5">
+                  <p className="text-xs text-muted-foreground mb-4">
+                    These entries will be appended after your uploaded file rows during generation.
+                  </p>
+                  <ManualDataEntry
+                    fields={fields}
+                    onDataChange={(data) => onAdditionalRows(data.rows)}
+                    onDataSubmit={(data) => {
+                      onAdditionalRows(data.rows);
+                      setShowAdditionalRows(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Continue to Generate Button */}
           {onContinueToGenerate && !!importedData && (
             <div className="flex justify-end">
-              <Button
-                size="lg"
-                onClick={onContinueToGenerate}
-                className="gap-2"
-              >
+              <Button size="lg" onClick={onContinueToGenerate} className="gap-2">
                 Continue to Generate
                 <ArrowRight className="w-4 h-4" />
               </Button>

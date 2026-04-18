@@ -1,31 +1,31 @@
 /**
  * ENVIRONMENT CONFIGURATION
  *
- * Named backend environments. Set BACKEND_ENV in your .env.local to switch.
- * Auto-switches from local → prod if local backend is not running.
+ * Controls which backend the Next.js proxy talks to.
+ *
+ * In production (Vercel/Railway frontend):
+ *   Set NEXT_PUBLIC_API_URL to your Railway API service URL, e.g.:
+ *     Production:  https://api.authentix.xencus.com/api/v1
+ *     Staging:     https://api-staging.up.railway.app/api/v1
+ *
+ * In local dev (no local backend running):
+ *   Set BACKEND_URL=https://api-staging.up.railway.app/api/v1 in .env.local
+ *   to proxy directly to Railway staging instead of starting a local server.
+ *
+ * BACKEND_ENV override (optional):
+ *   Force a specific env: BACKEND_ENV=staging
  */
 
-export type BackendEnv = "local" | "test" | "prod";
+// Primary backend URL — set this in every environment
+// Falls back to localhost for local dev; must be set explicitly for staging/prod
+export const BACKEND_PRIMARY_URL =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:3001/api/v1";
 
-const BACKEND_URLS: Record<BackendEnv, string> = {
-  local: process.env.BACKEND_URL_LOCAL ?? "http://localhost:3001/api/v1",
-  test:  process.env.BACKEND_URL_TEST  ?? "https://authentix-backend-test.vercel.app/api/v1",
-  prod:  process.env.BACKEND_URL_PROD  ?? "https://authentix-backend.vercel.app/api/v1",
-};
-
-function resolveEnv(): BackendEnv {
-  const explicit = process.env.BACKEND_ENV as BackendEnv | undefined;
-  if (explicit && explicit in BACKEND_URLS) return explicit;
-  return process.env.NODE_ENV === "production" ? "prod" : "local";
-}
-
-const activeEnv = resolveEnv();
-
-export const BACKEND_PRIMARY_URL = BACKEND_URLS[activeEnv];
-
-// Fallback: if primary is local, fall back to prod automatically
-export const BACKEND_FALLBACK_URL =
-  activeEnv === "local" ? BACKEND_URLS.prod : "";
+// No automatic fallback to a remote URL — a missing BACKEND_URL surfaces
+// clearly instead of silently proxying to a dead or wrong environment.
+export const BACKEND_FALLBACK_URL = "";
 
 /** True if the error is a connection refused (local backend not running) */
 export function isConnectionRefused(error: unknown): boolean {

@@ -118,7 +118,14 @@ export function TemplateUploadDialog({ open, onOpenChange, onSuccess }: Template
     }
   };
 
+  const MAX_TEMPLATE_FILE_MB = 50;
+
   const handleFileSelected = (selectedFile: File) => {
+    if (selectedFile.size > MAX_TEMPLATE_FILE_MB * 1024 * 1024) {
+      setError(`File is too large. Maximum allowed size is ${MAX_TEMPLATE_FILE_MB} MB.`);
+      return;
+    }
+
     // Valid MIME types that match backend allowlist
     // Note: image/jpg is not standard - browsers report image/jpeg
     const validTypes = [

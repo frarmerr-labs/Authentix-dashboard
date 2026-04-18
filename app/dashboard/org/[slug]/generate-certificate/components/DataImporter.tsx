@@ -231,7 +231,7 @@ export function DataImporter({
                       </SelectContent>
                     </Select>
                   </div>
-                  {isMapped && <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />}
+                  {isMapped && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
                 </div>
               );
             })}

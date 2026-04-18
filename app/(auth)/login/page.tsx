@@ -96,7 +96,7 @@ function LoginPageContent() {
         {isVerified && (
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
-              <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0" />
+              <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
               <p className="text-sm font-medium text-primary">
                 Email verified. Please sign in to continue.
               </p>
