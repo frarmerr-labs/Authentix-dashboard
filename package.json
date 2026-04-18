@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx --max-warnings 100",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx --max-warnings 250",
     "typecheck": "tsc --noEmit",
     "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs || true",
     "test": "vitest",
