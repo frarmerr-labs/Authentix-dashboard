@@ -16,11 +16,11 @@
  *   Force a specific env: BACKEND_ENV=staging
  */
 
-// Primary backend URL — set this in every environment
-// Falls back to localhost for local dev; must be set explicitly for staging/prod
+// Primary backend URL — set NEXT_PUBLIC_API_URL in Vercel/Railway per environment
+// Local dev fallback: set BACKEND_URL in .env.local or it defaults to localhost
 export const BACKEND_PRIMARY_URL =
-  process.env.BACKEND_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
+  process.env.BACKEND_URL ??
   "http://localhost:3001/api/v1";
 
 // No automatic fallback to a remote URL — a missing BACKEND_URL surfaces
