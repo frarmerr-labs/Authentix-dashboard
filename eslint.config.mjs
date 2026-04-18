@@ -79,8 +79,14 @@ export default [
     ignores: [
       ".next/**",
       "node_modules/**",
+      "public/**",
+      "e2e/**",
+      "coverage/**",
       "*.config.*",
-      "*.d.ts",
+      "*.config.mjs",
+      "**/*.d.ts",
+      "**/*.min.js",
+      "**/*.min.mjs",
     ],
   },
 ];

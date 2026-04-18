@@ -373,7 +373,7 @@ function TemplateCard({
           alt="Certificate preview"
           className="w-full h-full object-cover pointer-events-none select-none opacity-70"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/90 pointer-events-none" />
+        <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-background/90 pointer-events-none" />
         <div className="absolute top-2 right-2 flex gap-1.5">
           {template.is_default && (
             <Badge className="text-[10px] border-[#3ECF8E]/50 text-[#3ECF8E] bg-background/90" variant="outline">Default</Badge>
@@ -570,7 +570,7 @@ export default function EmailTemplatesPage() {
       ) : templates.length === 0 ? (
         /* Empty state */
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="p-5 rounded-full bg-gradient-to-br from-[#3ECF8E]/15 to-[#1a9f6a]/10 mb-5 ring-1 ring-[#3ECF8E]/20">
+          <div className="p-5 rounded-full bg-linear-to-br from-[#3ECF8E]/15 to-[#1a9f6a]/10 mb-5 ring-1 ring-[#3ECF8E]/20">
             <Mail className="w-10 h-10 text-[#3ECF8E]" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No email templates yet</h3>

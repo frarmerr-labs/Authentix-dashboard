@@ -140,8 +140,10 @@ export async function apiRequest<T>(
 
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const isLongRunningOperation = endpoint.includes("/certificates/generate");
-  const timeoutDuration = isLongRunningOperation ? 120000 : 10000;
+  const isLongRunningOperation =
+    endpoint.includes("/certificates/generate") ||
+    endpoint.includes("/certificates/generation-jobs");
+  const timeoutDuration = isLongRunningOperation ? 300000 : 10000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
@@ -225,12 +227,18 @@ export async function apiRequest<T>(
           ? { message: data.error }
           : { message: "Unknown error" };
 
-    logger.error("API request failed", {
+    const logContext = {
       endpoint,
       status: response.status,
       errorCode: "code" in errorObj ? errorObj.code : "UNKNOWN",
       errorMessage: errorObj.message || "Unknown error",
-    });
+    };
+    // 4xx = expected client errors (not found, auth, validation); 5xx = server fault
+    if (response.status >= 500) {
+      logger.error("API server error", logContext);
+    } else {
+      logger.warn("API request failed", logContext);
+    }
 
     if (response.status === 401) {
       if (!_retry) {

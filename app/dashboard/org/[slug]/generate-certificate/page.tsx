@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useGenerateCertificateState } from './state/useGenerateCertificateState';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Sparkles, Upload, Image as ImageIcon, FileText, Download,
   CheckCircle2, Circle, Layers, Palette, Database, Wand2,
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, GripHorizontal, X, Eye,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, Eye,
   SlidersHorizontal, Maximize2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -72,12 +72,17 @@ export default function GenerateCertificatePage() {
     setPanelPos, setPanelReady, setPreviewOpen, setLibraryAssets, setShowNavGuard,
   } = useGenerateCertificateState(templateIdFromUrl);
 
+  // Manual entries appended after the uploaded file rows during generation
+  const [additionalRows, setAdditionalRows] = useState<Record<string, unknown>[]>([]);
+
+  // Tracks previous field IDs so we can detect when field composition changes
+  const prevFieldIdsRef = useRef<string>('');
+
   // Cancellation ref for parallel multi-select loads
   const multiSelectRequestRef = useRef(0);
 
   const leftPanelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
-  const panelDragOrigin = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
 
   // ── Undo / Redo ───────────────────────────────────────────────────────────
   const historyRef = useRef<CertificateField[][]>([]);
@@ -145,6 +150,25 @@ export default function GenerateCertificatePage() {
       // Don't clear localStorage here — keep the last template for next session
     }
   }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
+
+  // Re-run auto-mapping whenever the field composition changes (IDs added/removed)
+  // so stale mappings referencing deleted fields are cleaned up automatically.
+  useEffect(() => {
+    const currentIds = fields.map(f => f.id).sort().join(',');
+    if (prevFieldIdsRef.current && prevFieldIdsRef.current !== currentIds && importedData) {
+      const allFields = templateMode === 'multi' && templateConfigs.length > 0
+        ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
+        : fields;
+      setFieldMappings(autoMapColumns(allFields, importedData.headers));
+    }
+    prevFieldIdsRef.current = currentIds;
+  }, [fields]);
+
+  // Re-fit the canvas whenever the right panel shows/hides so the certificate
+  // fills the newly available width (critical for landscape/wide templates).
+  useEffect(() => {
+    setFitTrigger(t => t + 1);
+  }, [rightPanelVisible]);
 
   // Reset right-panel position when a new template is loaded or preview opens/closes
   useEffect(() => {
@@ -285,8 +309,12 @@ export default function GenerateCertificatePage() {
         // using it here caused auto-jumping into design mode on every fresh navigation.
 
         if (templateIdToRestore) {
-          try {
-            const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateIdToRestore) || { id: templateIdToRestore };
+          // Guard: if the template no longer exists (deleted), discard the stale session.
+          const templateObj = templatesWithSignedUrls.find((t: any) => t.id === templateIdToRestore);
+          if (!templateObj) {
+            sessionStorage.removeItem('gencert_session');
+            try { localStorage.removeItem('gencert_last_template_id'); } catch { /* ignore */ }
+          } else try {
             await handleTemplateSelectSafe(templateObj);
             // If we have a full field snapshot (same-tab refresh), apply it on top of DB fields.
             // Strip out blob URLs (stale after refresh) so the DB-loaded permanent URL is used instead.
@@ -766,6 +794,23 @@ export default function GenerateCertificatePage() {
   const handleDeleteTemplate = async (templateId: string) => {
     await api.templates.delete(templateId);
     setSavedTemplates(prev => prev.filter(t => t.id !== templateId));
+
+    // If this was the template saved in the design session, clear it so the
+    // generate page doesn't auto-restore a ghost template on next visit.
+    try {
+      const saved = sessionStorage.getItem('gencert_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.templateId === templateId) {
+          sessionStorage.removeItem('gencert_session');
+        }
+      }
+    } catch { /* ignore */ }
+    try {
+      if (localStorage.getItem('gencert_last_template_id') === templateId) {
+        localStorage.removeItem('gencert_last_template_id');
+      }
+    } catch { /* ignore */ }
   };
 
   const makeUniqueLabel = (base: string, currentFields: CertificateField[], excludeId?: string): string => {
@@ -1189,6 +1234,7 @@ export default function GenerateCertificatePage() {
 
   const handleDataImport = (data: ImportedData | null) => {
     setImportedData(data);
+    setAdditionalRows([]);
     if (data) {
       // In multi mode, auto-map for ALL templates' fields
       const allFields = templateMode === 'multi' && templateConfigs.length > 0
@@ -1196,6 +1242,16 @@ export default function GenerateCertificatePage() {
         : fields;
       const autoMappings = autoMapColumns(allFields, data.headers);
       setFieldMappings(autoMappings);
+
+      // Re-auto-map additional cert configs so their mappings stay current
+      if (additionalCertConfigs.length > 0) {
+        setAdditionalCertConfigs(
+          additionalCertConfigs.map(cfg => ({
+            ...cfg,
+            fieldMappings: autoMapColumns(cfg.fields, data.headers),
+          }))
+        );
+      }
     } else {
       setFieldMappings([]);
     }
@@ -1224,6 +1280,7 @@ export default function GenerateCertificatePage() {
         headers,
         rows,
         rowCount: importJob.total_rows ?? rows.length,
+        importId: importId,
       });
 
       if (importJob.mapping) {
@@ -1319,33 +1376,6 @@ export default function GenerateCertificatePage() {
     </div>
   );
 
-  // Position the panel in the upper-right of the canvas area on first show
-  const initPanelPos = () => {
-    if (panelReady) return;
-    const rect = canvasAreaRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPanelPos({ x: rect.width - 304, y: 16 }); // 288px panel + 16px margin
-      setPanelReady(true);
-    }
-  };
-
-  const handlePanelDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    panelDragOrigin.current = { mx: e.clientX, my: e.clientY, px: panelPos.x, py: panelPos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!panelDragOrigin.current) return;
-      const { mx, px } = panelDragOrigin.current;
-      setPanelPos(prev => ({ ...prev, x: px + ev.clientX - mx }));
-    };
-    const onUp = () => {
-      panelDragOrigin.current = null;
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  };
-
   const handleLeftPanelDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
     leftPanelDragOrigin.current = { mx: e.clientX, my: e.clientY, px: leftPanelPos.x, py: leftPanelPos.y };
@@ -1419,6 +1449,8 @@ export default function GenerateCertificatePage() {
                     onMappingChange={setFieldMappings}
                     onLoadImport={handleLoadImport}
                     onContinueToGenerate={handleContinueToGenerate}
+                    onAdditionalRows={setAdditionalRows}
+                    additionalRows={additionalRows}
                   />
                 );
               })()}
@@ -1454,6 +1486,7 @@ export default function GenerateCertificatePage() {
                       savedTemplates={savedTemplates}
                       additionalConfigs={multiAdditional}
                       onAdditionalConfigsChange={undefined}
+                      additionalRows={additionalRows}
                     />
                   );
                 }
@@ -1467,6 +1500,7 @@ export default function GenerateCertificatePage() {
                     savedTemplates={savedTemplates}
                     additionalConfigs={additionalCertConfigs}
                     onAdditionalConfigsChange={setAdditionalCertConfigs}
+                    additionalRows={additionalRows}
                   />
                 );
               })()}
@@ -1567,7 +1601,7 @@ export default function GenerateCertificatePage() {
             {!leftPanelVisible && (
               <div
                 className="absolute z-40 flex items-center gap-2.5 bg-card border border-border/50 rounded-xl shadow-md px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors select-none"
-                style={{ left: leftPanelPos.x, top: 16, width: 256 }}
+                style={{ left: leftPanelPos.x, top: 16, width: 288 }}
                 onClick={() => setLeftPanelVisible(true)}
                 title="Expand layers panel"
               >
@@ -1593,7 +1627,7 @@ export default function GenerateCertificatePage() {
             {/* ── Left floating panel ── */}
             {leftPanelVisible && (
               <div
-                className="absolute z-40 w-64 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
+                className="absolute z-40 w-72 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
                 style={{
                   left: leftPanelPos.x,
                   top: 16,
@@ -1726,54 +1760,42 @@ export default function GenerateCertificatePage() {
               )}
             </div>
 
-            {/* ── Right properties panel (draggable floating popout) ── */}
-            {selectedField && rightPanelVisible && (
-              <div
-                className="absolute z-40 w-72 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
-                style={{
-                  left: panelPos.x,
-                  top: 16,
-                  height: 'calc(100% - 32px)',
-                }}
-                ref={(el) => { if (el && !panelReady) initPanelPos(); }}
-              >
-                {/* Drag handle header */}
-                <div
-                  className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border/40 cursor-grab active:cursor-grabbing shrink-0 select-none"
-                  onMouseDown={handlePanelDragStart}
-                >
-                  <GripHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-xs font-medium text-foreground flex-1">Properties</span>
-                  <button
-                    onClick={() => setRightPanelVisible(false)}
-                    className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title="Minimise panel"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Scrollable content */}
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <RightPanel
-                    selectedField={selectedField}
-                    onFieldUpdate={(updates) => {
-                      if (selectedFieldId) handleUpdateField(selectedFieldId, updates);
-                    }}
-                    allFieldLabels={fields.filter(f => f.id !== selectedFieldId).map(f => f.label)}
-                    scale={canvasScale}
-                    onScaleChange={setCanvasScale}
-                    onFitToScreen={() => setFitTrigger(t => t + 1)}
-                    snapToGrid={snapToGrid}
-                    onSnapToggle={() => setSnapToGrid(v => !v)}
-                    pdfWidth={template?.pdfWidth}
-                    pdfHeight={template?.pdfHeight}
-                  />
-                </div>
-              </div>
-            )}
           </div>{/* end editing canvas */}
+
+          {/* ── Right properties panel — docked sidebar so canvas always gets correct width ── */}
+          {selectedField && rightPanelVisible && !previewOpen && (
+            <div className="w-80 shrink-0 flex flex-col bg-card border-l border-border/50 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border/40 shrink-0">
+                <Palette className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium text-foreground flex-1">Properties</span>
+                <button
+                  onClick={() => setRightPanelVisible(false)}
+                  className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors"
+                  title="Hide panel"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <RightPanel
+                  selectedField={selectedField}
+                  onFieldUpdate={(updates) => {
+                    if (selectedFieldId) handleUpdateField(selectedFieldId, updates);
+                  }}
+                  allFieldLabels={fields.filter(f => f.id !== selectedFieldId).map(f => f.label)}
+                  scale={canvasScale}
+                  onScaleChange={setCanvasScale}
+                  onFitToScreen={() => setFitTrigger(t => t + 1)}
+                  snapToGrid={snapToGrid}
+                  onSnapToggle={() => setSnapToGrid(v => !v)}
+                  pdfWidth={template?.pdfWidth}
+                  pdfHeight={template?.pdfHeight}
+                />
+              </div>
+            </div>
+          )}
 
           {/* ── Preview panel ── */}
           {previewOpen && (
@@ -1833,7 +1855,7 @@ export default function GenerateCertificatePage() {
 
       {/* ── Navigation guard dialog ── */}
       {showNavGuard && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
             <div>
               <h3 className="text-sm font-semibold">Go back to template selection?</h3>

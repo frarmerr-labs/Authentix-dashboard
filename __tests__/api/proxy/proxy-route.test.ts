@@ -59,14 +59,14 @@ afterEach(() => {
 // ── Path security: traversal ──────────────────────────────────────────────────
 
 describe("Proxy route — path traversal prevention", () => {
-  it("returns 400 for paths containing ..", async () => {
+  it("returns 403 for paths containing .. (normalized before handler, blocked by allowlist)", async () => {
     const res = await GET(makeRequest("/auth/../admin"));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
   });
 
-  it("returns 400 for URL-encoded traversal %2e%2e", async () => {
+  it("returns 403 for URL-encoded traversal %2e%2e (normalized before handler, blocked by allowlist)", async () => {
     const res = await GET(makeRequest("/auth/%2e%2e/admin"));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
   });
 
   it("returns 400 for double-slash paths", async () => {

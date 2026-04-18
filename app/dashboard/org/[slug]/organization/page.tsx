@@ -266,7 +266,7 @@ export default function OrganizationPage() {
 
         {/* Core Identity Card */}
         <Card className="border-border/50 shadow-sm bg-card/60 backdrop-blur-sm overflow-hidden">
-          <div className="h-24 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-border/50"></div>
+          <div className="h-24 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-b border-border/50"></div>
           <CardContent className="p-6 sm:p-8 pt-0 relative">
             {/* Logo Avatar - Pulled up into the header space */}
             <div className="flex flex-col items-center -mt-12 mb-8">

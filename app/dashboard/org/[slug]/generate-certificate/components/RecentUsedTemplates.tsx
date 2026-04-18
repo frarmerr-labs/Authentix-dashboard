@@ -139,7 +139,7 @@ export function RecentUsedTemplates({
             <Card
               key={`${template.template_id}-${template.isInProgress ? 'progress' : 'generated'}`}
               className={cn(
-                "relative flex-shrink-0 w-[180px] overflow-hidden cursor-pointer transition-all snap-start group",
+                "relative shrink-0 w-[180px] overflow-hidden cursor-pointer transition-all snap-start group",
                 "hover:ring-2 hover:ring-primary/50 hover:shadow-lg",
                 template.isInProgress && "ring-2 ring-amber-500/50"
               )}

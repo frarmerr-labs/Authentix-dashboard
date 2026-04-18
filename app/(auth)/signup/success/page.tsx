@@ -251,7 +251,7 @@ function SignupSuccessContent() {
 
             <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
               <div className="flex items-center gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Mail className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">

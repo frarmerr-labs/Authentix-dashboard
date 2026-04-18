@@ -99,6 +99,8 @@ export interface ImportedData {
   headers: string[]; // Column names
   rows: Record<string, any>[]; // Array of row objects
   rowCount: number;
+  /** Server-side import ID — set when the file was uploaded via the imports API */
+  importId?: string;
 }
 
 // Column mapping (Excel column -> Certificate field)

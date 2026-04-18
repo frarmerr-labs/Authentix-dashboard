@@ -248,6 +248,7 @@ function IntegrationForm({ initial, onSave, onCancel, saving }: IntegrationFormP
     setProvider(p);
     if (p === "google_workspace" || p === "microsoft_365" || p === "smtp") {
       const preset = SMTP_HOSTS[p];
+      if (!preset) return;
       if (preset.host) setSmtpHost(preset.host);
       setSmtpPort(preset.port);
       setSmtpSecure(preset.secure);
@@ -875,7 +876,7 @@ export default function EmailDeliverySettingsPage() {
 
       {/* Templates shortcut */}
       <Card className="overflow-hidden">
-        <div className="h-0.5 w-full bg-gradient-to-r from-[#3ECF8E] to-[#4f46e5]" />
+        <div className="h-0.5 w-full bg-linear-to-r from-[#3ECF8E] to-[#4f46e5]" />
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-[#3ECF8E]/10 shrink-0">

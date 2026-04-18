@@ -18,7 +18,7 @@ import { format, isValid } from 'date-fns';
 import {
   Download, Loader2, CheckCircle2, AlertCircle, Calendar, Plus, X,
   FileText, ChevronDown, ChevronUp, Settings2, Eye, ChevronLeft, ChevronRight,
-  ShieldCheck, BadgeCheck, Mail, Send, ExternalLink,
+  ShieldCheck, BadgeCheck, Mail, Send, ExternalLink, Bell, ArrowRight,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ExpiryDateSelector, type ExpiryType } from './ExpiryDateSelector';
@@ -26,6 +26,7 @@ import { CertificateTable, type GeneratedCertificate } from './CertificateTable'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useOrg } from '@/lib/org';
+import { useJobNotifications } from '@/lib/notifications/job-notifications';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,9 +53,39 @@ interface ExportSectionProps {
   /** Additional certificate configurations added by the user */
   additionalConfigs?: CertificateConfig[];
   onAdditionalConfigsChange?: (configs: CertificateConfig[]) => void;
+  /** Manual entries appended after file rows during generation */
+  additionalRows?: Record<string, unknown>[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Return a human-friendly time estimate for certificate generation.
+ *
+ * Architecture: cron fires every 1 min; each invocation processes one chunk
+ * of 50 certs per template, sequentially across configs via ContinueSignal.
+ *
+ * Tier thresholds are intentionally rounded up — we'd rather under-promise
+ * than over-promise. For very large batches we just say "processing in
+ * background" since the exact time depends on server load.
+ */
+function estimateGenerationTime(totalRows: number, configs: CertificateConfig[]): string {
+  if (totalRows === 0 || configs.length === 0) return '';
+  const CHUNK = 50;
+  const CRON_MIN = 1;
+  const numTemplates = configs.length;
+  const chunksPerTemplate = Math.ceil(totalRows / CHUNK);
+  const totalMin = chunksPerTemplate * numTemplates * CRON_MIN;
+
+  if (totalMin <= 1) return 'under 1 minute';
+  if (totalMin <= 5) return 'under 5 minutes';
+  if (totalMin <= 15) return 'under 15 minutes';
+  if (totalMin <= 30) return 'under 30 minutes';
+  if (totalMin <= 60) return 'under 1 hour';
+  if (totalMin <= 120) return '1 – 2 hours';
+  if (totalMin <= 240) return '2 – 4 hours';
+  return 'several hours';
+}
 
 function getExportFormatDescription(template: CertificateTemplate | null): string {
   if (!template) return 'ZIP';
@@ -909,15 +940,18 @@ export function ExportSection({
   savedTemplates = [],
   additionalConfigs = [],
   onAdditionalConfigsChange,
+  additionalRows,
 }: ExportSectionProps) {
   const { orgPath } = useOrg();
+  const { addJob } = useJobNotifications();
 
-  // 'hidden' = not generating, 'generating' = in progress, 'success' = done animation
-  const [overlayState, setOverlayState] = useState<'hidden' | 'generating' | 'success'>('hidden');
+  // 'hidden' = idle, 'generating' = submitting, 'queued' = job sent to background, 'success' = done
+  const [overlayState, setOverlayState] = useState<'hidden' | 'generating' | 'queued' | 'success'>('hidden');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [simulatedCount, setSimulatedCount] = useState(0);
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating' | 'completed' | 'error'>('idle');
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -968,7 +1002,7 @@ export function ExportSection({
       setGenerationStatus('completed');
       setSendModalOpen(true);
     } catch { /* storage unavailable or malformed */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   // Template picker for adding extra configs
@@ -980,7 +1014,11 @@ export function ExportSection({
   const mappableFields = fields.filter(f => f.type !== 'qr_code' && f.type !== 'custom_text' && f.type !== 'image');
   // Allow generation even when there are 0 mappable fields (e.g. image/QR-only templates)
   const allMappableFieldsMapped = mappableFields.every(f => fieldMappings.some(m => m.fieldId === f.id));
-  const canGenerate = !!(template && importedData && template.id && allMappableFieldsMapped);
+  // Also verify mapped column names actually exist in the uploaded headers (catches stale mappings)
+  const allMappedColumnsValid = !importedData || fieldMappings
+    .filter(m => m.columnName)
+    .every(m => importedData.headers.includes(m.columnName));
+  const canGenerate = !!(template && importedData && template.id && allMappableFieldsMapped && allMappedColumnsValid);
 
   // All configs including the primary one (for unified rendering)
   const allConfigs: CertificateConfig[] = [
@@ -993,6 +1031,10 @@ export function ExportSection({
     },
     ...additionalConfigs,
   ];
+
+  const estimatedTime = canGenerate && importedData
+    ? estimateGenerationTime(importedData.rowCount, allConfigs.filter(c => c.template?.id))
+    : '';
 
   // ── Add a template as extra config ────────────────────────────────────────
   const handleAddTemplate = async (savedTemplate: any) => {
@@ -1064,28 +1106,28 @@ export function ExportSection({
   };
 
   // ── Preview first row ────────────────────────────────────────────────────────
+  // Uses the lightweight /preview-render endpoint: no DB writes, no storage uploads.
+  // Returns data URLs directly — typical round-trip ~2s vs ~10s for full generation.
   const handlePreviewFirstRow = async () => {
     if (!template?.id || !importedData?.rows.length) return;
     setIsPreviewing(true);
     try {
-      const options: any = { includeQR: hasQrCodeField, expiry_type: expiryType };
-      if (expiryType === 'custom' && customExpiryDate) options.custom_expiry_date = new Date(customExpiryDate).toISOString();
-
-      // Preview first row across all configs (primary + additional)
+      const rowData = importedData.rows[0]!;
       const configsToPreview = allConfigs.filter(c => c.template?.id);
-      const urls: string[] = [];
+      const dataUrls: string[] = [];
+
       for (const cfg of configsToPreview) {
-        const result = await api.certificates.generate({
+        const result = await api.certificates.previewRender({
           template_id: cfg.template.id!,
-          data: [importedData.rows[0]!],
+          row_data: rowData,
           field_mappings: cfg.fieldMappings,
-          options,
+          options: { includeQR: hasQrCodeField },
         });
-        const url = result.certificates?.[0]?.preview_url ?? result.certificates?.[0]?.download_url;
-        if (url) urls.push(url);
+        if (result.data_url) dataUrls.push(result.data_url);
       }
-      if (urls.length > 0) {
-        setPreviewUrls(urls);
+
+      if (dataUrls.length > 0) {
+        setPreviewUrls(dataUrls);
         setPreviewIndex(0);
         setPreviewImageLoaded(false);
         setPreviewModalOpen(true);
@@ -1103,6 +1145,7 @@ export function ExportSection({
 
     setOverlayState('generating');
     setGenerationStatus('generating');
+    setGenerationError(null);
     setProgress(0);
     setSimulatedCount(0);
     setProgressLabel('');
@@ -1145,98 +1188,55 @@ export function ExportSection({
       setSimulatedCount(Math.max(1, Math.round(frac * totalRows)));
     }, tickMs);
 
-    let firstJobId: string | null = null;
-    let lastZipUrl: string | null = null;
-
     try {
       // Submit — returns 202 immediately with job_id
-      const { job_id } = await api.certificates.batchGenerate({
-        data: importedData.rows,
-        options,
-        configs: configsToRun.map(cfg => ({
-          template_id: cfg.template.id!,
-          field_mappings: cfg.fieldMappings,
-          label: cfg.label,
-        })),
-      });
+      // Prefer server-side import_id to keep the request body small for large batches
+      const batchParams = importedData.importId
+        ? {
+            import_id: importedData.importId,
+            ...(additionalRows && additionalRows.length > 0 ? { additional_rows: additionalRows } : {}),
+            options,
+            configs: configsToRun.map(cfg => ({
+              template_id: cfg.template.id!,
+              field_mappings: cfg.fieldMappings,
+              label: cfg.label,
+            })),
+          }
+        : {
+            data: importedData.rows,
+            options,
+            configs: configsToRun.map(cfg => ({
+              template_id: cfg.template.id!,
+              field_mappings: cfg.fieldMappings,
+              label: cfg.label,
+            })),
+          };
 
-      // Poll until completed or failed (max 10 minutes)
-      const POLL_INTERVAL_MS = 2000;
-      const MAX_POLLS = 300; // 10 min
-      let polls = 0;
-      let jobResult: Awaited<ReturnType<typeof api.certificates.pollJobStatus>> | null = null;
+      const { job_id } = await api.certificates.batchGenerate(batchParams);
 
-      while (polls < MAX_POLLS) {
-        if (!isMountedRef.current) break;
-        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        polls++;
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
 
-        const status = await api.certificates.pollJobStatus(job_id);
-        if (status.status === 'completed' || status.status === 'failed') {
-          jobResult = status;
-          break;
-        }
-      }
+      // Hand off to the global notification context — user can now navigate away
+      const jobLabel =
+        configsToRun.length === 1
+          ? `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`
+          : `${totalRows} × ${configsToRun.length} template${configsToRun.length !== 1 ? 's' : ''}`;
+      addJob(job_id, jobLabel);
+      setGenerationJobId(job_id);
 
-      if (jobResult?.status === 'completed' && jobResult.result?.results) {
-        firstJobId = jobResult.result.first_job_id ?? null;
-        lastZipUrl = jobResult.result.last_download_url ?? null;
-
-        for (const r of jobResult.result.results) {
-          const matchingCfg = configsToRun.find(c => c.label === r.label);
-          const savedTpl = matchingCfg
-            ? savedTemplates.find((t: any) => t.id === matchingCfg.template.id)
-            : null;
-          const certs: GeneratedCertificate[] = r.certificates.map((cert: any) => ({
-            id: cert.id,
-            certificate_number: cert.certificate_number,
-            recipient_name: cert.recipient_name,
-            recipient_email: cert.recipient_email || null,
-            issued_at: cert.issued_at,
-            expires_at: cert.expires_at || null,
-            download_url: cert.download_url || null,
-            preview_url: cert.preview_url || null,
-            category: savedTpl?.certificate_category || null,
-            subcategory: savedTpl?.certificate_subcategory || null,
-          }));
-          allCerts.push(...certs);
-          summary.push({ label: r.label, count: certs.length });
-        }
-      } else {
-        // Timed out or failed
-        for (const cfg of configsToRun) {
-          summary.push({ label: cfg.label, count: 0 });
-        }
-      }
+      // Show the "running in background" overlay so the user knows to check the bell
+      setOverlayState('queued');
     } catch (err: any) {
-      console.error('Batch generation failed:', err);
-      for (const cfg of configsToRun) {
-        summary.push({ label: cfg.label, count: 0 });
-      }
-    }
-
-    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
-
-    if (!isMountedRef.current) return;
-
-    // Commit results and snap bar to 100%
-    setProgress(100);
-    setSimulatedCount(totalRows);
-    setProgressLabel('');
-    setGeneratedCertificates(allCerts);
-    setTotalGenerated(allCerts.length);
-    setGenerationSummary(summary);
-    setGenerationJobId(firstJobId);
-    setDownloadUrl(lastZipUrl);
-    setGenerationStatus(allCerts.length > 0 ? 'completed' : 'error');
-
-    // Show success animation, then dismiss overlay.
-    // Direct setTimeout — no useEffect, no state-change dependency, always fires.
-    setOverlayState('success');
-    setTimeout(() => {
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       if (!isMountedRef.current) return;
-      setOverlayState('hidden');
-    }, 2500);
+      // Silently queue a failed job notification — never show a technical error to the user
+      const jobLabel =
+        configsToRun.length === 1
+          ? `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`
+          : `${totalRows} × ${configsToRun.length} templates`;
+      addJob('submit-failed', jobLabel + ' (submit failed)');
+      setOverlayState('queued');
+    }
   };
 
   const handleExpiryChange = (type: ExpiryType, customDate?: string) => {
@@ -1271,10 +1271,25 @@ export function ExportSection({
           @keyframes genFadeSlide { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         `}</style>
 
-        {/* Bottom notice */}
+        {/* Bottom CTA — while generating animation plays */}
         {overlayState === 'generating' && (
-          <div className="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none">
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Please keep this page open until generation completes</p>
+          <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3">
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Submitting your job…</p>
+            <button
+              onClick={() => {
+                if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+                setOverlayState('hidden');
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                color: 'rgba(255,255,255,0.55)',
+              }}
+            >
+              <Bell style={{ width: 14, height: 14 }} />
+              Continue in background
+            </button>
           </div>
         )}
 
@@ -1321,6 +1336,44 @@ export function ExportSection({
                   {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
                 </p>
               </div>
+            </div>
+          ) : overlayState === 'queued' ? (
+            /* ── Running in background ── */
+            <div className="flex flex-col items-center gap-8" style={{ animation: 'genFadeSlide 0.4s ease-out both' }}>
+              {/* Icon */}
+              <div className="relative flex items-center justify-center" style={{ width: 160, height: 160 }}>
+                <div className="absolute w-36 h-36 rounded-full" style={{ border: '2px solid rgba(62,207,142,0.25)', animation: 'genRipple 2s ease-out infinite' }} />
+                <div className="absolute w-36 h-36 rounded-full" style={{ border: '1.5px solid rgba(62,207,142,0.15)', animation: 'genRipple 2s ease-out 0.6s infinite' }} />
+                <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{
+                  background: 'rgba(62,207,142,0.1)',
+                  border: '2px solid rgba(62,207,142,0.5)',
+                  boxShadow: '0 0 24px rgba(62,207,142,0.2)',
+                }}>
+                  <Bell style={{ width: 36, height: 36, color: '#3ECF8E' }} />
+                </div>
+              </div>
+
+              {/* Text */}
+              <div className="text-center space-y-2">
+                <p className="text-3xl font-bold">Generating in background</p>
+                <p className="text-base text-muted-foreground max-w-sm">
+                  You&apos;re free to keep working. We&apos;ll notify you via the bell when your certificates are ready.
+                </p>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={() => setOverlayState('hidden')}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+                style={{
+                  background: 'rgba(62,207,142,0.15)',
+                  border: '1.5px solid rgba(62,207,142,0.5)',
+                  color: '#3ECF8E',
+                }}
+              >
+                Continue Working
+                <ArrowRight style={{ width: 16, height: 16 }} />
+              </button>
             </div>
           ) : (
             /* ── Generating animation ── */
@@ -1628,7 +1681,7 @@ export function ExportSection({
           {unmappedFields.length > 0 && (
             <Card className="p-3 bg-destructive/5 border-destructive/30">
               <div className="flex gap-2">
-                <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
                 <div className="text-xs">
                   <p className="font-medium text-destructive">Unmapped Fields</p>
                   <p className="text-destructive/80 mt-1">
@@ -1680,6 +1733,24 @@ export function ExportSection({
             </Alert>
           )}
 
+          {/* Informational banner when a prior job is still running and data has changed */}
+          {generationJobId && overlayState === 'hidden' && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200">
+              <Bell className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
+              <span>A generation job is still processing. Starting a new one will not cancel it — check the notification bell for progress.</span>
+            </div>
+          )}
+
+          {/* Estimated time */}
+          {estimatedTime && overlayState === 'hidden' && (
+            <p className="text-xs text-muted-foreground text-center">
+              Estimated time: <span className="font-medium text-foreground">{estimatedTime}</span>
+              {importedData && importedData.rowCount > 50 && (
+                <span className="text-muted-foreground/60"> · runs in background</span>
+              )}
+            </p>
+          )}
+
           {/* Generate + Preview row */}
           <div className="flex gap-2">
             {canGenerate && overlayState === 'hidden' && (
@@ -1717,6 +1788,23 @@ export function ExportSection({
             </Button>
           </div>
         </>
+      )}
+
+      {/* ── Generation error ── */}
+      {generationStatus === 'error' && generationError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-destructive">Generation failed</p>
+            <p className="text-xs text-destructive/80 mt-0.5">{generationError}</p>
+          </div>
+          <button
+            className="text-destructive/60 hover:text-destructive transition-colors text-xs underline shrink-0"
+            onClick={() => { setGenerationStatus('idle'); setGenerationError(null); }}
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* ── Post-generation actions ── */}

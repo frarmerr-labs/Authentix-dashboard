@@ -39,7 +39,7 @@ export type GenerateCertificateAction =
   | { type: "SET_PDF_FILE"; file: File | null }
   | { type: "SET_TEMPLATE_VERSION"; versionId: string | null }
   | { type: "REMOVE_SAVED_TEMPLATE"; templateId: string }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 
   // Multi-template
   | { type: "SET_TEMPLATE_MODE"; mode: "single" | "multi" }

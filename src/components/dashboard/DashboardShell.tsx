@@ -15,7 +15,6 @@ import {
   Moon,
   Sun,
   Monitor,
-  Bell,
   Building2,
   Sparkles,
   CreditCard,
@@ -34,6 +33,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { OrgProvider } from "@/lib/org";
+import { NotificationPanel } from "@/components/dashboard/NotificationPanel";
+import { JobNotificationProvider } from "@/lib/notifications/job-notifications";
 
 // ============================================================================
 // Types
@@ -124,7 +125,7 @@ function SidebarNav({ slug, pathname, expanded }: SidebarNavProps) {
             )}
             title={!expanded ? item.name : undefined}
           >
-            <Icon className="h-[18px] w-[18px] flex-shrink-0" />
+            <Icon className="h-4.5 w-4.5 shrink-0" />
             {expanded && <span className="whitespace-nowrap">{item.name}</span>}
           </Link>
         );
@@ -154,7 +155,7 @@ function ThemeButton({ theme, onCycle, expanded }: ThemeButtonProps) {
       )}
       aria-label={`Switch theme (currently ${label})`}
     >
-      <Icon className="h-[18px] w-[18px]" />
+      <Icon className="h-4.5 w-4.5" />
       {expanded && <span>{label}</span>}
     </button>
   );
@@ -313,6 +314,7 @@ export function DashboardShell({
   }, [router]);
 
   return (
+    <JobNotificationProvider>
     <OrgProvider slug={slug}>
       <div className="min-h-screen bg-background">
         <OnboardingModal />
@@ -320,7 +322,7 @@ export function DashboardShell({
         {/* Sidebar */}
         <aside
           className={cn(
-            "fixed top-0 left-0 z-[60] h-screen bg-card border-r rounded-tr-2xl rounded-br-2xl transition-all duration-300",
+            "fixed top-0 left-0 z-60 h-screen bg-card border-r rounded-tr-2xl rounded-br-2xl transition-all duration-300",
             sidebarExpanded ? "w-52" : "w-14"
           )}
           onMouseEnter={() => setSidebarExpanded(true)}
@@ -360,20 +362,7 @@ export function DashboardShell({
             {/* Bottom actions */}
             <div className="p-2 border-t space-y-0.5">
               {/* Notifications */}
-              <button
-                className={cn(
-                  "relative flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium w-full",
-                  sidebarExpanded ? "px-3" : "justify-center",
-                  "text-muted-foreground hover:text-primary"
-                )}
-                aria-label="Notifications"
-              >
-                <span className="relative shrink-0">
-                  <Bell className="h-[18px] w-[18px]" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-destructive rounded-full" />
-                </span>
-                {sidebarExpanded && <span>Notifications</span>}
-              </button>
+              <NotificationPanel expanded={sidebarExpanded} />
 
               {/* User profile */}
               <UserMenu
@@ -400,7 +389,7 @@ export function DashboardShell({
                   "text-muted-foreground hover:text-destructive"
                 )}
               >
-                <LogOut className="h-[18px] w-[18px]" />
+                <LogOut className="h-4.5 w-4.5" />
                 {sidebarExpanded && <span>Logout</span>}
               </button>
             </div>
@@ -415,5 +404,6 @@ export function DashboardShell({
         </div>
       </div>
     </OrgProvider>
+    </JobNotificationProvider>
   );
 }

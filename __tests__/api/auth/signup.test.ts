@@ -16,11 +16,12 @@ vi.mock("@/lib/api/server", () => ({
     e instanceof Error ? e.message : "An unexpected error occurred"
   ),
   ServerApiError: class ServerApiError extends Error {
-    constructor(
-      public status: number,
-      message: string
-    ) {
+    code: string;
+    status: number;
+    constructor(code: string, message: string, status = 500) {
       super(message);
+      this.code = code;
+      this.status = status;
     }
   },
 }));
@@ -130,7 +131,7 @@ describe("POST /api/auth/signup — success", () => {
 describe("POST /api/auth/signup — error handling", () => {
   it("returns 409 when backend reports a duplicate account", async () => {
     const { ServerApiError } = await import("@/lib/api/server");
-    mockBackendRequest.mockRejectedValue(new ServerApiError(409, "Email already registered"));
+    mockBackendRequest.mockRejectedValue(new ServerApiError('CONFLICT', "Email already registered", 409));
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(409);
   });

@@ -320,8 +320,9 @@ export function markdownToEmailHtml(md: string, textColor = "#374151"): string {
     return `<p style="margin:0 0 12px;line-height:1.75;font-size:14px;color:${textColor};">${chunk.replace(/\n/g, "<br/>")}</p>`;
   }).filter(Boolean).join("\n");
 
-  // 11. Restore {{variables}}
-  out = out.replace(/\x00VAR(\d+)\x00/g, (_, i) => vars[Number(i)] ?? "");
+  // 11. Restore {{variables}} — null bytes used intentionally as safe delimiters
+  // eslint-disable-next-line no-control-regex
+  out = out.replace(/\u0000VAR(\d+)\u0000/g, (_, i) => vars[Number(i)] ?? "");
 
   return out;
 }

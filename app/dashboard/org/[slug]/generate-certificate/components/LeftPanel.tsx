@@ -1,17 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { CertificateField, CertificateTemplate, ImportedData, FieldMapping, FIELD_TYPE_CONFIG } from '@/lib/types/certificate';
-import { Button } from '@/components/ui/button';
+import { CertificateField, CertificateTemplate, ImportedData, FieldMapping } from '@/lib/types/certificate';
 import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 import { TemplateUploader } from './TemplateUploader';
 import { FieldTypeSelector } from './FieldTypeSelector';
 import { FieldLayersList } from './FieldLayersList';
 import { DataImporter } from './DataImporter';
 import { ExportSection } from './ExportSection';
-import { Upload, Layers, Database, Download } from 'lucide-react';
+import { Upload, Layers, Database, Download, CheckCircle2, ImageIcon, FileText, Ruler } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface LeftPanelProps {
   template: CertificateTemplate | null;
@@ -29,6 +29,54 @@ interface LeftPanelProps {
   onMappingChange: (mappings: FieldMapping[]) => void;
 }
 
+// ── Step config ───────────────────────────────────────────────────────────────
+
+const STEPS = [
+  {
+    id: 'upload',
+    icon: Upload,
+    label: 'Template',
+    short: '1',
+  },
+  {
+    id: 'fields',
+    icon: Layers,
+    label: 'Fields',
+    short: '2',
+  },
+  {
+    id: 'data',
+    icon: Database,
+    label: 'Data',
+    short: '3',
+  },
+  {
+    id: 'export',
+    icon: Download,
+    label: 'Export',
+    short: '4',
+  },
+] as const;
+
+type StepId = (typeof STEPS)[number]['id'];
+
+function isStepEnabled(step: StepId, template: CertificateTemplate | null, fields: CertificateField[], importedData: ImportedData | null): boolean {
+  if (step === 'upload') return true;
+  if (step === 'fields') return !!template;
+  if (step === 'data') return !!template && fields.length > 0;
+  if (step === 'export') return !!importedData;
+  return false;
+}
+
+function isStepComplete(step: StepId, template: CertificateTemplate | null, fields: CertificateField[], importedData: ImportedData | null): boolean {
+  if (step === 'upload') return !!template;
+  if (step === 'fields') return fields.length > 0;
+  if (step === 'data') return !!importedData;
+  return false;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function LeftPanel({
   template,
   fields,
@@ -44,121 +92,179 @@ export function LeftPanel({
   fieldMappings,
   onMappingChange,
 }: LeftPanelProps) {
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState<StepId>('upload');
 
   return (
     <div className="h-full flex flex-col">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-4 m-4 mb-0">
-          <TabsTrigger value="upload" className="flex items-center gap-1.5">
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Upload</span>
-          </TabsTrigger>
-          <TabsTrigger value="fields" disabled={!template} className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Fields</span>
-          </TabsTrigger>
-          <TabsTrigger value="data" disabled={!template || fields.length === 0} className="flex items-center gap-1.5">
-            <Database className="w-4 h-4" />
-            <span className="hidden sm:inline">Data</span>
-          </TabsTrigger>
-          <TabsTrigger value="export" disabled={!importedData} className="flex items-center gap-1.5">
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export</span>
-          </TabsTrigger>
-        </TabsList>
 
-        <div className="flex-1 overflow-y-auto">
-          {/* Upload Tab */}
-          <TabsContent value="upload" className="p-4 space-y-4 mt-0">
-            <div>
-              <h3 className="font-semibold mb-2">Certificate Template</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Upload your PDF certificate template to begin customization
-              </p>
-              <TemplateUploader onUpload={onPdfUpload} />
-            </div>
+      {/* ── Step tabs ── */}
+      <div className="flex items-stretch border-b border-border/50 shrink-0">
+        {STEPS.map((step) => {
+          const enabled = isStepEnabled(step.id, template, fields, importedData);
+          const complete = isStepComplete(step.id, template, fields, importedData);
+          const active = activeTab === step.id;
+          const Icon = step.icon;
+
+          return (
+            <button
+              key={step.id}
+              disabled={!enabled}
+              onClick={() => setActiveTab(step.id)}
+              className={cn(
+                'flex-1 flex flex-col items-center gap-1 py-2.5 px-1 text-center transition-all relative',
+                active
+                  ? 'text-primary bg-primary/5'
+                  : enabled
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                  : 'text-muted-foreground/30 cursor-not-allowed',
+              )}
+            >
+              {/* Active underline */}
+              {active && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-primary rounded-full" />
+              )}
+
+              {/* Icon / complete check */}
+              <span className="relative">
+                {complete && !active ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <Icon className="w-4 h-4" />
+                )}
+              </span>
+
+              {/* Label */}
+              <span className="text-[10px] font-semibold leading-none">{step.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Content area ── */}
+      <div className="flex-1 overflow-y-auto">
+
+        {/* Upload tab */}
+        {activeTab === 'upload' && (
+          <div className="p-4 space-y-4">
+            <TemplateUploader onUpload={onPdfUpload} />
 
             {template && (
-              <Card className="p-4 bg-muted/50">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Template:</span>
-                    <span className="font-medium">{template.templateName}</span>
+              <Card className="overflow-hidden">
+                <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+                  {template.fileType === 'pdf' ? (
+                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                  ) : (
+                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                  )}
+                  <span className="text-xs font-semibold truncate">{template.templateName}</span>
+                </div>
+                <div className="px-3 py-2 space-y-1.5 bg-muted/20">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Ruler className="w-3 h-3" />
+                      Dimensions
+                    </span>
+                    <span className="font-mono text-[11px]">
+                      {template.pdfWidth} × {template.pdfHeight} px
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Dimensions:</span>
-                    <span className="font-medium">
-                      {template.pdfWidth} × {template.pdfHeight}px
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Format</span>
+                    <span className="uppercase text-[10px] font-bold tracking-widest text-muted-foreground">
+                      {template.fileType}
                     </span>
                   </div>
                 </div>
               </Card>
             )}
-          </TabsContent>
 
-          {/* Fields Tab */}
-          <TabsContent value="fields" className="p-4 space-y-4 mt-0">
+            {template && (
+              <button
+                onClick={() => setActiveTab('fields')}
+                className="w-full py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Add Fields →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Fields tab */}
+        {activeTab === 'fields' && (
+          <div className="p-4 space-y-4">
             <div>
-              <h3 className="font-semibold mb-2">Add Fields</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Click to add fields to your certificate
+              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2">
+                Add Field
               </p>
-              <FieldTypeSelector onAddField={onAddField} pdfWidth={template?.pdfWidth || 0} pdfHeight={template?.pdfHeight || 0} />
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="font-semibold mb-2">Field Layers</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                {fields.length === 0 ? 'No fields added yet' : `${fields.length} field(s)`}
-              </p>
-              <FieldLayersList
-                fields={fields}
-                selectedFieldId={selectedFieldId}
-                hiddenFields={hiddenFields}
-                onFieldSelect={onFieldSelect}
-                onFieldDelete={onFieldDelete}
-                onToggleVisibility={onToggleVisibility}
+              <FieldTypeSelector
+                onAddField={onAddField}
+                pdfWidth={template?.pdfWidth || 0}
+                pdfHeight={template?.pdfHeight || 0}
               />
             </div>
-          </TabsContent>
 
-          {/* Data Tab */}
-          <TabsContent value="data" className="p-4 space-y-4 mt-0">
-            <div>
-              <h3 className="font-semibold mb-2">Import Recipients Data</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Upload an Excel or CSV file containing recipient information
-              </p>
-              <DataImporter
-                fields={fields}
-                importedData={importedData}
-                fieldMappings={fieldMappings}
-                onDataImport={onDataImport}
-                onMappingChange={onMappingChange}
-              />
-            </div>
-          </TabsContent>
+            {fields.length > 0 && (
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center justify-between">
+                  <span>Layers</span>
+                  <span className="normal-case font-medium text-muted-foreground/50">{fields.length}</span>
+                </p>
+                <FieldLayersList
+                  fields={fields}
+                  selectedFieldId={selectedFieldId}
+                  hiddenFields={hiddenFields}
+                  onFieldSelect={onFieldSelect}
+                  onFieldDelete={onFieldDelete}
+                  onToggleVisibility={onToggleVisibility}
+                />
+              </div>
+            )}
 
-          {/* Export Tab */}
-          <TabsContent value="export" className="p-4 space-y-4 mt-0">
-            <div>
-              <h3 className="font-semibold mb-2">Generate & Export</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Generate certificates and download as ZIP file
-              </p>
-              <ExportSection
-                template={template}
-                fields={fields}
-                importedData={importedData}
-                fieldMappings={fieldMappings}
-              />
-            </div>
-          </TabsContent>
-        </div>
-      </Tabs>
+            {fields.length > 0 && (
+              <button
+                onClick={() => setActiveTab('data')}
+                className="w-full py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Import Data →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Data tab */}
+        {activeTab === 'data' && (
+          <div className="p-4">
+            <DataImporter
+              fields={fields}
+              importedData={importedData}
+              fieldMappings={fieldMappings}
+              onDataImport={onDataImport}
+              onMappingChange={onMappingChange}
+            />
+            {importedData && (
+              <button
+                onClick={() => setActiveTab('export')}
+                className="mt-4 w-full py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Generate →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Export tab */}
+        {activeTab === 'export' && (
+          <div className="p-4">
+            <ExportSection
+              template={template}
+              fields={fields}
+              importedData={importedData}
+              fieldMappings={fieldMappings}
+            />
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

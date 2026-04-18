@@ -428,13 +428,15 @@ export default function TemplatesPage() {
               Manage your certificate templates
             </p>
           </div>
-          <Button
-            className="h-9 px-4 gap-2"
-            onClick={() => setUploadDialogOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Upload Certificate Template
-          </Button>
+          {templates.length > 0 && (
+            <Button
+              className="h-9 px-4 gap-2"
+              onClick={() => setUploadDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Upload Certificate Template
+            </Button>
+          )}
         </div>
 
         {templates.length === 0 ? (
@@ -471,7 +473,7 @@ export default function TemplatesPage() {
             return (
               <Card
                 key={templateId}
-                className="group overflow-hidden hover:shadow-md transition-all duration-300 border border-border bg-card/60 p-0"
+                className="group overflow-hidden hover:shadow-md transition-all duration-300 border border-border bg-card/60 p-0 flex flex-col"
               >
                 {/* Preview / Icon - No gaps from top, left, right */}
                 <div className="aspect-[4/3] bg-muted relative overflow-hidden">
@@ -637,13 +639,13 @@ export default function TemplatesPage() {
                 </div>
                 
                 {/* Content */}
-                <CardContent className="p-4">
-                  <div className="space-y-3">
-                    <div>
+                <CardContent className="p-4 flex flex-col flex-1">
+                  <div className="flex flex-col flex-1">
+                    <div className="flex-1">
                       <h3 className="font-semibold truncate mb-1">
                         {template.title || template.name || "Untitled Template"}
                       </h3>
-                      <div className="flex flex-wrap gap-1 mt-1.5">
+                      <div className="flex flex-wrap gap-1 mt-1.5 min-h-[1.625rem]">
                         {/* Check for category name in multiple possible locations (prioritize category_name from backend) */}
                         {(() => {
                           const categoryName = 

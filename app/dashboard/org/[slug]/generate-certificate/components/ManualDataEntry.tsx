@@ -425,7 +425,7 @@ export function ManualDataEntry({ fields, onDataSubmit, onDataChange, initialDat
       {/* Validation Message */}
       {rows.length > 0 && !allRowsValid && (
         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <AlertCircle className="w-4 h-4 shrink-0" />
           <span>Some rows are missing required fields — please fill in the Email field for all recipients.</span>
         </div>
       )}

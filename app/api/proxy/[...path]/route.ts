@@ -193,7 +193,7 @@ async function proxyRequest(
       response = await fetch(backendUrl, fetchOptions);
     } catch (fetchError) {
       if (checkConnectionRefused(fetchError) && fallbackUrl) {
-        reqLog.info("Proxy: local backend unavailable, switching to Vercel backend");
+        reqLog.info("Proxy: primary backend unavailable, trying fallback URL");
         response = await fetch(fallbackUrl, fetchOptions);
       } else {
         throw fetchError;

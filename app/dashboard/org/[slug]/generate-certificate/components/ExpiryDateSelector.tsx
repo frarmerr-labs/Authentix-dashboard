@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { format, isValid } from 'date-fns';
-import { Calendar, Clock, Infinity, AlertCircle, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, Infinity as InfinityIcon, AlertCircle, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type ExpiryType = 'day' | 'week' | 'month' | 'year' | '5_years' | 'never' | 'custom';
@@ -45,18 +45,21 @@ export function ExpiryDateSelector({
         return new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toLocaleDateString();
       case 'week':
         return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString();
-      case 'month':
+      case 'month': {
         const monthDate = new Date(baseDate);
         monthDate.setMonth(monthDate.getMonth() + 1);
         return monthDate.toLocaleDateString();
-      case 'year':
+      }
+      case 'year': {
         const yearDate = new Date(baseDate);
         yearDate.setFullYear(yearDate.getFullYear() + 1);
         return yearDate.toLocaleDateString();
-      case '5_years':
+      }
+      case '5_years': {
         const fiveYearDate = new Date(baseDate);
         fiveYearDate.setFullYear(fiveYearDate.getFullYear() + 5);
         return fiveYearDate.toLocaleDateString();
+      }
       case 'never':
         return null;
       case 'custom':
@@ -112,7 +115,7 @@ export function ExpiryDateSelector({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   {option.value === 'never' ? (
-                    <Infinity className="w-3.5 h-3.5 text-muted-foreground" />
+                    <InfinityIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   ) : (
                     <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                   )}
@@ -168,7 +171,7 @@ export function ExpiryDateSelector({
 
         {value === 'never' && (
           <div className="flex items-center gap-2 text-xs pt-2 border-t">
-            <Infinity className="w-3.5 h-3.5 text-green-600" />
+            <InfinityIcon className="w-3.5 h-3.5 text-green-600" />
             <span className="text-green-600 font-medium">Certificates will never expire</span>
           </div>
         )}

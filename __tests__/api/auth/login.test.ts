@@ -16,11 +16,12 @@ vi.mock("@/lib/api/server", () => ({
     e instanceof Error ? e.message : "An unexpected error occurred"
   ),
   ServerApiError: class ServerApiError extends Error {
-    constructor(
-      public status: number,
-      message: string
-    ) {
+    code: string;
+    status: number;
+    constructor(code: string, message: string, status = 500) {
       super(message);
+      this.code = code;
+      this.status = status;
     }
   },
 }));
@@ -122,7 +123,7 @@ describe("POST /api/auth/login — success", () => {
 describe("POST /api/auth/login — error handling", () => {
   it("returns 401 when backend throws a ServerApiError with status 401", async () => {
     const { ServerApiError } = await import("@/lib/api/server");
-    mockBackendRequest.mockRejectedValue(new ServerApiError(401, "Invalid credentials"));
+    mockBackendRequest.mockRejectedValue(new ServerApiError('UNAUTHORIZED', "Invalid credentials", 401));
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(401);
     expect((await res.json()).success).toBe(false);

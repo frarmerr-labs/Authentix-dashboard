@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const parsed = SignupRequestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: parsed.error.errors[0].message },
+        { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid request' },
         { status: 400 }
       );
     }

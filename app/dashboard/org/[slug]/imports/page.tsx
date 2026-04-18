@@ -218,7 +218,7 @@ export default function ImportsPage() {
               >
                 <div className="flex items-start gap-4">
                   {/* File Icon */}
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                     <FileSpreadsheet className="h-6 w-6 text-primary" />
                   </div>
 
@@ -247,7 +247,7 @@ export default function ImportsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         {getStatusBadge(importItem.status)}
 
                         {/* Actions Dropdown */}
