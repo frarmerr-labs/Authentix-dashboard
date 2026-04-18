@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const AUTH_COOKIE = "auth_access_token";
 
-const PUBLIC_ROUTES = ["/", "/login", "/signup", "/signup/success", "/forgot-password", "/verify"];
+const PUBLIC_ROUTES = ["/", "/login", "/signup", "/signup/success", "/forgot-password", "/reset-password", "/verify"];
 const API_ROUTES = ["/api/"];
 const STATIC_ROUTES = ["/_next/", "/favicon.ico", "/images/", "/fonts/"];
 
@@ -26,7 +26,7 @@ function buildCSP(nonce: string): string {
   const evalDirective = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'unsafe-inline'${evalDirective}`,
+    `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://vercel.live${evalDirective}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data: https://*.supabase.co",
     "font-src 'self' data:",

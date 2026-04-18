@@ -53,6 +53,7 @@ function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
   const isVerified = searchParams.get("verified") === "1";
+  const isPasswordReset = searchParams.get("reset") === "1";
   const prefilledEmail = searchParams.get("email");
   const isBootstrapError = state.error && (
     state.error.toLowerCase().includes("bootstrap") ||
@@ -82,7 +83,7 @@ function LoginPageContent() {
               priority
             />
           </div>
-          {!isVerified && (
+          {!isVerified && !isPasswordReset && (
             <>
               <h1 className="text-2xl font-bold">Welcome back</h1>
               <p className="text-sm text-muted-foreground mt-2">
@@ -91,6 +92,18 @@ function LoginPageContent() {
             </>
           )}
         </div>
+
+        {/* Password reset success */}
+        {isPasswordReset && (
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
+              <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+              <p className="text-sm font-medium text-primary">
+                Password updated. Please sign in.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Verified Success Message */}
         {isVerified && (
