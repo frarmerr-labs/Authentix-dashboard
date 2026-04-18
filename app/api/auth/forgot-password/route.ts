@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { backendAuthRequest, sanitizeErrorMessage } from "@/lib/api/server";
+import { backendAuthRequest } from "@/lib/api/server";
 import { z } from "zod";
 
 const schema = z.object({ email: z.string().email() });
