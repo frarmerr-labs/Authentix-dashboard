@@ -1,246 +1,200 @@
 # Authentix Dashboard
 
-Frontend dashboard for Authentix: a certificate issuance, management, and verification platform for organizations.
+Next.js frontend for Authentix — certificate issuance, management, and verification.
 
-## Project Overview
+---
 
-This repository contains the Next.js dashboard used by authenticated organization users to:
-- create and manage certificate templates
-- import recipient data
-- generate certificates
-- track billing, usage, and verification events
-- manage organization settings and API credentials
+## Code Flow — How to Ship Changes
 
-Why this architecture exists:
-- keeps browser clients away from direct backend and database access
-- centralizes security controls in Next.js route handlers and proxying
-- enforces org-scoped routing with `/dashboard/org/[slug]`
+```
+feature branch  →  staging branch  →  main branch
+     ↓                  ↓                 ↓
+  local dev       Vercel preview     Vercel production
+                  + Railway staging  + Railway production
+```
 
-## Tech Stack
+### Step-by-step
 
-- Framework: Next.js 16 (App Router)
-- UI: React 19 + Tailwind CSS 4 + Radix UI primitives
+1. **Create a feature branch from `staging`**
+   ```bash
+   git checkout staging && git pull origin staging
+   git checkout -b feature/your-change
+   ```
+
+2. **Build and test locally**
+   ```bash
+   npm run typecheck
+   npm run lint
+   npm run test:run
+   ```
+
+3. **Open a PR: `feature/*` → `staging`**
+   - CI must pass (lint + typecheck + tests) before merge
+   - Vercel auto-deploys a preview for every PR
+   - After merge, Vercel deploys `staging` branch as a preview environment
+
+4. **Verify on staging**
+   - Open the Vercel preview URL for the `staging` branch
+   - Test end-to-end against Railway staging backend
+
+5. **Open a PR: `staging` → `main`**
+   - CI must pass again
+   - After merge, Vercel deploys to production automatically
+
+> **Never push directly to `main`.** Always go `feature → staging → main`.
+
+---
+
+## Architecture
+
+- Framework: Next.js (App Router)
+- UI: React + Tailwind CSS + Radix UI
 - Language: TypeScript (strict mode)
-- Data/Files: `xlsx`, `csv-stringify`, `jszip`
-- Certificate tooling: `pdf-lib`, `react-pdf`, `pdfjs-dist`, `qrcode`
-- Charts/analytics: `recharts`
+- Pattern: BFF proxy — browser never calls the backend directly
 
-Key config references:
-- `package.json`
-- `next.config.ts`
-- `tsconfig.json`
-- `eslint.config.mjs`
-- `tailwind.config.ts`
-
-## Architecture Summary
-
-The dashboard follows a BFF-style pattern:
-- browser requests app pages and internal APIs from Next.js
-- frontend code calls `/api/proxy/*` and `/api/auth/*`
-- Next.js server forwards validated requests to the backend API
-- JWTs are stored in HttpOnly cookies and forwarded server-side
-
-High-level path:
-- Browser -> Next App Router -> Next route handlers/proxy -> backend API
-
-Core security expectations:
-- no direct Supabase client for DB access in frontend
-- no token storage in `localStorage` or `sessionStorage`
-- proxy path allowlist and path traversal protections remain enforced
-
-## Folder Structure
-
-```text
-app/
-  (auth)/                         Auth pages and server actions
-  api/
-    auth/                         Auth route handlers (login, refresh, session, me, etc.)
-    proxy/[...path]/              Hardened backend proxy with allowlist
-    templates/with-previews/      BFF aggregation endpoint for template previews
-  dashboard/
-    page.tsx                      Dashboard resolver -> redirects to org slug route
-    org/[slug]/                   Protected org-scoped app shell and feature pages
-  verify/[token]/                 Public verification page
-
-src/
-  components/                     UI and feature components
-  features/templates/             Feature-sliced template APIs/hooks/types
-  lib/
-    api/                          Client/server API wrappers
-    config/env.ts                 Backend URL environment resolution
-    org/                          Org context and helpers
-    hooks/                        Shared data hooks
-    utils/                        Utility modules (guards, retry, etc.)
-
-proxy.ts                          Route protection and redirect middleware-style proxy
-projectmemory.md                  Living frontend memory and historical changes
-AGENTS.md                         Agent operating rules and safety constraints
+```
+Browser → Next.js → /api/proxy/* → Authentix backend API
+                  → /api/auth/*  → Auth cookies (HttpOnly)
 ```
 
-See also:
-- `SYSTEM_OVERVIEW.md`
-- `FILE_INDEX.md`
+---
 
-## Setup (Step-by-Step)
+## Local Development
 
-### 1) Prerequisites
+### Prerequisites
 
-- Node.js `24.x` (repo contains `.nvmrc` with `24.0.0`)
-- npm 10+
-- Running Authentix backend API
+- Node.js 24+
 
-### 2) Install dependencies
+### Setup
 
 ```bash
+git clone https://github.com/frarmerr-labs/Authentix-dashboard.git
+cd Authentix-dashboard
 npm install
-```
-
-### 3) Configure environment
-
-Copy env template:
-
-```bash
 cp .env.example .env.local
+npm run dev             # http://localhost:3000
 ```
 
-The runtime environment resolver currently reads:
-- `BACKEND_ENV` (`local` | `test` | `prod`)
-- `BACKEND_URL_LOCAL`
-- `BACKEND_URL_TEST`
-- `BACKEND_URL_PROD`
+### Connect to Railway staging backend (no local backend needed)
 
-`src/lib/config/env.ts` also contains defaults if variables are omitted.
+In `.env.local`:
+```
+NEXT_PUBLIC_API_URL=https://<staging-service>.up.railway.app/api/v1
+```
 
-⚠️ Needs clarification: some historical docs mention `BACKEND_API_URL`. Current runtime code uses the env set above via `src/lib/config/env.ts`.
+### Connect to local backend
 
-## Running the Project
+In `.env.local`:
+```
+# leave NEXT_PUBLIC_API_URL unset — defaults to http://localhost:3001/api/v1
+NEXT_PUBLIC_SUPABASE_URL=https://brkyyeropjslfzwnhxcw.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxx
+```
 
-### Development
+---
+
+## Environment Variables
+
+### In Vercel dashboard (Settings → Environment Variables)
+
+| Variable | Production | Preview (staging) |
+|----------|-----------|-------------------|
+| `NEXT_PUBLIC_API_URL` | `https://api.authentix.xencus.com/api/v1` | Railway staging URL `/api/v1` |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://brkyyeropjslfzwnhxcw.supabase.co` | same |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_xxx` | same |
+
+> `NEXT_PUBLIC_*` variables are embedded into the client bundle at build time — set them in Vercel, not in `.env.local` for production.
+
+### In `.env.local` (local dev only — never commit)
 
 ```bash
-npm run dev
+NEXT_PUBLIC_API_URL=https://<staging>.up.railway.app/api/v1   # or omit for localhost
+NEXT_PUBLIC_SUPABASE_URL=https://brkyyeropjslfzwnhxcw.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxx
 ```
 
-### Production build + run
-
-```bash
-npm run typecheck
-npm run lint
-npm run build
-npm start
-```
+---
 
 ## Common Commands
 
-- `npm run dev` - start local dev server (Turbopack)
-- `npm run typecheck` - run TypeScript checks
-- `npm run lint` - run ESLint
-- `npm run build` - create production build
-- `npm start` - run production server
-- `npm test` - run unit/component tests in watch mode (Vitest)
-- `npm run test:run` - run all unit/component tests once (CI)
-- `npm run test:coverage` - run tests with v8 coverage report
-- `npm run test:e2e` - run Playwright E2E tests (requires `npx playwright install` first)
+```bash
+npm run dev           # start dev server (Turbopack) — http://localhost:3000
+npm run typecheck     # TypeScript strict check
+npm run lint          # ESLint
+npm run build         # production build
+npm run test:run      # all unit/component tests once (CI)
+npm run test:coverage # with v8 coverage report
+npm run test:e2e      # Playwright E2E (run npx playwright install first)
+```
 
-## Key Internal Workflows
+---
 
-### 1) Authentication and Route Protection
+## GitHub Setup
 
-- login/signup pages submit via server actions
-- auth cookies (`auth_access_token`, `auth_refresh_token`, `auth_expires_at`) are set server-side
-- `proxy.ts` protects non-public routes and redirects unauthenticated users
-- `/dashboard` resolves and redirects users to `/dashboard/org/[slug]`
+### Branch protection (Settings → Branches)
 
-### 2) Organization-Scoped Dashboard Rendering
+Apply to **both `main` and `staging`**:
 
-- org layout (`app/dashboard/org/[slug]/layout.tsx`) performs server-side auth/profile checks
-- slug mismatch redirects users to their real organization slug
-- shell context is injected via `DashboardShell` and org context providers
+| Setting | Value |
+|---------|-------|
+| Require status checks to pass | ✅ `Lint, Typecheck & Tests` |
+| Require branch to be up to date | ✅ |
+| Block force pushes | ✅ |
+| Block deletions | ✅ |
 
-### 3) Certificate Generation
+No GitHub Secrets are needed — CI only runs local lint, typecheck, and tests. Vercel deploys via its own GitHub App integration.
 
-- choose template
-- place/map fields in certificate designer
-- import or enter recipient data
-- call generation endpoint via `/api/proxy/certificates/generate`
-- preview and export generated certificates
-
-⚠️ Needs clarification: async generation for very large batches is documented as incomplete in project memory and should be treated as a known limitation.
+---
 
 ## Testing
 
-Unit and component tests live in `__tests__/` and run via Vitest (jsdom environment):
-
 ```bash
-npm run test:run        # all tests once
-npm run test:coverage   # with coverage
+npm run test:run      # 247 unit/component tests via Vitest
+npm run typecheck     # TypeScript
+npm run lint          # ESLint (max 250 warnings)
 ```
 
-E2E tests live in `e2e/` and run via Playwright against `http://localhost:3000`:
+### Testing gotchas
 
-```bash
-npx playwright install  # one-time browser install
-npm run test:e2e
+- Stub `setInterval` in ExportSection tests — the progress timer fires out-of-`act`
+- Use `fireEvent` not `userEvent` for overlay and async tests
+- `ClipboardItem` is not in jsdom — stub via `vi.stubGlobal('ClipboardItem', ...)` in `beforeEach`
+- Mock `useOrg`, `useJobNotifications`, and `api.delivery.listTemplates` in ExportSection tests
+
+---
+
+## Folder Structure
+
+```
+app/
+  (auth)/                     Login, signup pages
+  api/
+    auth/                     Auth route handlers (login, signup, refresh, session)
+    proxy/[...path]/          Hardened proxy to backend with path allowlist
+  dashboard/org/[slug]/       All protected org-scoped pages
+  verify/[token]/             Public certificate verification page
+
+src/
+  components/                 Shared UI components
+  lib/
+    api/                      Client + server API wrappers
+    config/env.ts             Backend URL resolution (NEXT_PUBLIC_API_URL)
+    notifications/            Background job notification system
+    org/                      Org context
 ```
 
-Key config files: `vitest.config.ts`, `vitest.setup.ts`, `playwright.config.ts`.
+---
 
-**Testing gotchas:**
-- `vite-tsconfig-paths` plugin (not manual aliases) is required for `@/*` path resolution in Vitest
-- Stub `setInterval` in ExportSection tests — the progress timer fires out-of-`act` and stalls `waitFor`
-- Use `fireEvent` (not `userEvent`) for overlay and async clipboard click tests
-- Call `render()` before `vi.spyOn(document.body, 'appendChild')` — spying first breaks React DOM mounting
-- `ClipboardItem` is not defined in jsdom — stub it via `vi.stubGlobal('ClipboardItem', ...)` in `beforeEach`
+## Dos and Don'ts
 
-## Contribution Guidelines
+**Do**
+- Branch from `staging`, not `main`
+- Keep all backend calls behind `/api/proxy/*` and `/api/auth/*`
+- Store auth tokens only in HttpOnly cookies (server-side)
+- Run `typecheck + lint + test:run` before opening a PR
 
-- Prefer Server Components for initial data loading
-- Use Client Components only when interaction is required
-- Route new protected features under `app/dashboard/org/[slug]/`
-- Keep API access behind Next route handlers (`/api/proxy/*`, `/api/auth/*`)
-- Run `npm run typecheck && npm run lint && npm run build` before PR
-- Run `npm run test:run` to verify no regressions
-- Update docs when architecture, routes, contracts, or workflows change
-
-## Documentation Rules
-
-This repo has three canonical maintenance docs:
-- `README.md` (developer onboarding and usage)
-- `AGENTS.md` (AI/automation operating constraints and safety rules)
-- `projectmemory.md` (persistent system memory and change history)
-
-### When to update docs
-
-Update documentation in the same PR whenever any of the following changes:
-- routes/pages/layout structure
-- API endpoints, contracts, or auth flows
-- env variables, setup process, or scripts
-- key business workflows (template, import, generation, billing, verification)
-- security constraints or anti-pattern rules
-
-### What to update
-
-- Update `README.md` for onboarding-impact changes (setup, architecture summary, workflows, commands)
-- Update `AGENTS.md` for rule changes, safety boundaries, or file ownership guidance
-- Update `projectmemory.md` for persistent decisions, limitations, and append-only recent changes
-
-### How to structure updates
-
-- Keep sections skimmable (short headings + concise bullets)
-- Prefer code-backed statements over assumptions
-- Mark uncertain items explicitly as `⚠️ Needs clarification`
-- Maintain terminology consistency (`[slug]`, organization naming, proxy/BFF boundaries)
-- Cross-link docs when a topic spans multiple files
-
-### Responsibility guidelines
-
-- Author of the code change updates the docs in the same change set
-- Reviewers verify docs for accuracy and consistency before merge
-- AI agents must read `projectmemory.md` and `AGENTS.md` before making substantive edits
-
-## Additional Documentation
-
-- `SYSTEM_OVERVIEW.md` - end-to-end runtime and data flow
-- `FILE_INDEX.md` - where-to-look guide for major modules/files
-- `CHANGELOG.md` - chronological change log
-- `email-templates/README.md` - email template reference
+**Don't**
+- Never push directly to `main`
+- Never commit `.env.local`
+- Never call the backend directly from browser code — always go through the proxy
+- Never store tokens in `localStorage` or `sessionStorage`
