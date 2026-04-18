@@ -73,7 +73,7 @@ function loadJobs(): BackgroundJob[] {
 function saveJobs(jobs: BackgroundJob[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-  } catch {}
+  } catch { /* localStorage unavailable */ }
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────

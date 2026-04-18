@@ -130,7 +130,7 @@ export function QRCodePreview({
             rx={actualSize * 0.3}
           />
         );
-      case 'classy':
+      case 'classy': {
         // Check neighbors for connected styling
         const hasRight = x < matrix.length - 1 && matrix[y]?.[x + 1];
         const hasBottom = y < matrix.length - 1 && matrix[y + 1]?.[x];
@@ -145,6 +145,7 @@ export function QRCodePreview({
             rx={actualSize * 0.2}
           />
         );
+      }
       case 'square':
       default:
         return (
