@@ -215,6 +215,10 @@ const SYSTEM_FONTS: GoogleFont[] = CERTIFICATE_FONTS.map((f) => ({
   family: f.value,
   category: f.category as GoogleFont['category'],
   variants: ['regular', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
+  subsets: ['latin'],
+  menu: '',
+  version: '',
+  lastModified: '',
 }));
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -506,20 +510,43 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
     else setFontSearch('');
   }, [fontPickerOpen]);
 
-  // Inject Google Fonts stylesheet for a given font family (all weights)
-  const loadFont = useCallback((family: string) => {
+  // Inject Google Fonts stylesheet for a given font family.
+  // Builds the weight list from the font's actual variants so we don't request
+  // weights the font doesn't support. Falls back to common weights if unknown.
+  const loadFont = useCallback((family: string, font?: GoogleFont) => {
     const id = `gf-${family.replace(/\s+/g, '-')}`;
     if (document.getElementById(id)) return;
+
+    // Derive numeric weights from the variants list
+    const weights = font?.variants
+      ? [...new Set(
+          font.variants
+            .map((v) => v === 'regular' ? '400' : v === 'italic' ? null : v.replace('italic', ''))
+            .filter(Boolean) as string[]
+        )].sort((a, b) => Number(a) - Number(b))
+      : ['100', '200', '300', '400', '500', '600', '700', '800', '900'];
+
+    // Check if font has italic variants
+    const hasItalic = font?.variants?.some((v) => v.includes('italic'));
+    const wghtRange = weights.join(';');
+    const italRange = hasItalic ? `;0,${wghtRange};1,${wghtRange}` : `:wght@${wghtRange}`;
+    const familyParam = hasItalic
+      ? `${encodeURIComponent(family)}:ital,wght@${italRange}`
+      : `${encodeURIComponent(family)}:wght@${wghtRange}`;
+
     const link = document.createElement('link');
     link.id = id; link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
+    link.href = `https://fonts.googleapis.com/css2?family=${familyParam}&display=swap`;
     document.head.appendChild(link);
   }, []);
 
-  // Auto-load the currently selected field's font
+  // Auto-load the currently selected field's font (pass font object for smart weight loading)
   useEffect(() => {
-    if (selectedField?.fontFamily) loadFont(selectedField.fontFamily);
-  }, [selectedField?.fontFamily, loadFont]);
+    if (selectedField?.fontFamily) {
+      const font = googleFonts.find((f) => f.family === selectedField.fontFamily);
+      loadFont(selectedField.fontFamily, font);
+    }
+  }, [selectedField?.fontFamily, googleFonts, loadFont]);
 
   // Sync label draft when a different field is selected
   useEffect(() => {
@@ -539,6 +566,22 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
     }
     return grouped;
   }, [googleFonts, fontSearch]);
+
+  // Load menu preview fonts (tiny files) for visible fonts so their names
+  // render in their own typeface inside the picker
+  useEffect(() => {
+    if (!fontPickerOpen) return;
+    const visible = Object.values(filteredFonts).flat().slice(0, 50);
+    for (const font of visible) {
+      if (!font.menu) continue;
+      const id = `gf-menu-${font.family.replace(/\s+/g, '-')}`;
+      if (document.getElementById(id)) continue;
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `@font-face { font-family: '${font.family}'; src: url('${font.menu}'); }`;
+      document.head.appendChild(style);
+    }
+  }, [fontPickerOpen, filteredFonts]);
 
   // Available weights for the currently selected font
   const availableWeights = useMemo(() => {
@@ -839,7 +882,7 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
                           key={font.family}
                           className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors ${selectedField.fontFamily === font.family ? 'bg-accent/60' : ''}`}
                           onClick={() => {
-                            loadFont(font.family);
+                            loadFont(font.family, font);
                             onFieldUpdate({ fontFamily: font.family });
                             setFontPickerOpen(false);
                           }}
