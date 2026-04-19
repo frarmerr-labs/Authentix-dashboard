@@ -227,22 +227,34 @@ describe('ExportSection — generation overlay', () => {
     expect(screen.queryByRole('button', { name: /Generate/i })).not.toBeInTheDocument();
   });
 
-  it('queued overlay appears after API call resolves', async () => {
+  it('queued overlay appears after user clicks "Continue in background"', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    // After API resolves, overlay stays on 'generating' — helper text updates and CTA appears
+    await waitFor(() => {
+      expect(screen.getByText(/Job queued/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // User explicitly clicks "Continue in background" to transition to queued state
+    fireEvent.click(screen.getByRole('button', { name: /Continue in background/i }));
     await waitFor(() => {
       expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    }, { timeout: 2000 });
   });
 
   it('overlay hides after user dismisses the queued overlay', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    // Wait for API to resolve and CTA to appear
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Continue in background/i })).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // Transition to queued state
+    fireEvent.click(screen.getByRole('button', { name: /Continue in background/i }));
     await waitFor(() => {
       expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    }, { timeout: 2000 });
     // Dismiss the overlay
-    fireEvent.click(screen.getByRole('button', { name: /Got it|back|continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Got it|back|continue working/i }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
     }, { timeout: 2000 });
