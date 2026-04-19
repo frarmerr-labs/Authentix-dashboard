@@ -27,9 +27,9 @@ function buildCSP(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://vercel.live${evalDirective}`,
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' blob: data: https://*.supabase.co",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "frame-src 'self' blob: https://*.supabase.co",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     "object-src 'self' blob:",

@@ -39,7 +39,10 @@ export default async function RootLayout({
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
-            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})})}`
+            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})})}` +
+              (process.env.NODE_ENV === "production"
+                ? `;(function(){var n=function(){};console.log=n;console.debug=n;console.info=n;})()`
+                : "")
           }}
         />
       </head>
