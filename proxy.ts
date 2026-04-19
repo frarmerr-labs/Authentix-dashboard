@@ -30,7 +30,7 @@ function buildCSP(nonce: string): string {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' blob: data: https://*.supabase.co",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "frame-src 'self' blob: https://*.supabase.co",
+    "frame-src 'self' blob: https://*.supabase.co https://vercel.live",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     "object-src 'self' blob:",
     "worker-src 'self' blob:",
