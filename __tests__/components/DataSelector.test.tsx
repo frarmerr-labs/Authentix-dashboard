@@ -10,10 +10,11 @@
  * react-dropzone's onDrop is invoked directly to bypass the drag/drop DOM.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ImportJob, ImportedData } from '@/lib/types/certificate';
+import type { ImportJob } from '@/lib/api/imports';
+import type { ImportedData } from '@/lib/types/certificate';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ function makeImportJob(overrides: Partial<ImportJob> = {}): ImportJob {
   };
 }
 
-function makePreviewResult(rows = [{ Name: 'Alice', Email: 'alice@test.com' }]) {
+function makePreviewResult(rows: Record<string, unknown>[] = [{ Name: 'Alice', Email: 'alice@test.com' }]) {
   return {
     items: rows,
     pagination: { page: 1, limit: 10, total: rows.length, total_pages: 1 },

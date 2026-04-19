@@ -444,7 +444,7 @@ describe('ExportSection — full payload assembly (import + mappings + options)'
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
 
     await waitFor(() => {
-      const [payload] = (api.certificates.batchGenerate as ReturnType<typeof vi.fn>).mock.calls[0];
+      const [payload] = ((api.certificates.batchGenerate as ReturnType<typeof vi.fn>).mock.calls[0] ?? []);
       expect(payload).toMatchObject({
         import_id: 'import-99',
         configs: [
