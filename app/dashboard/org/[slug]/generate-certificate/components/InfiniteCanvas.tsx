@@ -245,7 +245,9 @@ export function InfiniteCanvas({
   const fitToScreen = useCallback(() => {
     if (!containerRef.current) return;
     const { clientWidth: cw, clientHeight: ch } = containerRef.current;
-    const padding = 80;
+    // Larger padding (120px each side) gives landscape templates breathing room
+    // so the right properties panel doesn't overlap the certificate edge.
+    const padding = 120;
     const fitScale = clamp(
       Math.min((cw - padding * 2) / pdfWidth, (ch - padding * 2) / pdfHeight),
       MIN_SCALE,
@@ -271,12 +273,13 @@ export function InfiniteCanvas({
     }
   }, [pdfWidth, pdfHeight, fitToScreen]);
 
-  // External fit-to-screen trigger from right panel
+  // External fit-to-screen trigger (e.g. right panel open/close changes available width).
+  // setTimeout lets the DOM finish reflowing before we measure the container.
   const prevFitTrigger = useRef(fitTrigger ?? 0);
   useEffect(() => {
     if (fitTrigger !== undefined && fitTrigger !== prevFitTrigger.current) {
       prevFitTrigger.current = fitTrigger;
-      fitToScreen();
+      setTimeout(fitToScreen, 80);
     }
   }, [fitTrigger, fitToScreen]);
 
