@@ -62,8 +62,10 @@ export const importsApi = {
     },
   ): Promise<ImportJob> => {
     const formData = new FormData();
-    formData.append("file", file);
+    // metadata MUST come before file: @fastify/multipart only captures non-file
+    // fields that appear before the first file part in the stream.
     formData.append("metadata", JSON.stringify(metadata));
+    formData.append("file", file);
 
     const response = await fetch(`${API_BASE_URL}/import-jobs`, {
       method: "POST",
