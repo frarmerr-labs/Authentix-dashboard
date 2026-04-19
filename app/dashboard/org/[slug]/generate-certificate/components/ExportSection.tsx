@@ -1223,9 +1223,7 @@ export function ExportSection({
           : `${totalRows} × ${configsToRun.length} template${configsToRun.length !== 1 ? 's' : ''}`;
       addJob(job_id, jobLabel);
       setGenerationJobId(job_id);
-
-      // Show the "running in background" overlay so the user knows to check the bell
-      setOverlayState('queued');
+      // Stay on 'generating' overlay — user decides when to move to background via the CTA
     } catch (err: any) {
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       if (!isMountedRef.current) return;
@@ -1274,11 +1272,13 @@ export function ExportSection({
         {/* Bottom CTA — while generating animation plays */}
         {overlayState === 'generating' && (
           <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3">
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Submitting your job…</p>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              {generationJobId ? 'Job queued! Click below to continue working while we process it.' : 'Submitting your job…'}
+            </p>
             <button
               onClick={() => {
                 if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
-                setOverlayState('hidden');
+                setOverlayState('queued');
               }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
               style={{
