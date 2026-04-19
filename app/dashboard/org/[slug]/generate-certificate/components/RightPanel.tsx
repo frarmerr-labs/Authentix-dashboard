@@ -3,10 +3,12 @@
 import { createPortal } from 'react-dom';
 import { CertificateField, FontWeight, CERTIFICATE_FONTS, PRESET_COLORS, DATE_FORMATS } from '@/lib/types/certificate';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, ChevronRight, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2, Lock, Unlock, RefreshCw, Trash2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, ChevronRight, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2, Lock, Unlock, RefreshCw, Trash2, Search } from 'lucide-react';
 import { RgbaColorPicker } from 'react-colorful';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api/client';
+import type { GoogleFont } from '@/app/api/fonts/route';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -208,9 +210,20 @@ function FloatingColorPicker({
   );
 }
 
-// Preload Google Fonts
-const googleFonts = CERTIFICATE_FONTS.filter((f): f is typeof f & { googleFont: true } => 'googleFont' in f && f.googleFont === true);
-const PRELOAD_URL = `https://fonts.googleapis.com/css2?${googleFonts.map((f) => `family=${encodeURIComponent(f.value)}:wght@400`).join('&')}&display=swap`;
+// System fonts bundled as fallback (shown when API key is not configured)
+const SYSTEM_FONTS: GoogleFont[] = CERTIFICATE_FONTS.map((f) => ({
+  family: f.value,
+  category: f.category as GoogleFont['category'],
+  variants: ['regular', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
+}));
+
+const CATEGORY_LABELS: Record<string, string> = {
+  'sans-serif': 'Sans Serif',
+  serif: 'Serif',
+  display: 'Display',
+  handwriting: 'Script / Handwriting',
+  monospace: 'Monospace',
+};
 
 // ── QR Logo Uploader ──────────────────────────────────────────────────────────
 
@@ -469,35 +482,76 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
   const [labelDraft, setLabelDraft] = useState(selectedField?.label ?? '');
   const labelInputRef = useRef<HTMLInputElement>(null);
 
+  // Font picker state
+  const [googleFonts, setGoogleFonts] = useState<GoogleFont[]>(SYSTEM_FONTS);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [fontSearch, setFontSearch] = useState('');
+  const fontSearchRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => setMounted(true), []);
+
+  // Fetch all available Google Fonts from our server-side proxy
+  useEffect(() => {
+    fetch('/api/fonts')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { fonts: GoogleFont[]; source: string } | null) => {
+        if (data?.fonts?.length) setGoogleFonts(data.fonts);
+      })
+      .catch(() => { /* fall back to SYSTEM_FONTS already set */ });
+  }, []);
+
+  // Focus search input when picker opens
+  useEffect(() => {
+    if (fontPickerOpen) setTimeout(() => fontSearchRef.current?.focus(), 50);
+    else setFontSearch('');
+  }, [fontPickerOpen]);
+
+  // Inject Google Fonts stylesheet for a given font family (all weights)
+  const loadFont = useCallback((family: string) => {
+    const id = `gf-${family.replace(/\s+/g, '-')}`;
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id; link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
+    document.head.appendChild(link);
+  }, []);
+
+  // Auto-load the currently selected field's font
+  useEffect(() => {
+    if (selectedField?.fontFamily) loadFont(selectedField.fontFamily);
+  }, [selectedField?.fontFamily, loadFont]);
 
   // Sync label draft when a different field is selected
   useEffect(() => {
     if (!labelInputRef.current?.matches(':focus')) {
       setLabelDraft(selectedField?.label ?? '');
     }
-   
   }, [selectedField?.id, selectedField?.label]);
 
-  useEffect(() => {
-    const id = 'gf-preload-all';
-    if (document.getElementById(id)) return;
-    const link = document.createElement('link');
-    link.id = id; link.rel = 'stylesheet'; link.href = PRELOAD_URL;
-    document.head.appendChild(link);
-  }, []);
+  // Filtered + grouped fonts for the picker
+  const filteredFonts = useMemo(() => {
+    const q = fontSearch.trim().toLowerCase();
+    const list = q ? googleFonts.filter((f) => f.family.toLowerCase().includes(q)) : googleFonts;
+    const grouped: Record<string, GoogleFont[]> = {};
+    for (const f of list) {
+      const cat = f.category ?? 'sans-serif';
+      (grouped[cat] ??= []).push(f);
+    }
+    return grouped;
+  }, [googleFonts, fontSearch]);
 
-  useEffect(() => {
-    if (!selectedField) return;
-    const font = CERTIFICATE_FONTS.find((f) => f.value === selectedField.fontFamily);
-    if (!font || !('googleFont' in font) || !font.googleFont) return;
-    const id = `gf-${font.value.replace(/\s+/g, '-')}`;
-    if (document.getElementById(id)) return;
-    const link = document.createElement('link');
-    link.id = id; link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.value)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
-    document.head.appendChild(link);
-  }, [selectedField?.fontFamily]);
+  // Available weights for the currently selected font
+  const availableWeights = useMemo(() => {
+    if (!selectedField?.fontFamily) return FONT_WEIGHTS;
+    const font = googleFonts.find((f) => f.family === selectedField.fontFamily);
+    if (!font) return FONT_WEIGHTS;
+    const weightSet = new Set(
+      font.variants
+        .map((v) => v === 'regular' ? '400' : v === 'italic' ? null : v.replace('italic', ''))
+        .filter(Boolean)
+    );
+    return FONT_WEIGHTS.filter((w) => weightSet.has(w.value));
+  }, [googleFonts, selectedField?.fontFamily]);
 
   const pct = Math.round((scale ?? 1) * 100);
   const clampScale = (s: number) => Math.min(8, Math.max(0.05, s));
@@ -746,42 +800,68 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
         <Section label="Typography">
           <div className="space-y-3">
 
-            {/* Font family — grouped by category */}
-            <Select value={selectedField.fontFamily} onValueChange={(v) => onFieldUpdate({ fontFamily: v })}>
-              <SelectTrigger className={`${selCls} w-full`}>
-                <SelectValue>
-                  <span style={{ fontFamily: selectedField.fontFamily }}>
-                    {CERTIFICATE_FONTS.find(f => f.value === selectedField.fontFamily)?.name ?? selectedField.fontFamily}
+            {/* Font family — searchable combobox backed by full Google Fonts library */}
+            <Popover open={fontPickerOpen} onOpenChange={setFontPickerOpen}>
+              <PopoverTrigger asChild>
+                <button className={`${selCls} w-full flex items-center justify-between px-3 h-8 text-xs`}>
+                  <span style={{ fontFamily: selectedField.fontFamily, fontSize: '13px' }}>
+                    {selectedField.fontFamily}
                   </span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                {(['sans-serif', 'serif', 'display', 'handwriting'] as const).map((cat) => {
-                  const fonts = CERTIFICATE_FONTS.filter(f => f.category === cat);
-                  if (!fonts.length) return null;
-                  const catLabel = cat === 'sans-serif' ? 'Sans Serif' : cat === 'handwriting' ? 'Script / Handwriting' : cat.charAt(0).toUpperCase() + cat.slice(1);
-                  return (
-                    <SelectGroup key={cat}>
-                      <SelectLabel className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 px-2 py-1.5 sticky top-0 bg-popover/95 backdrop-blur-sm border-b border-border/20">
-                        {catLabel}
-                      </SelectLabel>
+                  <ChevronDown className="w-3 h-3 text-muted-foreground/50 shrink-0 ml-1" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-64 p-0 overflow-hidden"
+                align="start"
+                side="left"
+                sideOffset={4}
+              >
+                {/* Search */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
+                  <Search className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                  <input
+                    ref={fontSearchRef}
+                    value={fontSearch}
+                    onChange={(e) => setFontSearch(e.target.value)}
+                    placeholder="Search fonts…"
+                    className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/40"
+                  />
+                </div>
+                {/* Font list grouped by category */}
+                <div className="overflow-y-auto max-h-72">
+                  {Object.entries(filteredFonts).map(([cat, fonts]) => (
+                    <div key={cat}>
+                      <p className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 sticky top-0 bg-popover border-b border-border/10">
+                        {CATEGORY_LABELS[cat] ?? cat}
+                      </p>
                       {fonts.map((font) => (
-                        <SelectItem key={font.value} value={font.value} className="text-xs py-1.5">
-                          <span style={{ fontFamily: font.value, fontSize: '13px' }}>{font.name}</span>
-                        </SelectItem>
+                        <button
+                          key={font.family}
+                          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors ${selectedField.fontFamily === font.family ? 'bg-accent/60' : ''}`}
+                          onClick={() => {
+                            loadFont(font.family);
+                            onFieldUpdate({ fontFamily: font.family });
+                            setFontPickerOpen(false);
+                          }}
+                        >
+                          <span style={{ fontFamily: font.family, fontSize: '13px' }}>{font.family}</span>
+                        </button>
                       ))}
-                    </SelectGroup>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+                    </div>
+                  ))}
+                  {Object.keys(filteredFonts).length === 0 && (
+                    <p className="px-3 py-4 text-xs text-muted-foreground/50 text-center">No fonts found</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {/* Font weight + Italic */}
             <div className="flex items-center gap-2">
               <Select value={normalizeFontWeight(selectedField.fontWeight)} onValueChange={(v) => onFieldUpdate({ fontWeight: v as FontWeight })}>
                 <SelectTrigger className={`${selCls} flex-1 min-w-0`}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {FONT_WEIGHTS.map((fw) => (
+                  {availableWeights.map((fw) => (
                     <SelectItem key={fw.value} value={fw.value} className="text-xs">{fw.label}</SelectItem>
                   ))}
                 </SelectContent>
