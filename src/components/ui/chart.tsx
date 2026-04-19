@@ -28,6 +28,9 @@ export function ChartContainer({
   children: React.ReactNode
   className?: string
 }) {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => { setMounted(true) }, [])
+
   const style = React.useMemo(() => {
     const cssVars: Record<string, string> = {}
 
@@ -42,9 +45,11 @@ export function ChartContainer({
   return (
     <ChartContext.Provider value={{ config }}>
       {/*
-        Recharts 3 polar charts (RadarChart, RadialBarChart) read size from
-        ResponsiveContainerContext. Without this wrapper + explicit height,
-        width/height stay undefined and nothing renders (common “invisible graph” issue).
+        Recharts 3 ResponsiveContainer uses ResizeObserver to measure the parent div.
+        During SSR and the initial paint the DOM has no real dimensions, so Recharts
+        reports width/height = -1 and emits a console warning. We gate the
+        ResponsiveContainer behind a `mounted` flag so it only renders after the
+        browser has laid out the container and the measurement is valid.
       */}
       <div
         className={cn(
@@ -53,9 +58,11 @@ export function ChartContainer({
         )}
         style={style}
       >
-        <ResponsiveContainer width="100%" height="100%" minHeight={240}>
-          {children}
-        </ResponsiveContainer>
+        {mounted && (
+          <ResponsiveContainer width="100%" height="100%" minHeight={240}>
+            {children}
+          </ResponsiveContainer>
+        )}
       </div>
     </ChartContext.Provider>
   )

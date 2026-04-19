@@ -1074,6 +1074,7 @@ export default function GenerateCertificatePage() {
             fontStyle: field.fontStyle || 'normal',
             textAlign: field.textAlign || 'left',
             originalFieldId: field.id, // Store original ID for field mapping
+            fieldType: field.type, // Preserve exact frontend type (e.g. 'name' vs 'custom_text')
           };
 
           if (field.dateFormat) style.dateFormat = field.dateFormat;
@@ -1901,9 +1902,10 @@ export default function GenerateCertificatePage() {
 // Map a DB field record back to a frontend CertificateField, restoring all style properties
 function mapDbFieldToFrontend(field: any): CertificateField {
   const s = (field.style ?? {}) as Record<string, any>;
+  const VALID_FRONTEND_TYPES = new Set(['name', 'course', 'start_date', 'end_date', 'custom_text', 'qr_code', 'image']);
   return {
     id: field.id || field.field_key,
-    type: mapBackendTypeToFrontend(field.type),
+    type: (s.fieldType && VALID_FRONTEND_TYPES.has(s.fieldType) ? s.fieldType : mapBackendTypeToFrontend(field.type)) as CertificateField['type'],
     label: field.label,
     x: field.x,
     y: field.y,

@@ -1227,13 +1227,11 @@ export function ExportSection({
     } catch (err: any) {
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       if (!isMountedRef.current) return;
-      // Silently queue a failed job notification — never show a technical error to the user
-      const jobLabel =
-        configsToRun.length === 1
-          ? `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`
-          : `${totalRows} × ${configsToRun.length} templates`;
-      addJob('submit-failed', jobLabel + ' (submit failed)');
-      setOverlayState('queued');
+      // Show the error so the user knows the submission failed and can retry
+      const msg = err?.message || 'Failed to submit generation job. Please try again.';
+      setGenerationError(msg);
+      setGenerationStatus('error');
+      setOverlayState('hidden');
     }
   };
 
