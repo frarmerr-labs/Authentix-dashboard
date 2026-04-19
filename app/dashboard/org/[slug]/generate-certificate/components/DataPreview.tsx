@@ -194,12 +194,20 @@ export function DataPreview({
 
       {/* Footer with pagination */}
       <div className="flex items-center justify-between p-3 border-t bg-muted/30">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground">
-            Showing {filteredRows.length > 0 ? startIndex + 1 : 0}-
-            {Math.min(endIndex, filteredRows.length)} of {filteredRows.length}
-            {searchTerm && ` (filtered from ${data.rowCount})`}
+            {filteredRows.length > 0 ? startIndex + 1 : 0}–{Math.min(endIndex, filteredRows.length)}
+            {searchTerm
+              ? ` of ${filteredRows.length} results (searched ${data.rows.length.toLocaleString()} loaded rows)`
+              : data.rowCount > data.rows.length
+                ? ` of ${data.rows.length} preview rows · ${data.rowCount.toLocaleString()} total`
+                : ` of ${filteredRows.length}`}
           </p>
+          {data.rowCount > data.rows.length && !searchTerm && (
+            <Badge variant="outline" className="text-xs gap-1 text-blue-600 border-blue-300 dark:text-blue-400 dark:border-blue-700">
+              Preview only — all {data.rowCount.toLocaleString()} rows used for generation
+            </Badge>
+          )}
           {filteredRows.some(hasEmptyValues) && (
             <Badge variant="outline" className="text-xs gap-1 text-yellow-600 border-yellow-300">
               <AlertCircle className="w-3 h-3" />
