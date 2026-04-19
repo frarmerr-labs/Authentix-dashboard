@@ -18,8 +18,10 @@ import { ManualDataEntry } from './ManualDataEntry';
 // Semantic field types that are logically unique per person across templates
 const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
 
-const MAX_DATA_FILE_MB = 100;
+const MAX_DATA_FILE_MB = 10;
 const MAX_DATA_FILE_BYTES = MAX_DATA_FILE_MB * 1024 * 1024;
+const MAX_ROWS = 2000;
+const WARN_ROWS = 500;
 
 interface DataSelectorProps {
   fields: CertificateField[];
@@ -458,7 +460,7 @@ export function DataSelector({
                           <p className="text-sm text-muted-foreground">
                             Spreadsheet upload • .csv or .tsv recommended for smaller file sizes
                           </p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB • Unlimited rows — all processed server-side</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB • Up to {MAX_ROWS.toLocaleString()} rows per file</p>
                         </div>
                         <Button variant="outline">
                           <Plus className="w-4 h-4 mr-2" />
@@ -515,13 +517,23 @@ export function DataSelector({
 
               <DataPreview data={importedData} maxHeight="350px" />
 
-              {importedData.rowCount > importedData.rows.length && (
+              {importedData.rowCount >= WARN_ROWS && (
+                <div className={`flex items-start gap-2 px-1 py-2 rounded-lg ${importedData.rowCount >= MAX_ROWS ? 'bg-orange-50 dark:bg-orange-950/20' : 'bg-blue-50 dark:bg-blue-950/20'}`}>
+                  <Info className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${importedData.rowCount >= MAX_ROWS ? 'text-orange-500' : 'text-blue-500'}`} />
+                  <p className="text-xs text-muted-foreground">
+                    {importedData.rowCount.toLocaleString()} recipients detected.{' '}
+                    {importedData.rowCount < MAX_ROWS
+                      ? <>Generation will run as a background job and takes approximately <span className="font-medium text-foreground">~{Math.ceil(importedData.rowCount / 200)} min</span>. You can leave this page — you&apos;ll be notified when done.</>
+                      : <>Maximum batch size is <span className="font-medium text-foreground">{MAX_ROWS.toLocaleString()} rows</span>. Please split your data into smaller files.</>
+                    }
+                  </p>
+                </div>
+              )}
+              {importedData.rowCount < WARN_ROWS && importedData.rowCount > importedData.rows.length && (
                 <div className="flex items-start gap-2 px-1">
                   <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-muted-foreground">
-                    Preview shows the first {importedData.rows.length} rows.{' '}
-                    <span className="font-medium text-foreground">All {importedData.rowCount.toLocaleString()} rows</span>{' '}
-                    will be used when generating certificates — no data is lost.
+                    Preview shows first {importedData.rows.length} rows — all {importedData.rowCount.toLocaleString()} will be used for generation.
                   </p>
                 </div>
               )}

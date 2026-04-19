@@ -58,7 +58,8 @@
       "Bash(npx @sentry/wizard@latest -i nextjs --saas --org authentix --project authentix-frontend)",
       "Bash(npx --yes @sentry/wizard@8 -i nextjs --saas --org authentix --project authentix-frontend)",
       "Bash(npm show:*)",
-      "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")"
+      "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"
