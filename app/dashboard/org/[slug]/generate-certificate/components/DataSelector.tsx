@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDropzone } from 'react-dropzone';
 import { CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
-import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard, AlertCircle, Link2, ChevronDown, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard, AlertCircle, Link2, ChevronDown, Loader2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api/client';
 import { getXlsx } from '@/lib/utils/dynamic-imports';
@@ -385,7 +385,7 @@ export function DataSelector({
                       <h4 className="font-medium truncate">{importJob.file_name}</h4>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {importJob.total_rows || 0} recipients
+                      {(importJob.total_rows || 0).toLocaleString()} recipient{importJob.total_rows !== 1 ? 's' : ''}
                     </p>
                   </div>
                   <Badge variant={importJob.status === 'completed' ? 'default' : 'secondary'} className="ml-2">
@@ -458,7 +458,7 @@ export function DataSelector({
                           <p className="text-sm text-muted-foreground">
                             Spreadsheet upload • .csv or .tsv recommended for smaller file sizes
                           </p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls supported • Up to {MAX_DATA_FILE_MB} MB</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB • Unlimited rows — all processed server-side</p>
                         </div>
                         <Button variant="outline">
                           <Plus className="w-4 h-4 mr-2" />
@@ -514,6 +514,17 @@ export function DataSelector({
               </div>
 
               <DataPreview data={importedData} maxHeight="350px" />
+
+              {importedData.rowCount > importedData.rows.length && (
+                <div className="flex items-start gap-2 px-1">
+                  <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground">
+                    Preview shows the first {importedData.rows.length} rows.{' '}
+                    <span className="font-medium text-foreground">All {importedData.rowCount.toLocaleString()} rows</span>{' '}
+                    will be used when generating certificates — no data is lost.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

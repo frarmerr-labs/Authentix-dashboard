@@ -1269,7 +1269,7 @@ export default function GenerateCertificatePage() {
       // Fetch metadata and normalized rows from the backend — no client-side file parsing.
       const [importJob, dataPage] = await Promise.all([
         api.imports.get(importId),
-        api.imports.getData(importId, { limit: 1000 }),
+        api.imports.getData(importId, { limit: 100 }),
       ]);
 
       const rows = dataPage.items as Record<string, any>[];
