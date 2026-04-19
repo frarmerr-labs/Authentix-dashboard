@@ -35,7 +35,7 @@ export function ChartContainer({
     const cssVars: Record<string, string> = {}
 
     for (const [key, value] of Object.entries(config)) {
-      const color = value.color ?? “var(--chart-1)”
+      const color = value.color ?? "var(--chart-1)"
       cssVars[`--color-${key}`] = color
     }
 
@@ -53,13 +53,13 @@ export function ChartContainer({
       */}
       <div
         className={cn(
-          “chart-container relative w-full min-h-[280px] h-[280px] sm:h-[300px] sm:min-h-[300px]”,
+          "chart-container relative w-full min-h-[280px] h-[280px] sm:h-[300px] sm:min-h-[300px]",
           className
         )}
         style={style}
       >
         {mounted && (
-          <ResponsiveContainer width=”100%” height=”100%” minHeight={240}>
+          <ResponsiveContainer width="100%" height="100%" minHeight={240}>
             {children}
           </ResponsiveContainer>
         )}
