@@ -97,10 +97,12 @@ export interface CertificateTemplate {
 export interface ImportedData {
   fileName: string;
   headers: string[]; // Column names
-  rows: Record<string, any>[]; // Array of row objects
+  rows: Record<string, any>[]; // Array of row objects (preview only)
   rowCount: number;
   /** Server-side import ID — set when the file was uploaded via the imports API */
   importId?: string;
+  /** All import IDs when multiple files were uploaded; importId === importIds[0] */
+  importIds?: string[];
 }
 
 // Column mapping (Excel column -> Certificate field)

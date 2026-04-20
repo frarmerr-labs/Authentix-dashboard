@@ -71,65 +71,101 @@ export function DataSelector({
         );
         return;
       }
-      const file = acceptedFiles[0];
-      if (!file) return;
+      if (acceptedFiles.length === 0) return;
 
       setUploadError(null);
       setIsProcessing(true);
-      setProcessingStatus('Uploading…');
 
-      try {
-        let importJob = await api.imports.create(file, { file_name: file.name });
+      type FileResult = {
+        file: File;
+        importId: string;
+        rowCount: number;
+        headers: string[];
+        previewRows: Record<string, unknown>[];
+      };
 
-        // Poll until the server finishes parsing the file
-        if (importJob.status !== 'completed' && importJob.status !== 'failed') {
-          setProcessingStatus('Processing file…');
-          const deadline = Date.now() + 120_000;
-          while (
-            (importJob.status === 'queued' ||
-              importJob.status === 'pending' ||
-              importJob.status === 'processing') &&
-            Date.now() < deadline
-          ) {
-            await new Promise(r => setTimeout(r, 2000));
-            importJob = await api.imports.get(importJob.id);
+      const results: FileResult[] = [];
+
+      for (let i = 0; i < acceptedFiles.length; i++) {
+        const file = acceptedFiles[i]!;
+        const label = acceptedFiles.length > 1 ? ` (${i + 1}/${acceptedFiles.length})` : '';
+
+        setProcessingStatus(`Uploading${label}…`);
+
+        try {
+          let importJob = await api.imports.create(file, { file_name: file.name });
+
+          if (importJob.status !== 'completed' && importJob.status !== 'failed') {
+            setProcessingStatus(`Processing${label}…`);
+            const deadline = Date.now() + 120_000;
+            while (
+              (importJob.status === 'queued' ||
+                importJob.status === 'pending' ||
+                importJob.status === 'processing') &&
+              Date.now() < deadline
+            ) {
+              await new Promise(r => setTimeout(r, 2000));
+              importJob = await api.imports.get(importJob.id);
+            }
           }
-        }
 
-        if (importJob.status === 'failed') {
-          setUploadError(importJob.error_message ?? 'File processing failed. Please try again.');
+          if (importJob.status === 'failed') {
+            setUploadError(`"${file.name}" failed: ${importJob.error_message ?? 'processing error'}`);
+            setIsProcessing(false);
+            return;
+          }
+          if (importJob.status !== 'completed') {
+            setUploadError(`"${file.name}" timed out. Please try again.`);
+            setIsProcessing(false);
+            return;
+          }
+
+          setProcessingStatus(`Loading preview${label}…`);
+          const previewResult = await api.imports.getData(importJob.id, { limit: 10 });
+          // Backend returns { row_index, data: {...} } — extract the inner data object
+          const rawItems = previewResult.items as Array<{ row_index: number; data: Record<string, unknown> }>;
+          const previewRows = rawItems.map(r => r.data ?? r);
+
+          if (previewRows.length === 0) {
+            setUploadError(`"${file.name}" is empty or has no data rows.`);
+            setIsProcessing(false);
+            return;
+          }
+
+          results.push({
+            file,
+            importId: importJob.id,
+            rowCount: importJob.total_rows ?? previewResult.pagination.total,
+            headers: Object.keys(previewRows[0]!),
+            previewRows,
+          });
+        } catch {
+          setUploadError(`Failed to upload "${file.name}". Please try again.`);
+          setIsProcessing(false);
           return;
         }
-        if (importJob.status !== 'completed') {
-          setUploadError('File processing timed out. Please try again.');
-          return;
-        }
-
-        setProcessingStatus('Loading preview…');
-        const previewResult = await api.imports.getData(importJob.id, { limit: 10 });
-        const previewRows = previewResult.items as Record<string, unknown>[];
-
-        if (previewRows.length === 0) {
-          setUploadError('The file is empty or has no data rows.');
-          return;
-        }
-
-        const headers = Object.keys(previewRows[0]!);
-        const data: ImportedData = {
-          fileName: file.name,
-          headers,
-          rows: previewRows,
-          rowCount: importJob.total_rows ?? previewResult.pagination.total,
-          importId: importJob.id,
-        };
-
-        onDataImport(data);
-        setShowUpload(false);
-      } catch {
-        setUploadError('Failed to upload file. Please try again.');
-      } finally {
-        setIsProcessing(false);
       }
+
+      // Merge: union of all headers, sum of row counts, preview from first file
+      const allHeaders = [...new Set(results.flatMap(r => r.headers))];
+      const totalRowCount = results.reduce((sum, r) => sum + r.rowCount, 0);
+      const importIds = results.map(r => r.importId);
+      const fileName = results.length === 1
+        ? results[0]!.file.name
+        : `${results.length} files (${results.map(r => r.file.name).join(', ')})`;
+
+      const data: ImportedData = {
+        fileName,
+        headers: allHeaders,
+        rows: results[0]!.previewRows,
+        rowCount: totalRowCount,
+        importId: importIds[0],
+        importIds,
+      };
+
+      onDataImport(data);
+      setShowUpload(false);
+      setIsProcessing(false);
     },
     [onDataImport],
   );
@@ -143,7 +179,7 @@ export function DataSelector({
       'text/tab-separated-values': ['.tsv'],
       'text/plain': ['.tsv'],
     },
-    maxFiles: 1,
+    maxFiles: 10,
     maxSize: MAX_DATA_FILE_BYTES,
     disabled: isProcessing,
   });
@@ -458,9 +494,9 @@ export function DataSelector({
                         <div>
                           <p className="text-lg font-medium mb-1">Upload Spreadsheet</p>
                           <p className="text-sm text-muted-foreground">
-                            Spreadsheet upload • .csv or .tsv recommended for smaller file sizes
+                            Drop one file or up to 10 files at once — they&apos;ll be merged for generation
                           </p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB • Up to {MAX_ROWS.toLocaleString()} rows per file</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB each • Up to {MAX_ROWS.toLocaleString()} rows per file</p>
                         </div>
                         <Button variant="outline">
                           <Plus className="w-4 h-4 mr-2" />
@@ -511,7 +547,7 @@ export function DataSelector({
                   onDataImport(null);
                 }}>
                   <Edit2 className="w-4 h-4 mr-2" />
-                  {isManualEntry ? 'Edit Entries' : 'Change File'}
+                  {isManualEntry ? 'Edit Entries' : (importedData?.importIds && importedData.importIds.length > 1 ? 'Change Files' : 'Change File')}
                 </Button>
               </div>
 
