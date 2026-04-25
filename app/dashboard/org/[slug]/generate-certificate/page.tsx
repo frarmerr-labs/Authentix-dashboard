@@ -1272,7 +1272,9 @@ export default function GenerateCertificatePage() {
         api.imports.getData(importId, { limit: 100 }),
       ]);
 
-      const rows = dataPage.items as Record<string, any>[];
+      // Backend returns { row_index, data: {...} } — extract the inner data object
+      const rawItems = dataPage.items as Array<{ row_index: number; data: Record<string, any> }>;
+      const rows = rawItems.map(r => r.data ?? r);
       if (rows.length === 0) throw new Error('The import file is empty or has no data.');
 
       const headers = Object.keys(rows[0]!);
@@ -1282,6 +1284,7 @@ export default function GenerateCertificatePage() {
         rows,
         rowCount: importJob.total_rows ?? rows.length,
         importId: importId,
+        importIds: [importId],
       });
 
       if (importJob.mapping) {

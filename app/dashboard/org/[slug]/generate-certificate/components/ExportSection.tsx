@@ -1153,6 +1153,14 @@ export function ExportSection({
     setTotalGenerated(0);
     setGenerationSummary([]);
 
+    // Validate expiry date is in the future
+    if (expiryType === 'custom' && customExpiryDate) {
+      if (new Date(customExpiryDate) <= new Date()) {
+        toast.error('Expiry date must be in the future');
+        return;
+      }
+    }
+
     const options: {
       includeQR: boolean;
       expiry_type: ExpiryType;
@@ -1190,39 +1198,51 @@ export function ExportSection({
 
     try {
       // Submit — returns 202 immediately with job_id
-      // Prefer server-side import_id to keep the request body small for large batches
-      const batchParams = importedData.importId
-        ? {
-            import_id: importedData.importId,
-            ...(additionalRows && additionalRows.length > 0 ? { additional_rows: additionalRows } : {}),
-            options,
-            configs: configsToRun.map(cfg => ({
-              template_id: cfg.template.id!,
-              field_mappings: cfg.fieldMappings,
-              label: cfg.label,
-            })),
-          }
-        : {
-            data: importedData.rows,
-            options,
-            configs: configsToRun.map(cfg => ({
-              template_id: cfg.template.id!,
-              field_mappings: cfg.fieldMappings,
-              label: cfg.label,
-            })),
-          };
+      // For multiple uploaded files, submit one batch job per import ID
+      const importIds = importedData.importIds && importedData.importIds.length > 1
+        ? importedData.importIds
+        : importedData.importId
+        ? [importedData.importId]
+        : null;
 
-      const { job_id } = await api.certificates.batchGenerate(batchParams);
+      const configDefs = configsToRun.map(cfg => ({
+        template_id: cfg.template.id!,
+        field_mappings: cfg.fieldMappings,
+        label: cfg.label,
+      }));
+
+      const firstJobId = await (async () => {
+        if (importIds) {
+          let firstId: string | null = null;
+          for (let i = 0; i < importIds.length; i++) {
+            const batchParams = {
+              import_id: importIds[i]!,
+              ...(additionalRows && additionalRows.length > 0 ? { additional_rows: additionalRows } : {}),
+              options,
+              configs: configDefs,
+            };
+            const { job_id } = await api.certificates.batchGenerate(batchParams);
+            const fileLabel = importIds.length > 1
+              ? `File ${i + 1}/${importIds.length}: ${Math.round(totalRows / importIds.length)} certs`
+              : `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`;
+            addJob(job_id, fileLabel);
+            if (!firstId) firstId = job_id;
+          }
+          return firstId!;
+        }
+        // Inline data fallback
+        const { job_id } = await api.certificates.batchGenerate({
+          data: importedData.rows,
+          options,
+          configs: configDefs,
+        });
+        addJob(job_id, `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`);
+        return job_id;
+      })();
 
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
 
-      // Hand off to the global notification context — user can now navigate away
-      const jobLabel =
-        configsToRun.length === 1
-          ? `${totalRows} certificate${totalRows !== 1 ? 's' : ''} — ${configsToRun[0]?.label ?? ''}`
-          : `${totalRows} × ${configsToRun.length} template${configsToRun.length !== 1 ? 's' : ''}`;
-      addJob(job_id, jobLabel);
-      setGenerationJobId(job_id);
+      setGenerationJobId(firstJobId);
       // Stay on 'generating' overlay — user decides when to move to background via the CTA
     } catch (err: any) {
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }

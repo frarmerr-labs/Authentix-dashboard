@@ -13,6 +13,20 @@ interface CertificatePreviewProps {
 
 export function CertificatePreview({ template, fields, currentPage }: CertificatePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load Google Fonts for all unique font families used in fields
+  useEffect(() => {
+    const families = [...new Set(fields.map(f => f.fontFamily).filter(Boolean))];
+    families.forEach(family => {
+      const id = `gf-preview-${family.replace(/\s+/g, '-')}`;
+      if (document.getElementById(id)) return;
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap`;
+      document.head.appendChild(link);
+    });
+  }, [fields]);
   const [scale, setScale] = useState(0.5);
 
   useEffect(() => {
