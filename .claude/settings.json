@@ -59,12 +59,7 @@
       "Bash(npx --yes @sentry/wizard@8 -i nextjs --saas --org authentix --project authentix-frontend)",
       "Bash(npm show:*)",
       "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")",
-      "Bash(git commit -m ' *)",
-      "Bash(git branch *)",
-      "Bash(echo \"exit: $?\")",
-      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend add src/domains/certificates/service.ts)",
-      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend status)",
-      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend commit -m ' *)"
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"
