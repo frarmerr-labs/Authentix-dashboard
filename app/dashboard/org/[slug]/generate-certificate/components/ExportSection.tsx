@@ -1153,6 +1153,14 @@ export function ExportSection({
     setTotalGenerated(0);
     setGenerationSummary([]);
 
+    // Validate expiry date is in the future
+    if (expiryType === 'custom' && customExpiryDate) {
+      if (new Date(customExpiryDate) <= new Date()) {
+        toast.error('Expiry date must be in the future');
+        return;
+      }
+    }
+
     const options: {
       includeQR: boolean;
       expiry_type: ExpiryType;
@@ -1209,7 +1217,7 @@ export function ExportSection({
           for (let i = 0; i < importIds.length; i++) {
             const batchParams = {
               import_id: importIds[i]!,
-              ...(i === 0 && additionalRows && additionalRows.length > 0 ? { additional_rows: additionalRows } : {}),
+              ...(additionalRows && additionalRows.length > 0 ? { additional_rows: additionalRows } : {}),
               options,
               configs: configDefs,
             };
