@@ -496,7 +496,7 @@ export function DataSelector({
                           <p className="text-sm text-muted-foreground">
                             Drop one file or up to 10 files at once — they&apos;ll be merged for generation
                           </p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB each • Up to {MAX_ROWS.toLocaleString()} rows per file</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">.csv, .tsv, .xlsx, .xls • Up to {MAX_DATA_FILE_MB} MB • Up to {MAX_ROWS.toLocaleString()} rows per file</p>
                         </div>
                         <Button variant="outline">
                           <Plus className="w-4 h-4 mr-2" />

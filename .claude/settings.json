@@ -61,13 +61,9 @@
       "Bash(node -e \"const v=JSON.parse\\(require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\)\\); console.log\\(v.slice\\(-5\\).join\\(''''\\\\n''''\\)\\)\")",
       "Bash(git commit -m ' *)",
       "Bash(git branch *)",
-      "Bash(sed -i '' '787s/createSignedUrl\\(c.file_path, 3600\\)/createSignedUrl\\(c.file_path, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '797s/createSignedUrl\\(c.preview_path, 3600\\)/createSignedUrl\\(c.preview_path, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '945s/createSignedUrl\\(certFile.path as string, 3600\\)/createSignedUrl\\(certFile.path as string, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '952s/createSignedUrl\\(previewFile.path as string, 3600\\)/createSignedUrl\\(previewFile.path as string, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '1025s/createSignedUrl\\(certFile.path as string, 3600\\)/createSignedUrl\\(certFile.path as string, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '1032s/createSignedUrl\\(previewFile.path as string, 3600\\)/createSignedUrl\\(previewFile.path as string, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)",
-      "Bash(sed -i '' '1227s/createSignedUrl\\(certFile.path, 3600\\)/createSignedUrl\\(certFile.path, CERT_URL_TTL\\)/' src/domains/certificates/service.ts)"
+      "Bash(echo \"exit: $?\")",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend add src/domains/certificates/service.ts)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend status)"
     ],
     "additionalDirectories": [
       "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"
