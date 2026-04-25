@@ -63,7 +63,8 @@
       "Bash(git branch *)",
       "Bash(echo \"exit: $?\")",
       "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend add src/domains/certificates/service.ts)",
-      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend status)"
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend status)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/harshitsaxena/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/email-templates/[id]"
