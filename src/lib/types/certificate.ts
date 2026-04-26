@@ -269,4 +269,18 @@ export const FIELD_TYPE_CONFIG = {
     defaultHeight: 120,
     sampleValue: '',
   },
+  email: {
+    label: 'Email Address',
+    icon: 'Mail',
+    defaultWidth: 250,
+    defaultHeight: 30,
+    sampleValue: 'john@example.com',
+  },
+  phone: {
+    label: 'Phone Number',
+    icon: 'Phone',
+    defaultWidth: 180,
+    defaultHeight: 30,
+    sampleValue: '+1-555-000-0001',
+  },
 } as const;
