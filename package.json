@@ -23,6 +23,8 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@e965/xlsx": "^0.20.3",
+    "@maily-to/core": "^0.3.7",
+    "@maily-to/render": "^0.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

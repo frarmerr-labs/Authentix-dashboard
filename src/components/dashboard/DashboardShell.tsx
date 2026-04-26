@@ -19,6 +19,10 @@ import {
   Sparkles,
   CreditCard,
   Mail,
+  UserRound,
+  Filter,
+  Megaphone,
+  Activity,
 } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api/client";
@@ -78,6 +82,10 @@ const NAVIGATION_ITEMS: readonly NavItem[] = [
   { name: "Certificates", href: "/certificates", icon: FileCheck },
   { name: "Verification", href: "/verification-logs", icon: Shield },
   { name: "Email Templates", href: "/email-templates", icon: Mail },
+  { name: "Contacts", href: "/contacts", icon: UserRound },
+  { name: "Segments", href: "/segments", icon: Filter },
+  { name: "Broadcasts", href: "/broadcasts", icon: Megaphone },
+  { name: "Delivery Events", href: "/delivery-events", icon: Activity },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Users", href: "/users", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },
