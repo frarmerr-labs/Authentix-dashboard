@@ -508,7 +508,7 @@ function IntegrationProviderIcon({ integration }: { integration: DeliveryIntegra
 
 // ── Main page ──────────────────────────────────────────────────────────────
 
-const PLATFORM_DEFAULT_EMAIL = "info@xencus.com";
+const PLATFORM_DEFAULT_EMAIL = "info@digicertificates.in";
 
 export default function EmailDeliverySettingsPage() {
   const { orgPath } = useOrg();

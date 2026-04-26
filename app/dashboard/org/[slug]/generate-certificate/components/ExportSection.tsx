@@ -1050,7 +1050,7 @@ export function ExportSection({
         width: f.width || 200,
         height: f.height || 30,
         fontSize: (f.style as any)?.fontSize || 16,
-        fontFamily: (f.style as any)?.fontFamily || 'Helvetica',
+        fontFamily: (f.style as any)?.fontFamily || 'DM Sans',
         color: (f.style as any)?.color || '#000000',
         fontWeight: (f.style as any)?.fontWeight || '400',
         fontStyle: (f.style as any)?.fontStyle || 'normal',
