@@ -16,6 +16,7 @@ import { DataPreview } from './DataPreview';
 import { ManualDataEntry } from './ManualDataEntry';
 
 // Semantic field types that are logically unique per person across templates
+
 const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date', 'email', 'phone']);
 
 const MAX_DATA_FILE_MB = 10;
