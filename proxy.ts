@@ -31,7 +31,7 @@ function buildCSP(nonce: string): string {
     "img-src 'self' blob: data: https://*.supabase.co https://vercel.com https://*.vercel.com",
     "font-src 'self' data: https://fonts.gstatic.com https://vercel.live",
     "frame-src 'self' blob: https://*.supabase.co https://vercel.live",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.digicertificates.in",
     "object-src 'self' blob:",
     "worker-src 'self' blob:",
     "media-src 'self' blob:",

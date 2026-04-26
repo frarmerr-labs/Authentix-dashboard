@@ -57,6 +57,9 @@ export function CertificateCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const [canvasWidth, setCanvasWidth] = useState(600);
+  // Keep a ref to the latest fields so handleFieldDrag never reads a stale closure snapshot
+  const fieldsRef = useRef(fields);
+  useEffect(() => { fieldsRef.current = fields; }, [fields]);
 
   // Global events for Toolbar Dragging & Template Resizing
   useEffect(() => {
@@ -147,7 +150,7 @@ export function CertificateCanvas({
   }, [pdfWidth, scale]);
   
   const handleFieldDrag = (id: string, deltaX: number, deltaY: number) => {
-    const field = fields.find(f => f.id === id);
+    const field = fieldsRef.current.find(f => f.id === id);
     if (field) {
       onFieldUpdate(id, {
         x: field.x + deltaX / scale,
@@ -157,7 +160,7 @@ export function CertificateCanvas({
   };
 
   const handleFieldResize = (id: string, width: number, height: number) => {
-    const field = fields.find(f => f.id === id);
+    const field = fieldsRef.current.find(f => f.id === id);
     if (field) {
       onFieldUpdate(id, {
         width: width / scale,
