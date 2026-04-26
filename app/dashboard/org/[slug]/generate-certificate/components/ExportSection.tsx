@@ -1134,8 +1134,9 @@ export function ExportSection({
         setPreviewImageLoaded(false);
         setPreviewModalOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Preview generation failed:', err);
+      toast.error(err?.message ?? 'Preview failed — check your field mappings and try again');
     } finally {
       setIsPreviewing(false);
     }

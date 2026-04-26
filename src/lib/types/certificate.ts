@@ -1,5 +1,5 @@
 // Certificate Field Types
-export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code' | 'image';
+export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code' | 'image' | 'email' | 'phone';
 
 export type TextAlign = 'left' | 'center' | 'right';
 export type FontWeight = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'normal' | 'bold';
