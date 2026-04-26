@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { User, BookOpen, Calendar, Type, QrCode, Image as ImageIcon } from 'lucide-react';
+import { User, BookOpen, Calendar, Type, QrCode, Image as ImageIcon, Mail, Phone } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 interface FieldTypeSelectorProps {
@@ -33,6 +33,8 @@ const FIELD_ICONS = {
   custom_text: Type,
   qr_code: QrCode,
   image: ImageIcon,
+  email: Mail,
+  phone: Phone,
 };
 
 // Reference dimensions the FIELD_TYPE_CONFIG defaults were designed for (A4 portrait at 72 DPI)

@@ -1994,9 +1994,11 @@ function autoMapColumns(fields: CertificateField[], headers: string[]): FieldMap
 
       if (normalizedHeader === normalizedLabel) return true;
       if (field.type === 'name' && normalizedHeader.includes('name')) return true;
-      if (field.type === 'course' && normalizedHeader.includes('course')) return true;
-      if (field.type === 'start_date' && normalizedHeader.includes('start')) return true;
-      if (field.type === 'end_date' && normalizedHeader.includes('end')) return true;
+      if (field.type === 'course' && (normalizedHeader.includes('course') || normalizedHeader.includes('program'))) return true;
+      if (field.type === 'start_date' && (normalizedHeader.includes('start') || normalizedHeader.includes('issue'))) return true;
+      if (field.type === 'end_date' && (normalizedHeader.includes('end') || normalizedHeader.includes('expir'))) return true;
+      if (field.type === 'email' && (normalizedHeader.includes('email') || normalizedHeader.includes('e-mail'))) return true;
+      if (field.type === 'phone' && (normalizedHeader.includes('phone') || normalizedHeader.includes('mobile') || normalizedHeader.includes('contact'))) return true;
 
       return false;
     });

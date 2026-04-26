@@ -20,6 +20,8 @@ export const CERTIFICATE_FIELD_TYPES = [
   "date",
   "start_date",
   "end_date",
+  "email",
+  "phone",
   "custom",
   "custom_text",
   "qr_code",
@@ -65,7 +67,7 @@ interface CertificateFieldBase {
  * Text-based field (name, course, custom)
  */
 interface TextCertificateField extends CertificateFieldBase {
-  type: "name" | "course" | "custom" | "custom_text";
+  type: "name" | "course" | "custom" | "custom_text" | "email" | "phone";
   prefix?: string;
   suffix?: string;
 }
