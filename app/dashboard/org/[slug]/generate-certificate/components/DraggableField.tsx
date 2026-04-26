@@ -173,8 +173,11 @@ export function DraggableField({
   const fieldRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [initialDims, setInitialDims] = useState({ width: 0, height: 0, fontSize: 0 });
+  // Refs instead of state: state updates are async, so using setState for drag coordinates
+  // causes stale reads when mousemove fires faster than React's render cycle, making
+  // dragging feel sticky/jittery. Refs update synchronously within the same event.
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const initialDimsRef = useRef({ width: 0, height: 0 });
 
   // Calculate scaled dimensions
   const scaledX = field.x * scale;
@@ -186,39 +189,18 @@ export function DraggableField({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
-        const deltaX = e.clientX - dragStart.x;
-        const deltaY = e.clientY - dragStart.y;
+        const deltaX = e.clientX - dragStartRef.current.x;
+        const deltaY = e.clientY - dragStartRef.current.y;
+        // Update ref synchronously so next event sees the fresh origin
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
         onDrag(deltaX, deltaY);
-        setDragStart({ x: e.clientX, y: e.clientY });
       } else if (isResizing) {
-        const deltaX = e.clientX - dragStart.x;
-        const deltaY = e.clientY - dragStart.y;
-        
-        // Simple scaling: use max delta to determine growth/shrink
-        // Lock aspect ratio for better font scaling experience from corner
-        // But users might want to just resize width (text wrapping).
-        // User asked "increase the font size... by dragging the corner".
-        // This usually implies scaling the whole element.
-        
-        // Let's implement free resizing for width/height updates, 
-        // AND calculate font size based on height change ratio.
-        
-        const newWidth = initialDims.width + deltaX;
-        const newHeight = initialDims.height + deltaY;
-        
-        // Don't allowing inverting
+        const deltaX = e.clientX - dragStartRef.current.x;
+        const deltaY = e.clientY - dragStartRef.current.y;
+        const newWidth = initialDimsRef.current.width + deltaX;
+        const newHeight = initialDimsRef.current.height + deltaY;
         if (newWidth > 20 && newHeight > 20) {
-           onResize(newWidth, newHeight);
-           
-           // If it's a text field, we might want to scale font
-           // But `onResize` parent handler only updates width/height.
-           // We might need to update font size in parent... 
-           // BUT `onResize` prop definition is (width, height).
-           // I will leave font scaling for now or strictly couple it? 
-           // "Give an option...". Maybe a specific handle?
-           // I'll stick to standard resize for now to avoid breaking types.
-           // Wait, I can implement a specific handle that calls a new prop? 
-           // Or I can just trigger it here but I need to update the interface.
+          onResize(newWidth, newHeight);
         }
       }
     };
@@ -237,27 +219,23 @@ export function DraggableField({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, onDrag, onResize, initialDims]);
+  }, [isDragging, isResizing, onDrag, onResize]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect(e);
     if (field.locked) return;
     onDragStart?.();
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
     setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
   };
-  
+
   const handleResizeStart = (e: React.MouseEvent) => {
     if (field.locked) return;
     e.stopPropagation();
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    initialDimsRef.current = { width: scaledWidth, height: scaledHeight };
     setIsResizing(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setInitialDims({ 
-      width: scaledWidth, 
-      height: scaledHeight, 
-      fontSize: scaledFontSize 
-    });
   };
 
   // Use explicit sampleValue, then fall back to type-default (so renaming a field
