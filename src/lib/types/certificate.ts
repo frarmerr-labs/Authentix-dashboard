@@ -1,5 +1,5 @@
 // Certificate Field Types
-export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code' | 'image';
+export type FieldType = 'name' | 'course' | 'start_date' | 'end_date' | 'custom_text' | 'qr_code' | 'image' | 'email' | 'phone';
 
 export type TextAlign = 'left' | 'center' | 'right';
 export type FontWeight = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'normal' | 'bold';
@@ -268,5 +268,19 @@ export const FIELD_TYPE_CONFIG = {
     defaultWidth: 120,
     defaultHeight: 120,
     sampleValue: '',
+  },
+  email: {
+    label: 'Email Address',
+    icon: 'Mail',
+    defaultWidth: 250,
+    defaultHeight: 30,
+    sampleValue: 'john@example.com',
+  },
+  phone: {
+    label: 'Phone Number',
+    icon: 'Phone',
+    defaultWidth: 180,
+    defaultHeight: 30,
+    sampleValue: '+1-555-000-0001',
   },
 } as const;

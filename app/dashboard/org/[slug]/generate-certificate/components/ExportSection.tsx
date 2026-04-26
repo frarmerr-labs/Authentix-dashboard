@@ -111,6 +111,8 @@ export function autoMapForTemplate(
       if (field.type === 'course' && (nh.includes('course') || nh.includes('program'))) return true;
       if (field.type === 'start_date' && (nh.includes('start') || nh.includes('issue'))) return true;
       if (field.type === 'end_date' && (nh.includes('end') || nh.includes('expir'))) return true;
+      if (field.type === 'email' && (nh.includes('email') || nh.includes('e-mail'))) return true;
+      if (field.type === 'phone' && (nh.includes('phone') || nh.includes('mobile') || nh.includes('contact'))) return true;
       return false;
     });
     if (match) mappings.push({ fieldId: field.id, columnName: match });
@@ -1132,8 +1134,9 @@ export function ExportSection({
         setPreviewImageLoaded(false);
         setPreviewModalOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Preview generation failed:', err);
+      toast.error(err?.message ?? 'Preview failed — check your field mappings and try again');
     } finally {
       setIsPreviewing(false);
     }
@@ -1142,6 +1145,14 @@ export function ExportSection({
   // ── Generate ────────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!template || !importedData || !template.id) return;
+
+    // Validate before showing overlay — validation failure must not leave overlay stuck
+    if (expiryType === 'custom' && customExpiryDate) {
+      if (new Date(customExpiryDate) <= new Date()) {
+        toast.error('Expiry date must be in the future');
+        return;
+      }
+    }
 
     setOverlayState('generating');
     setGenerationStatus('generating');
@@ -1152,14 +1163,6 @@ export function ExportSection({
     setGeneratedCertificates([]);
     setTotalGenerated(0);
     setGenerationSummary([]);
-
-    // Validate expiry date is in the future
-    if (expiryType === 'custom' && customExpiryDate) {
-      if (new Date(customExpiryDate) <= new Date()) {
-        toast.error('Expiry date must be in the future');
-        return;
-      }
-    }
 
     const options: {
       includeQR: boolean;
