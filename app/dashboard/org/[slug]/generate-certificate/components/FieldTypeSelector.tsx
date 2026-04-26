@@ -72,7 +72,7 @@ export function FieldTypeSelector({ onAddField, onAddImageField, onAddImageFile,
       pageNumber: currentPage, // Assign to current page
       // Font size scales with template height; clamped to a readable minimum
       fontSize: type === 'qr_code' ? 0 : Math.max(12, Math.round(24 * hScale)),
-      fontFamily: 'Arial',
+      fontFamily: 'DM Sans',
       color: '#000000',
       fontWeight: 'normal',
       fontStyle: 'normal',

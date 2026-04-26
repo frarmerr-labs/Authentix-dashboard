@@ -1068,7 +1068,7 @@ export default function GenerateCertificatePage() {
           // Build style object - include original field ID for mapping
           const style: Record<string, unknown> = {
             fontSize: field.fontSize || 16,
-            fontFamily: field.fontFamily || 'Helvetica',
+            fontFamily: field.fontFamily || 'DM Sans',
             color: field.color || '#000000',
             fontWeight: field.fontWeight || '400',
             fontStyle: field.fontStyle || 'normal',
@@ -1918,7 +1918,7 @@ function mapDbFieldToFrontend(field: any): CertificateField {
     pageNumber: field.page_number != null ? field.page_number - 1 : 0,
     // Core text style
     fontSize: s.fontSize ?? 16,
-    fontFamily: s.fontFamily ?? 'Helvetica',
+    fontFamily: s.fontFamily ?? 'DM Sans',
     color: s.color ?? '#000000',
     fontWeight: s.fontWeight ?? '400',
     fontStyle: s.fontStyle ?? 'normal',
