@@ -16,7 +16,7 @@ import { DataPreview } from './DataPreview';
 import { ManualDataEntry } from './ManualDataEntry';
 
 // Semantic field types that are logically unique per person across templates
-const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date']);
+const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date', 'email', 'phone']);
 
 const MAX_DATA_FILE_MB = 10;
 const MAX_DATA_FILE_BYTES = MAX_DATA_FILE_MB * 1024 * 1024;
@@ -193,6 +193,8 @@ export function DataSelector({
       if (t === 'course') return 'Web Development Fundamentals';
       if (t === 'start_date') return '01/15/2026';
       if (t === 'end_date') return '03/15/2026';
+      if (t === 'email') return `student${i}@example.com`;
+      if (t === 'phone') return `+1-555-000-${String(i).padStart(4, '0')}`;
       const lower = field.label.toLowerCase();
       if (lower.includes('email')) return `student${i}@example.com`;
       if (lower.includes('grade') || lower.includes('score')) return `${85 + i}%`;
@@ -215,7 +217,7 @@ export function DataSelector({
       return true;
     });
 
-    const hasEmailCol = mappableFields.some(f => f.label.toLowerCase().includes('email'));
+    const hasEmailCol = mappableFields.some(f => f.type === 'email' || f.label.toLowerCase().includes('email'));
     const sampleData = [];
     for (let i = 1; i <= 5; i++) {
       const row: Record<string, unknown> = {};
@@ -239,6 +241,8 @@ export function DataSelector({
       if (t === 'course') return 'Web Development Fundamentals';
       if (t === 'start_date') return '01/15/2026';
       if (t === 'end_date') return '03/15/2026';
+      if (t === 'email') return `student${i}@example.com`;
+      if (t === 'phone') return `+1-555-000-${String(i).padStart(4, '0')}`;
       const lower = field.label.toLowerCase();
       if (lower.includes('email')) return `student${i}@example.com`;
       if (lower.includes('grade') || lower.includes('score')) return `${85 + i}%`;
@@ -261,7 +265,7 @@ export function DataSelector({
       return true;
     });
 
-    const hasEmailCol = mappableFields.some(f => f.label.toLowerCase().includes('email'));
+    const hasEmailCol = mappableFields.some(f => f.type === 'email' || f.label.toLowerCase().includes('email'));
     const headers = [...mappableFields.map(f => f.label), ...(hasEmailCol ? [] : ['Email'])];
     const rows: string[][] = [];
     for (let i = 1; i <= 5; i++) {
@@ -312,6 +316,14 @@ export function DataSelector({
       );
       if (matchedField && SEMANTIC_TYPES.has(matchedField.type)) {
         typeToColumn[matchedField.type] = header;
+      }
+      // Content-based detection for email/phone when label doesn't match exactly
+      const nh = header.toLowerCase().trim();
+      if (!typeToColumn['email'] && (nh.includes('email') || nh.includes('e-mail'))) {
+        typeToColumn['email'] = header;
+      }
+      if (!typeToColumn['phone'] && (nh.includes('phone') || nh.includes('mobile') || nh.includes('contact'))) {
+        typeToColumn['phone'] = header;
       }
     });
 
