@@ -43,6 +43,17 @@ export type {
   SendResult,
   PlatformDefaultSettings,
   UpdatePlatformDefaultSettingsDto,
+  EmailContact,
+  EmailSegment,
+  EmailBroadcast,
+  DeliveryEmailEvent,
+  FilterRule,
+  FilterOperator,
+  SegmentFilters,
+  CreateSegmentDto,
+  CreateBroadcastDto,
+  BroadcastStatus,
+  EmailEventType,
 } from "./delivery";
 
 // ── Domain API modules ────────────────────────────────────────────────────────

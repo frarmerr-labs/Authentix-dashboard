@@ -4,7 +4,7 @@
  * Email delivery integrations, templates, sending, and message history.
  */
 
-import { apiRequest } from "./core";
+import { apiRequest, API_BASE_URL, extractApiError, ApiError, type ApiResponse } from "./core";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -140,6 +140,97 @@ export interface UpdatePlatformDefaultSettingsDto {
   default_template_id?: string | null;
 }
 
+export interface EmailContact {
+  id: string;
+  organization_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  unsubscribed: boolean;
+  custom_properties: Record<string, string | number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FilterOperator =
+  | "equals" | "not_equals"
+  | "contains" | "not_contains"
+  | "starts_with" | "ends_with"
+  | "is_empty" | "is_not_empty";
+
+export interface FilterRule {
+  id: string;
+  field: string;
+  operator: FilterOperator;
+  value: string;
+}
+
+export interface SegmentFilters {
+  match: "all" | "any";
+  rules: FilterRule[];
+}
+
+export interface EmailSegment {
+  id: string;
+  organization_id: string;
+  name: string;
+  filters: SegmentFilters;
+  contact_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSegmentDto {
+  name: string;
+  filters: SegmentFilters;
+}
+
+export type BroadcastStatus = "draft" | "scheduled" | "sending" | "sent" | "failed";
+
+export interface EmailBroadcast {
+  id: string;
+  organization_id: string;
+  name: string;
+  subject: string;
+  from_email: string;
+  from_name: string;
+  html_body: string;
+  text_body: string | null;
+  segment_id: string | null;
+  status: BroadcastStatus;
+  scheduled_at: string | null;
+  sent_at: string | null;
+  total_recipients: number;
+  delivered_count: number;
+  failed_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBroadcastDto {
+  name: string;
+  subject: string;
+  from_email: string;
+  from_name: string;
+  html_body: string;
+  text_body?: string;
+  segment_id?: string | null;
+}
+
+export type EmailEventType =
+  | "sent" | "delivered" | "bounced" | "complained"
+  | "opened" | "clicked" | "failed" | "scheduled" | "unknown";
+
+export interface DeliveryEmailEvent {
+  id: string;
+  organization_id: string;
+  provider: string;
+  provider_message_id: string | null;
+  event_type: EmailEventType;
+  raw_payload: Record<string, unknown>;
+  created_at: string;
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 export const deliveryApi = {
@@ -265,6 +356,133 @@ export const deliveryApi = {
   listMessagesByJob: async (jobId: string): Promise<{ messages: DeliveryMessage[] }> => {
     const response = await apiRequest<{ messages: DeliveryMessage[] }>(
       `/delivery/messages/job/${jobId}`,
+    );
+    return response.data!;
+  },
+
+  // ── Contacts ─────────────────────────────────────────────────────────────────
+
+  listContacts: async (params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    unsubscribed?: boolean;
+  }): Promise<{ contacts: EmailContact[]; total: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.search) qs.set("search", params.search);
+    if (params?.unsubscribed !== undefined) qs.set("unsubscribed", String(params.unsubscribed));
+    const response = await apiRequest<{ contacts: EmailContact[]; total: number }>(
+      `/delivery/contacts${qs.toString() ? `?${qs}` : ""}`,
+    );
+    return response.data!;
+  },
+
+  importContacts: async (file: File): Promise<{ imported: number; skipped: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${API_BASE_URL}/delivery/contacts/import`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    const data = (await response.json()) as ApiResponse<{ imported: number; skipped: number; errors: string[] }>;
+    if (!response.ok || !data.success) {
+      const { code, message } = extractApiError(data.error, "Import failed");
+      throw new ApiError(code, message);
+    }
+    return data.data!;
+  },
+
+  deleteContact: async (id: string): Promise<void> => {
+    await apiRequest(`/delivery/contacts/${id}`, { method: "DELETE" });
+  },
+
+  updateContact: async (id: string, dto: { unsubscribed?: boolean; first_name?: string; last_name?: string }): Promise<EmailContact> => {
+    const response = await apiRequest<{ contact: EmailContact }>(`/delivery/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+    return response.data!.contact;
+  },
+
+  // ── Segments ─────────────────────────────────────────────────────────────────
+
+  listSegments: async (): Promise<{ segments: EmailSegment[] }> => {
+    const response = await apiRequest<{ segments: EmailSegment[] }>("/delivery/segments");
+    return response.data!;
+  },
+
+  createSegment: async (dto: CreateSegmentDto): Promise<EmailSegment> => {
+    const response = await apiRequest<{ segment: EmailSegment }>("/delivery/segments", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+    return response.data!.segment;
+  },
+
+  updateSegment: async (id: string, dto: Partial<CreateSegmentDto>): Promise<EmailSegment> => {
+    const response = await apiRequest<{ segment: EmailSegment }>(`/delivery/segments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+    return response.data!.segment;
+  },
+
+  deleteSegment: async (id: string): Promise<void> => {
+    await apiRequest(`/delivery/segments/${id}`, { method: "DELETE" });
+  },
+
+  // ── Broadcasts ────────────────────────────────────────────────────────────────
+
+  listBroadcasts: async (): Promise<{ broadcasts: EmailBroadcast[] }> => {
+    const response = await apiRequest<{ broadcasts: EmailBroadcast[] }>("/delivery/broadcasts");
+    return response.data!;
+  },
+
+  createBroadcast: async (dto: CreateBroadcastDto): Promise<EmailBroadcast> => {
+    const response = await apiRequest<{ broadcast: EmailBroadcast }>("/delivery/broadcasts", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+    return response.data!.broadcast;
+  },
+
+  updateBroadcast: async (id: string, dto: Partial<CreateBroadcastDto>): Promise<EmailBroadcast> => {
+    const response = await apiRequest<{ broadcast: EmailBroadcast }>(`/delivery/broadcasts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+    return response.data!.broadcast;
+  },
+
+  sendBroadcast: async (id: string, scheduledAt?: string): Promise<void> => {
+    await apiRequest(`/delivery/broadcasts/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify({ scheduled_at: scheduledAt }),
+    });
+  },
+
+  deleteBroadcast: async (id: string): Promise<void> => {
+    await apiRequest(`/delivery/broadcasts/${id}`, { method: "DELETE" });
+  },
+
+  // ── Email events ──────────────────────────────────────────────────────────────
+
+  listEmailEvents: async (params?: {
+    limit?: number;
+    offset?: number;
+    event_type?: string;
+    provider?: string;
+  }): Promise<{ events: DeliveryEmailEvent[]; total: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.event_type) qs.set("event_type", params.event_type);
+    if (params?.provider) qs.set("provider", params.provider);
+    const response = await apiRequest<{ events: DeliveryEmailEvent[]; total: number }>(
+      `/delivery/events${qs.toString() ? `?${qs}` : ""}`,
     );
     return response.data!;
   },
