@@ -15,7 +15,7 @@
  * delta (1px each) rather than a single stale delta from the first position.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DraggableField } from '@/app/dashboard/org/[slug]/generate-certificate/components/DraggableField';
 import type { CertificateField } from '@/lib/types/certificate';
