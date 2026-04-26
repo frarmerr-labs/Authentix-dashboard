@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@maily-to/core/dist/index.css";
+@import "./maily-editor.css";
 
 /* ============================================
    THEME CONFIGURATION (Tailwind v4 CSS-first)
