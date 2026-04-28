@@ -3,8 +3,8 @@
  * Covers: row add/edit/delete, validation, onDataChange vs onDataSubmit separation,
  * auto-commit on confirm, semantic field deduplication, and date column rendering.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ManualDataEntry } from '@/app/dashboard/org/[slug]/generate-certificate/components/ManualDataEntry';
 import type { CertificateField, ImportedData } from '@/lib/types/certificate';
@@ -23,7 +23,7 @@ function makeField(overrides: Partial<CertificateField> = {}): CertificateField 
 }
 
 const NAME_FIELD = makeField({ id: 'name-1', type: 'name', label: 'Recipient Name' });
-const COURSE_FIELD = makeField({ id: 'course-1', type: 'course', label: 'Course Name' });
+const _COURSE_FIELD = makeField({ id: 'course-1', type: 'course', label: 'Course Name' });
 const START_DATE_FIELD = makeField({ id: 'sd-1', type: 'start_date', label: 'Start Date' });
 const QR_FIELD = makeField({ id: 'qr-1', type: 'qr_code', label: 'QR Code' });
 const IMG_FIELD = makeField({ id: 'img-1', type: 'image', label: 'Signature Image' });

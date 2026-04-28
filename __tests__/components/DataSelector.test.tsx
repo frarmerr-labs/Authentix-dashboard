@@ -11,8 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, act } from '@testing-library/react';
 import type { ImportJob } from '@/lib/api/imports';
 import type { ImportedData } from '@/lib/types/certificate';
 
@@ -107,7 +106,7 @@ function defaultProps(overrides = {}) {
 }
 
 // Helper: simulate dropping a file via the exposed _onDrop hook
-async function dropFile(file: File) {
+async function _dropFile(file: File) {
   // Find dropzone and fire its onDrop directly via React internals
   // Since we mocked react-dropzone, we can get the handler from the component
   const dropzone = screen.getByTestId('dropzone');

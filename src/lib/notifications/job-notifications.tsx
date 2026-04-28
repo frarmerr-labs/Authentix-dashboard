@@ -23,7 +23,7 @@ import {
   useCallback,
   useRef,
 } from 'react';
-import { api } from '@/lib/api/client';
+import { api, ApiError } from '@/lib/api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,8 +183,19 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
                 });
               }
             }
-          } catch {
-            // Silently ignore poll errors — job will be retried next tick
+          } catch (err) {
+            // On session expiry, mark the job failed so polling stops instead of
+            // hammering the backend with 401s every 5 seconds indefinitely.
+            if (err instanceof ApiError && err.code === 'UNAUTHORIZED') {
+              setJobs(prev =>
+                prev.map(j =>
+                  j.id === job.id
+                    ? { ...j, status: 'failed' as JobStatus, error: 'Session expired — please refresh and sign in again.' }
+                    : j,
+                ),
+              );
+            }
+            // All other errors are silently ignored — job will be retried next tick
           }
         }),
       );
