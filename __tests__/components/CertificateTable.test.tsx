@@ -162,7 +162,7 @@ describe('CertificateTable — pagination', () => {
   it('navigating to next page shows the next batch of certs', async () => {
     const user = userEvent.setup();
     render(<CertificateTable certificates={makeCerts(12)} totalCount={12} />);
-    const nextBtn = screen.getAllByRole('button').find(b =>
+    const _nextBtn = screen.getAllByRole('button').find(b =>
       b.querySelector('svg') && b.getAttribute('disabled') === null && screen.getByText('1 / 2'),
     );
     // Click the next page button (ChevronRight — second icon button in pagination)

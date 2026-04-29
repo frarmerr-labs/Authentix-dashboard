@@ -4,8 +4,7 @@
  * (hidden → generating → success → hidden), and progress behaviour.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock('@/lib/org', () => ({
@@ -462,7 +461,7 @@ describe('ExportSection — full payload assembly (import + mappings + options)'
 
   it('passes additional_rows alongside import_id', async () => {
     const importedData = makeImportedData({ importId: 'import-88' });
-    const additionalRows = [{ Name: 'Manual Entry', Email: 'manual@test.com' }];
+    const _additionalRows = [{ Name: 'Manual Entry', Email: 'manual@test.com' }];
 
     render(
       <ExportSection
