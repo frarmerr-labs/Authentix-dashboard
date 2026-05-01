@@ -122,6 +122,11 @@ export default function GenerateCertificatePage() {
   const selectRequestRef = useRef(0);
 
   // ── Session persistence ────────────────────────────────────────────────────
+  // Clear sessionStorage on unmount so navigating away doesn't auto-restore the old design session.
+  useEffect(() => {
+    return () => { sessionStorage.removeItem('gencert_session'); };
+  }, []);
+
   // Track whether initial mount has passed so we don't wipe the session on first render.
   const sessionInitRef = useRef(false);
 

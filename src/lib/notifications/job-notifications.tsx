@@ -48,6 +48,8 @@ interface JobNotificationContextValue {
   addJob: (jobId: string, label: string) => void;
   markAllSeen: () => void;
   clearJob: (jobId: string) => void;
+  clearFinished: () => void;
+  clearAll: () => void;
   requestNotificationPermission: () => Promise<boolean>;
   notificationPermission: NotificationPermission | 'unsupported';
 }
@@ -56,6 +58,7 @@ interface JobNotificationContextValue {
 
 const STORAGE_KEY = 'authentix_bg_jobs';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STUCK_JOB_MS = 2 * 60 * 60 * 1000; // 2 hours — auto-expire queued jobs that never started
 const POLL_INTERVAL_MS = 5000;
 
 function loadJobs(): BackgroundJob[] {
@@ -63,8 +66,20 @@ function loadJobs(): BackgroundJob[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as BackgroundJob[];
-    const cutoff = Date.now() - MAX_AGE_MS;
-    return parsed.filter(j => new Date(j.submittedAt).getTime() > cutoff);
+    const ageCutoff = Date.now() - MAX_AGE_MS;
+    const stuckCutoff = Date.now() - STUCK_JOB_MS;
+    return parsed
+      .filter(j => new Date(j.submittedAt).getTime() > ageCutoff)
+      .map(j => {
+        // Auto-expire jobs stuck queued/running for >2hrs — they'll never complete
+        if (
+          (j.status === 'queued' || j.status === 'running') &&
+          new Date(j.submittedAt).getTime() < stuckCutoff
+        ) {
+          return { ...j, status: 'failed' as JobStatus, error: 'Job timed out — please try again.' };
+        }
+        return j;
+      });
   } catch {
     return [];
   }
@@ -225,6 +240,14 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
     setJobs(prev => prev.filter(j => j.id !== jobId));
   }, []);
 
+  const clearFinished = useCallback(() => {
+    setJobs(prev => prev.filter(j => j.status === 'queued' || j.status === 'running'));
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setJobs([]);
+  }, []);
+
   const requestNotificationPermission = useCallback(async (): Promise<boolean> => {
     if (typeof Notification === 'undefined') return false;
     const permission = await Notification.requestPermission();
@@ -243,6 +266,8 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
         addJob,
         markAllSeen,
         clearJob,
+        clearFinished,
+        clearAll,
         requestNotificationPermission,
         notificationPermission,
       }}

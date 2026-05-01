@@ -249,6 +249,8 @@ export function NotificationPanel({ expanded }: { expanded: boolean }) {
     unseenCount,
     markAllSeen,
     clearJob,
+    clearFinished,
+    clearAll,
     requestNotificationPermission,
     notificationPermission,
   } = useJobNotifications();
@@ -359,16 +361,35 @@ export function NotificationPanel({ expanded }: { expanded: boolean }) {
               </p>
             </div>
           ) : (
-            <div className="max-h-72 overflow-y-auto divide-y divide-border/40">
-              {jobs.map(job => (
-                <JobItem
-                  key={job.id}
-                  job={job}
-                  onClear={clearJob}
-                  onClick={(j) => { setSelectedJob(j); setOpen(false); }}
-                />
-              ))}
-            </div>
+            <>
+              <div className="max-h-72 overflow-y-auto divide-y divide-border/40">
+                {jobs.map(job => (
+                  <JobItem
+                    key={job.id}
+                    job={job}
+                    onClear={clearJob}
+                    onClick={(j) => { setSelectedJob(j); setOpen(false); }}
+                  />
+                ))}
+              </div>
+              {/* Footer actions */}
+              <div className="flex items-center justify-end gap-3 px-4 py-2.5 border-t border-border/60">
+                {jobs.some(j => j.status === 'completed' || j.status === 'failed') && (
+                  <button
+                    onClick={clearFinished}
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Clear finished
+                  </button>
+                )}
+                <button
+                  onClick={clearAll}
+                  className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  Clear all
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

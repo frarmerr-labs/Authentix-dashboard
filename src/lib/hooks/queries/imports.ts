@@ -23,7 +23,8 @@ export function useImports(params?: {
   const query = useQuery({
     queryKey: importKeys.list(params as Record<string, unknown>),
     queryFn: () => api.imports.list(params),
-    staleTime: 30 * 1000,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   return {
