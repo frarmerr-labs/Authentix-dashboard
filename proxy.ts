@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 
 const AUTH_COOKIE = "auth_access_token";
 
+// Redirect /verify/* and /c/* on the dashboard subdomain to the public domain
+// so recipients see digicertificates.in/verify/TOKEN, not dashboard.digicertificates.in/verify/TOKEN.
+const DASHBOARD_HOST = "dashboard.digicertificates.in";
+const PUBLIC_HOST = "digicertificates.in";
+
 const PUBLIC_ROUTES = ["/", "/login", "/signup", "/signup/success", "/forgot-password", "/reset-password", "/verify"];
 const API_ROUTES = ["/api/"];
 const STATIC_ROUTES = ["/_next/", "/favicon.ico", "/images/", "/fonts/"];
@@ -48,6 +53,13 @@ function nextWithNonce(request: NextRequest, nonce: string): NextResponse {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+
+  // Redirect verify/short-link paths on the dashboard subdomain to the clean public domain
+  if (host === DASHBOARD_HOST && (pathname.startsWith("/verify/") || pathname.startsWith("/c/"))) {
+    const search = request.nextUrl.search;
+    return NextResponse.redirect(`https://${PUBLIC_HOST}${pathname}${search}`, { status: 301 });
+  }
 
   // Generate a cryptographically random nonce for this request
   const array = new Uint8Array(16);

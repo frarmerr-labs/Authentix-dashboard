@@ -6,18 +6,10 @@ import { api } from '@/lib/api/client';
 import { DraggableField } from './DraggableField';
 import { Button } from '@/components/ui/button';
 import {
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  RotateCcw,
   RotateCw,
-  Magnet,
   ChevronLeft,
   ChevronRight,
   GripHorizontal,
-  ChevronDown,
-  Eye,
-  EyeOff,
   Undo2,
   Redo2,
   AlignLeft,
@@ -93,7 +85,6 @@ interface InfiniteCanvasProps {
 const SNAP_SIZE = 8;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 8;
-const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 // Per-field-type info shown in the help panel
 const FIELD_TYPE_INFO: Record<string, { label: string; description: string; tips: string[] }> = {
@@ -186,8 +177,6 @@ export function InfiniteCanvas({
   // Snap: controlled by parent if snapToGridProp provided, else internal
   const [snapToGridInternal, setSnapToGridInternal] = useState(false);
   const snapToGrid = snapToGridProp ?? snapToGridInternal;
-  const toggleSnap = () => { onSnapToggle ? onSnapToggle() : setSnapToGridInternal(v => !v); };
-  const [showZoomMenu, setShowZoomMenu] = useState(false);
 
   // Image drag-over state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -223,6 +212,21 @@ export function InfiniteCanvas({
   // Toolbar minimize + help panel
   const [toolbarMinimized, setToolbarMinimized] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
+
+  // Inject Google Fonts stylesheets for all fonts used by current fields so text renders
+  // in the correct typeface while editing (not just in the preview panel).
+  useEffect(() => {
+    const families = [...new Set(fields.map(f => f.fontFamily).filter(Boolean))];
+    families.forEach(family => {
+      const id = `gf-canvas-${family.replace(/\s+/g, '-')}`;
+      if (document.getElementById(id)) return;
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap`;
+      document.head.appendChild(link);
+    });
+  }, [fields]);
 
   // Panning refs
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -669,16 +673,6 @@ export function InfiniteCanvas({
     onFieldUpdate(field.id, updates);
   }, [fields, selectedFieldId, pdfWidth, pdfHeight, onFieldUpdate]);
 
-  // ── Zoom helpers ──────────────────────────────────────────────────────────
-  const zoomTo = (newScale: number) => {
-    if (!containerRef.current) { onScaleChange(clamp(newScale, MIN_SCALE, MAX_SCALE)); return; }
-    const { clientWidth: cw, clientHeight: ch } = containerRef.current;
-    const cx = cw / 2; const cy = ch / 2;
-    const ratio = clamp(newScale, MIN_SCALE, MAX_SCALE) / scale;
-    setPan(prev => ({ x: cx - (cx - prev.x) * ratio, y: cy - (cy - prev.y) * ratio }));
-    onScaleChange(clamp(newScale, MIN_SCALE, MAX_SCALE));
-    setShowZoomMenu(false);
-  };
 
   const cursor = isPanning ? 'grabbing' : (isSpacePressed ? 'grab' : 'default');
   const canvasW = pdfWidth * scale;
@@ -966,11 +960,11 @@ export function InfiniteCanvas({
           <div
             ref={toolbarRef}
             data-toolbar
-            className="absolute z-50"
+            className="z-50"
             style={
               toolbarPos
-                ? { left: toolbarPos.x, top: toolbarPos.y, userSelect: 'none' }
-                : { bottom: 16, left: '50%', transform: 'translateX(-50%)', userSelect: 'none' }
+                ? { position: 'absolute', left: toolbarPos.x, top: toolbarPos.y, userSelect: 'none' }
+                : { position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', userSelect: 'none' }
             }
             onMouseDown={handleToolbarMouseDown}
           >
@@ -1101,7 +1095,7 @@ export function InfiniteCanvas({
                               key={value}
                               variant="ghost" size="icon"
                               className={`h-7 w-7 rounded-lg transition-colors ${selectedField.textAlign === value ? 'text-primary bg-primary/10 hover:bg-primary/20' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                              onClick={() => onFieldUpdate(selectedField.id, { textAlign: value as any })}
+                              onClick={() => onFieldUpdate(selectedField.id, { textAlign: value as CertificateField['textAlign'] })}
                               title={title}
                             >
                               <Icon className="w-3.5 h-3.5" />
@@ -1125,7 +1119,7 @@ export function InfiniteCanvas({
                           key={id}
                           variant="ghost" size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
-                          onClick={() => alignSelectedField(id as any)}
+                          onClick={() => alignSelectedField(id as Parameters<typeof alignSelectedField>[0])}
                           title={title}
                         >
                           <Icon className="w-3.5 h-3.5" />

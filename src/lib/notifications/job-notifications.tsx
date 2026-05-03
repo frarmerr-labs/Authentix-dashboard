@@ -103,9 +103,10 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
 
   // Keep a stable ref so the polling interval always sees current state
   const jobsRef = useRef<BackgroundJob[]>([]);
-  useEffect(() => {
-    jobsRef.current = jobs;
-  }, [jobs]);
+  useEffect(() => { jobsRef.current = jobs; }, [jobs]);
+
+  // Track open SSE connections per job id
+  const sseRefs = useRef<Map<string, EventSource>>(new Map());
 
   // ── Hydrate from localStorage on mount ──────────────────────────────────────
   useEffect(() => {
@@ -158,7 +159,7 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
 
             const totalCerts =
               status.result?.total_certificates ??
-              status.result?.results?.reduce((s: number, r: any) => s + (r.count ?? 0), 0);
+              status.result?.results?.reduce((s: number, r: Record<string, unknown>) => s + ((r.count as number) ?? 0), 0);
             const downloadUrl =
               status.result?.last_download_url ??
               status.result?.results?.[0]?.download_url ??
@@ -218,6 +219,105 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
 
     return () => clearInterval(interval);
   }, []); // intentionally empty — reads jobsRef, not jobs
+
+  // ── SSE connections — real-time updates (polling above is the fallback) ───────
+  useEffect(() => {
+    const pending = jobs.filter(j => j.status === 'queued' || j.status === 'running');
+    const sses = sseRefs.current;
+
+    // Open a connection for every new pending job
+    for (const job of pending) {
+      if (sses.has(job.id)) continue;
+
+      const es = new EventSource(`/api/proxy/jobs/${job.id}/events`);
+      sses.set(job.id, es);
+
+      es.addEventListener('job_update', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as {
+            status: string;
+            result?: Record<string, unknown> | null;
+            error?: string | null;
+          };
+
+          // Partial progress while still running
+          const raw = data.result as Record<string, unknown> | undefined;
+          const partialProcessed = raw?.processed_so_far as number | undefined;
+          const partialTotal = raw?.total as number | undefined;
+          if (
+            (data.status === 'queued' || data.status === 'running') &&
+            partialProcessed !== undefined && partialTotal !== undefined
+          ) {
+            setJobs(prev => prev.map(j =>
+              j.id === job.id ? { ...j, progress: { processed: partialProcessed, total: partialTotal } } : j,
+            ));
+            return;
+          }
+
+          if (data.status !== 'completed' && data.status !== 'failed') return;
+
+          const result = data.result as Record<string, unknown> | undefined;
+          const totalCerts =
+            result?.total_certificates ??
+            (result?.results as Array<Record<string, unknown>> | undefined)?.reduce((s: number, r) => s + ((r.count as number) ?? 0), 0);
+          const downloadUrl =
+            (result?.last_download_url as string | undefined) ??
+            ((result?.results as Array<Record<string, unknown>> | undefined)?.[0]?.download_url as string | undefined) ??
+            undefined;
+
+          setJobs(prev => prev.map(j => {
+            if (j.id !== job.id) return j;
+            return {
+              ...j,
+              status: data.status as JobStatus,
+              totalCertificates: typeof totalCerts === 'number' ? totalCerts : undefined,
+              downloadUrl: downloadUrl ?? undefined,
+              error: data.error ?? undefined,
+              progress: undefined,
+              seen: false,
+            };
+          }));
+
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            if (data.status === 'completed') {
+              const count = typeof totalCerts === 'number' ? totalCerts : null;
+              new Notification('Certificates Ready!', {
+                body: count
+                  ? `${count} certificate${count !== 1 ? 's are' : ' is'} ready to download.`
+                  : 'Your certificates are ready to download.',
+                icon: '/favicon.ico',
+                tag: `job-${job.id}`,
+              });
+            } else {
+              new Notification('Generation Failed', {
+                body: data.error ?? 'Certificate generation failed. Please try again.',
+                icon: '/favicon.ico',
+                tag: `job-${job.id}`,
+              });
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      });
+
+      // SSE failed — close cleanly; the polling loop handles the rest
+      es.onerror = () => { es.close(); sses.delete(job.id); };
+    }
+
+    // Close connections for jobs that are no longer pending
+    for (const [jobId, es] of [...sses.entries()]) {
+      const job = jobs.find(j => j.id === jobId);
+      if (!job || job.status === 'completed' || job.status === 'failed') {
+        es.close();
+        sses.delete(jobId);
+      }
+    }
+  }, [jobs]);
+
+  // Cleanup all SSE connections on unmount
+  useEffect(() => {
+    const sses = sseRefs.current;
+    return () => { for (const es of sses.values()) es.close(); sses.clear(); };
+  }, []);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 

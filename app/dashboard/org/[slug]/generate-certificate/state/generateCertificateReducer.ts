@@ -22,6 +22,7 @@ import type {
   TemplateConfig,
   TemplateMeta,
   PanelPosition,
+  SavedImport,
 } from "../schema/types";
 import { createInitialState } from "../schema/types";
 
@@ -54,7 +55,7 @@ export type GenerateCertificateAction =
 
   // Data import
   | { type: "SET_IMPORTED_DATA"; data: ImportedData | null }
-  | { type: "SET_SAVED_IMPORTS"; imports: unknown[] }
+  | { type: "SET_SAVED_IMPORTS"; imports: SavedImport[] }
   | { type: "SET_FIELD_MAPPINGS"; mappings: FieldMapping[] }
 
   // Additional cert configs

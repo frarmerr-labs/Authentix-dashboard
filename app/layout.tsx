@@ -3,9 +3,11 @@ import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "Authentix - Certificate Generation & Verification Platform",
@@ -46,10 +48,13 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className={`${inter.variable} font-sans`} suppressHydrationWarning>
         <QueryProvider>
           {children}
           <Toaster richColors theme="dark" position="bottom-right" />
+          {/* Vercel telemetry — Core Web Vitals + page analytics (production only) */}
+          <SpeedInsights />
+          <Analytics />
         </QueryProvider>
       </body>
     </html>
