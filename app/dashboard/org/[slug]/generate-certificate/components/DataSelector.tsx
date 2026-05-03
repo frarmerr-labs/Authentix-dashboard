@@ -368,11 +368,14 @@ export function DataSelector({
     onMappingChange(autoMappings);
   };
 
-  const semanticFieldIds = templateGroups
-    ? new Set(fields.filter(f => SEMANTIC_TYPES.has(f.type)).map(f => f.id))
-    : new Set<string>();
+  // Semantic fields are always excluded — auto-fill intentionally maps every
+  // same-type field to one column, so they're never a user error.
+  // Stale mappings (fieldId not in current `fields`) are also excluded to
+  // prevent false positives after template switches or session restores.
+  const semanticFieldIds = new Set(fields.filter(f => SEMANTIC_TYPES.has(f.type)).map(f => f.id));
+  const currentFieldIds = new Set(fields.map(f => f.id));
   const columnUsageCount = fieldMappings.reduce<Record<string, number>>((acc, m) => {
-    if (m.columnName && !semanticFieldIds.has(m.fieldId)) {
+    if (m.columnName && !semanticFieldIds.has(m.fieldId) && currentFieldIds.has(m.fieldId)) {
       acc[m.columnName] = (acc[m.columnName] ?? 0) + 1;
     }
     return acc;
