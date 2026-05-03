@@ -5,9 +5,11 @@
 
 ---
 
-## Supabase URL Configuration — Fix Now (5 min)
+## Supabase URL Configuration — ✅ DONE
 
-Your current config is wrong and needs to change before anything else.
+~~Your current config is wrong and needs to change before anything else.~~
+
+**Fixed** — Site URL updated to `https://digicertificates.in`, stale redirect URLs removed, correct production URLs added.
 
 | Setting | Current (Wrong) | Should Be |
 |---|---|---|

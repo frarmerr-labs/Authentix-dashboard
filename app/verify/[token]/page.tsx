@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { track } from '@vercel/analytics';
 import { useParams } from 'next/navigation';
 import {
   CheckCircle2,
@@ -140,6 +141,7 @@ export default function VerifyPage() {
         const data = await res.json();
         if (data.success && data.data) {
           setResult(data.data);
+          track('certificate_verified', { result: data.data.result });
         } else {
           setResult({
             valid: false,
@@ -177,6 +179,7 @@ export default function VerifyPage() {
       a.download = 'certificate.pdf';
       a.click();
       URL.revokeObjectURL(href);
+      track('certificate_download', { format: 'pdf' });
     } catch {
       alert('Could not generate PDF. Please download the PNG instead.');
     } finally {
@@ -287,6 +290,7 @@ export default function VerifyPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-colors min-w-35"
+                      onClick={() => track('certificate_download', { format: 'png' })}
                     >
                       <Download className="w-4 h-4" />
                       Download PNG

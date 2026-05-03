@@ -16,8 +16,32 @@ import { DataPreview } from './DataPreview';
 import { ManualDataEntry } from './ManualDataEntry';
 
 // Semantic field types that are logically unique per person across templates
-
 const SEMANTIC_TYPES = new Set(['name', 'course', 'start_date', 'end_date', 'email', 'phone']);
+
+// Stable display order for field types — keeps mapping UI predictable regardless
+// of the order fields were placed on the canvas.
+const FIELD_TYPE_ORDER: Record<string, number> = {
+  name: 0,
+  course: 1,
+  start_date: 2,
+  end_date: 3,
+  email: 4,
+  phone: 5,
+};
+
+function sortFields(fields: CertificateField[]): CertificateField[] {
+  return [...fields].sort((a, b) => {
+    const oa = FIELD_TYPE_ORDER[a.type] ?? 99;
+    const ob = FIELD_TYPE_ORDER[b.type] ?? 99;
+    if (oa !== ob) return oa - ob;
+    return (a.label ?? '').localeCompare(b.label ?? '');
+  });
+}
+
+// User-friendly messages for mapping errors
+function getDuplicateTooltip(column: string): string {
+  return `"${column}" is mapped to more than one field. Both fields will show the same data. If that's not what you want, pick a different column for one of them.`;
+}
 
 const MAX_DATA_FILE_MB = 10;
 const MAX_DATA_FILE_BYTES = MAX_DATA_FILE_MB * 1024 * 1024;
@@ -622,7 +646,7 @@ export function DataSelector({
                         </span>
                       </div>
                       <div className="space-y-2">
-                        {mappableGroupFields.map((field) => {
+                        {sortFields(mappableGroupFields).map((field) => {
                           const mappedColumn = getMappedColumn(field.id);
                           const isMapped = !!mappedColumn;
                           const isDuplicate = !!mappedColumn && duplicatedColumns.has(mappedColumn);
@@ -633,15 +657,27 @@ export function DataSelector({
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <Label className="text-sm font-medium">{field.label}</Label>
                                   {isSynced && (
-                                    <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" title="Mapping this field will automatically apply to the same field type in other templates">
+                                    <span
+                                      className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium cursor-help"
+                                      title="This field type is shared across templates. Choosing a column here will automatically fill it in on all your other templates too."
+                                    >
                                       <Link2 className="w-2.5 h-2.5" />
-                                      synced
+                                      auto-fills all templates
                                     </span>
                                   )}
-                                  {isDuplicate && <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />}
+                                  {isDuplicate && (
+                                    <span className="relative group cursor-help">
+                                      <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                                      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                                        {getDuplicateTooltip(mappedColumn!)}
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
                                 {mappedColumn && (
-                                  <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>← {mappedColumn}{isDuplicate ? ' (shared)' : ''}</p>
+                                  <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+                                    ← {mappedColumn}{isDuplicate ? ' — same column used twice' : ''}
+                                  </p>
                                 )}
                               </div>
                               <div className="flex-1">
@@ -660,7 +696,14 @@ export function DataSelector({
                                 </Select>
                               </div>
                               {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
-                              {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />}
+                              {isDuplicate && (
+                                <span className="relative group cursor-help">
+                                  <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />
+                                  <span className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                                    {getDuplicateTooltip(mappedColumn!)}
+                                  </span>
+                                </span>
+                              )}
                             </div>
                           );
                         })}
@@ -671,7 +714,7 @@ export function DataSelector({
               </div>
             ) : (
               <div className="space-y-3">
-                {fields.filter(f => f.type !== 'qr_code' && f.type !== 'image').map((field) => {
+                {sortFields(fields.filter(f => f.type !== 'qr_code' && f.type !== 'image')).map((field) => {
                   const mappedColumn = getMappedColumn(field.id);
                   const isMapped = !!mappedColumn;
                   const isDuplicate = !!mappedColumn && duplicatedColumns.has(mappedColumn);
@@ -680,10 +723,19 @@ export function DataSelector({
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5">
                           <Label className="text-sm font-medium">{field.label}</Label>
-                          {isDuplicate && <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />}
+                          {isDuplicate && (
+                            <span className="relative group cursor-help">
+                              <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                              <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                                {getDuplicateTooltip(mappedColumn!)}
+                              </span>
+                            </span>
+                          )}
                         </div>
                         {mappedColumn && (
-                          <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>← {mappedColumn}{isDuplicate ? ' (shared)' : ''}</p>
+                          <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+                            ← {mappedColumn}{isDuplicate ? ' — same column used twice' : ''}
+                          </p>
                         )}
                       </div>
                       <div className="flex-1">
@@ -692,7 +744,7 @@ export function DataSelector({
                           onValueChange={(value: string) => handleMappingChange(field.id, value)}
                         >
                           <SelectTrigger className={isDuplicate ? 'border-orange-400' : isMapped ? 'border-green-500' : ''}>
-                            <SelectValue placeholder="Select column..." />
+                            <SelectValue placeholder="Select column…" />
                           </SelectTrigger>
                           <SelectContent>
                             {importedData?.headers.map((header) => (
@@ -702,7 +754,14 @@ export function DataSelector({
                         </Select>
                       </div>
                       {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
-                      {isDuplicate && <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />}
+                      {isDuplicate && (
+                        <span className="relative group cursor-help">
+                          <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />
+                          <span className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                            {getDuplicateTooltip(mappedColumn!)}
+                          </span>
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -713,9 +772,12 @@ export function DataSelector({
               <div className="mt-4 flex gap-2 p-3 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
                 <AlertCircle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
                 <div className="text-xs">
-                  <p className="font-medium text-orange-900 dark:text-orange-100">Duplicate column mapping</p>
+                  <p className="font-medium text-orange-900 dark:text-orange-100">Same column used for multiple fields</p>
                   <p className="text-orange-700 dark:text-orange-300 mt-0.5">
-                    <span className="font-medium">{[...duplicatedColumns].join(', ')}</span> {duplicatedColumns.size === 1 ? 'is' : 'are'} mapped to more than one field. Each field will receive the same value — make sure this is intentional.
+                    The column{duplicatedColumns.size > 1 ? 's' : ''}{' '}
+                    <span className="font-medium">&ldquo;{[...duplicatedColumns].join('", "')}&rdquo;</span>{' '}
+                    {duplicatedColumns.size === 1 ? 'is' : 'are'} selected for more than one field.
+                    Both fields will show the same data. If this is a mistake, pick a different column for one of them.
                   </p>
                 </div>
               </div>

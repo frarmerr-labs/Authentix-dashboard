@@ -9,8 +9,8 @@ const PUBLIC_HOST = 'digicertificates.in';
 export function middleware(request: NextRequest) {
   const { pathname, search, host } = new URL(request.url);
 
-  // Only redirect verify paths on the dashboard subdomain
-  if (host === DASHBOARD_HOST && pathname.startsWith('/verify/')) {
+  // Redirect verify and short-link paths on the dashboard subdomain to the clean public domain
+  if (host === DASHBOARD_HOST && (pathname.startsWith('/verify/') || pathname.startsWith('/c/'))) {
     return NextResponse.redirect(
       `https://${PUBLIC_HOST}${pathname}${search}`,
       { status: 301 },
@@ -21,6 +21,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Only run on verify paths — keeps auth/API routes unaffected
-  matcher: ['/verify/:path*'],
+  // Run on verify and short-link paths only
+  matcher: ['/verify/:path*', '/c/:path*'],
 };
