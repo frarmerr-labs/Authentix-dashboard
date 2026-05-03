@@ -275,7 +275,7 @@ export default function GenerateCertificatePage() {
 
       // Load imports (remove status filter - backend handles filtering)
       try {
-      const importsResponse = await api.imports.list({ sort_by: 'created_at', sort_order: 'desc', limit: 10 });
+      const importsResponse = await api.imports.list({ sort_by: 'created_at', sort_order: 'desc', limit: 5 });
       setSavedImports(importsResponse.items || []);
       } catch (error) {
         console.warn('[Generate] Error loading imports:', error);

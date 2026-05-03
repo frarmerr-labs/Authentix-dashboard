@@ -960,11 +960,11 @@ export function InfiniteCanvas({
           <div
             ref={toolbarRef}
             data-toolbar
-            className="absolute z-50"
+            className="z-50"
             style={
               toolbarPos
-                ? { left: toolbarPos.x, top: toolbarPos.y, userSelect: 'none' }
-                : { bottom: 16, left: '50%', transform: 'translateX(-50%)', userSelect: 'none' }
+                ? { position: 'absolute', left: toolbarPos.x, top: toolbarPos.y, userSelect: 'none' }
+                : { position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', userSelect: 'none' }
             }
             onMouseDown={handleToolbarMouseDown}
           >

@@ -379,6 +379,19 @@ export function DataSelector({
   }, {});
   const duplicatedColumns = new Set(Object.entries(columnUsageCount).filter(([, count]) => count > 1).map(([col]) => col));
 
+  // Detect columns with only numeric values mapped to text-type fields (likely wrong column)
+  const numericColumnsMappedToText = new Set<string>(
+    fieldMappings
+      .filter((m) => {
+        if (!m.columnName || !importedData) return false;
+        const field = fields.find(f => f.id === m.fieldId);
+        if (!field || field.type === 'number' || field.type === 'qr_code' || field.type === 'image') return false;
+        const sampleValues = importedData.rows.map(r => String(r[m.columnName] ?? '')).filter(v => v !== '');
+        return sampleValues.length > 0 && sampleValues.every(v => !isNaN(Number(v)));
+      })
+      .map((m) => m.columnName),
+  );
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header + Sample Download — only before data is imported */}
@@ -430,12 +443,12 @@ export function DataSelector({
       {/* Saved Imports */}
       {savedImports.length > 0 && showUpload && (
         <div>
-          <h3 className="text-lg font-semibold mb-4">Recent Imports</h3>
+          <h3 className="text-lg font-semibold mb-4">Recent Uploads</h3>
           {loadImportError && (
             <p className="text-sm text-destructive mb-3">{loadImportError}</p>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {savedImports.map((importJob) => (
+            {savedImports.slice(0, 5).map((importJob) => (
               <Card
                 key={importJob.id}
                 className="p-4 hover:shadow-md transition-all cursor-pointer group"
@@ -649,9 +662,10 @@ export function DataSelector({
                           const mappedColumn = getMappedColumn(field.id);
                           const isMapped = !!mappedColumn;
                           const isDuplicate = !!mappedColumn && duplicatedColumns.has(mappedColumn);
+                          const isNumericMismatch = !!mappedColumn && numericColumnsMappedToText.has(mappedColumn);
                           const isSynced = SEMANTIC_TYPES.has(field.type) && (typeCountMap[field.type] ?? 0) > 1;
                           return (
-                            <div key={field.id} className={`flex items-center gap-4 p-3 rounded-lg ${isDuplicate ? 'bg-orange-50 dark:bg-orange-950/20' : 'bg-muted/30'}`}>
+                            <div key={field.id} className={`flex items-center gap-4 p-3 rounded-lg ${isDuplicate ? 'bg-orange-50 dark:bg-orange-950/20' : isNumericMismatch ? 'bg-yellow-50 dark:bg-yellow-950/20' : 'bg-muted/30'}`}>
                               <div className="flex-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <Label className="text-sm font-medium">{field.label}</Label>
@@ -672,10 +686,18 @@ export function DataSelector({
                                       </span>
                                     </span>
                                   )}
+                                  {isNumericMismatch && !isDuplicate && (
+                                    <span className="relative group cursor-help">
+                                      <AlertCircle className="w-3.5 h-3.5 text-yellow-600 shrink-0" />
+                                      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-72 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                                        This column contains only numbers, but &quot;{field.label}&quot; expects text. Please check your column mapping.
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
                                 {mappedColumn && (
-                                  <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
-                                    ← {mappedColumn}{isDuplicate ? ' — same column used twice' : ''}
+                                  <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : isNumericMismatch ? 'text-yellow-700 dark:text-yellow-400' : 'text-muted-foreground'}`}>
+                                    ← {mappedColumn}{isDuplicate ? ' — same column used twice' : isNumericMismatch ? ' — contains numbers, expected text' : ''}
                                   </p>
                                 )}
                               </div>
@@ -684,7 +706,7 @@ export function DataSelector({
                                   value={mappedColumn || ''}
                                   onValueChange={(value: string) => handleMappingChange(field.id, value)}
                                 >
-                                  <SelectTrigger className={isDuplicate ? 'border-orange-400' : isMapped ? 'border-green-500' : ''}>
+                                  <SelectTrigger className={isDuplicate ? 'border-orange-400' : isNumericMismatch ? 'border-yellow-500' : isMapped ? 'border-green-500' : ''}>
                                     <SelectValue placeholder="Select column…" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -694,7 +716,7 @@ export function DataSelector({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
+                              {isMapped && !isDuplicate && !isNumericMismatch && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
                               {isDuplicate && (
                                 <span className="relative group cursor-help">
                                   <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />
@@ -717,8 +739,10 @@ export function DataSelector({
                   const mappedColumn = getMappedColumn(field.id);
                   const isMapped = !!mappedColumn;
                   const isDuplicate = !!mappedColumn && duplicatedColumns.has(mappedColumn);
+                  const isNumericMismatch = !!mappedColumn && numericColumnsMappedToText.has(mappedColumn);
+                  const hasWarning = isDuplicate || isNumericMismatch;
                   return (
-                    <div key={field.id} className={`flex items-center gap-4 p-3 rounded-lg ${isDuplicate ? 'bg-orange-50 dark:bg-orange-950/20' : 'bg-muted/30'}`}>
+                    <div key={field.id} className={`flex items-center gap-4 p-3 rounded-lg ${isDuplicate ? 'bg-orange-50 dark:bg-orange-950/20' : isNumericMismatch ? 'bg-yellow-50 dark:bg-yellow-950/20' : 'bg-muted/30'}`}>
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5">
                           <Label className="text-sm font-medium">{field.label}</Label>
@@ -730,10 +754,18 @@ export function DataSelector({
                               </span>
                             </span>
                           )}
+                          {isNumericMismatch && !isDuplicate && (
+                            <span className="relative group cursor-help">
+                              <AlertCircle className="w-3.5 h-3.5 text-yellow-600 shrink-0" />
+                              <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-72 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-xl">
+                                This column contains only numbers, but &quot;{field.label}&quot; expects text (like a name or course title). Please check your column mapping.
+                              </span>
+                            </span>
+                          )}
                         </div>
                         {mappedColumn && (
-                          <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
-                            ← {mappedColumn}{isDuplicate ? ' — same column used twice' : ''}
+                          <p className={`text-xs mt-0.5 ${isDuplicate ? 'text-orange-600 dark:text-orange-400' : isNumericMismatch ? 'text-yellow-700 dark:text-yellow-400' : 'text-muted-foreground'}`}>
+                            ← {mappedColumn}{isDuplicate ? ' — same column used twice' : isNumericMismatch ? ' — contains numbers, expected text' : ''}
                           </p>
                         )}
                       </div>
@@ -742,7 +774,7 @@ export function DataSelector({
                           value={mappedColumn || ''}
                           onValueChange={(value: string) => handleMappingChange(field.id, value)}
                         >
-                          <SelectTrigger className={isDuplicate ? 'border-orange-400' : isMapped ? 'border-green-500' : ''}>
+                          <SelectTrigger className={isDuplicate ? 'border-orange-400' : isNumericMismatch ? 'border-yellow-500' : isMapped ? 'border-green-500' : ''}>
                             <SelectValue placeholder="Select column…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -752,7 +784,7 @@ export function DataSelector({
                           </SelectContent>
                         </Select>
                       </div>
-                      {isMapped && !isDuplicate && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
+                      {isMapped && !hasWarning && <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />}
                       {isDuplicate && (
                         <span className="relative group cursor-help">
                           <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />
