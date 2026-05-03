@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { track } from '@vercel/analytics';
 import { useParams } from 'next/navigation';
 import {
-  CheckCircle2,
   XCircle,
   AlertTriangle,
   Calendar,

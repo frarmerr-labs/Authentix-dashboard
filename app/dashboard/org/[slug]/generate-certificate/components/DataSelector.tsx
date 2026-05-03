@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, type FileRejection } from 'react-dropzone';
 import { CertificateField, ImportedData, FieldMapping } from '@/lib/types/certificate';
+import type { SavedImport } from '../schema/types';
 import { Upload, FileSpreadsheet, Download, CheckCircle2, Plus, Database, ArrowRight, Edit2, Keyboard, AlertCircle, Link2, ChevronDown, Loader2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api/client';
@@ -51,7 +52,7 @@ const WARN_ROWS = 500;
 interface DataSelectorProps {
   fields: CertificateField[];
   templateGroups?: Array<{ templateName: string; fields: CertificateField[] }>;
-  savedImports: any[];
+  savedImports: SavedImport[];
   importedData: ImportedData | null;
   fieldMappings: FieldMapping[];
   onDataImport: (data: ImportedData | null) => void;
@@ -86,7 +87,7 @@ export function DataSelector({
   const [processingStatus, setProcessingStatus] = useState<string>('Uploading…');
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[], rejectedFiles: any[]) => {
+    async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       if (rejectedFiles.length > 0) {
         const reason = rejectedFiles[0]?.errors?.[0]?.code;
         setUploadError(
@@ -258,8 +259,6 @@ export function DataSelector({
   };
 
   const downloadSampleFileCSV = async () => {
-    const XLSX = await getXlsx();
-
     const sampleValue = (field: CertificateField, i: number): string => {
       const t = field.type;
       if (t === 'name') return `John Doe ${i}`;
@@ -468,7 +467,7 @@ export function DataSelector({
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(importJob.created_at).toLocaleDateString()}
+                  {importJob.created_at ? new Date(importJob.created_at).toLocaleDateString() : ''}
                 </p>
               </Card>
             ))}

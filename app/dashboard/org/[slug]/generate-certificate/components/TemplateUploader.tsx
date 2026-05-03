@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, type FileRejection } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import {
   Upload,
@@ -112,7 +112,7 @@ export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
   );
 
   const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: any[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       setError(null);
 
       // Check if a PDF was dropped — show coming-soon modal instead of an error

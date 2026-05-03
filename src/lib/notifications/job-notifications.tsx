@@ -159,7 +159,7 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
 
             const totalCerts =
               status.result?.total_certificates ??
-              status.result?.results?.reduce((s: number, r: any) => s + (r.count ?? 0), 0);
+              status.result?.results?.reduce((s: number, r: Record<string, unknown>) => s + ((r.count as number) ?? 0), 0);
             const downloadUrl =
               status.result?.last_download_url ??
               status.result?.results?.[0]?.download_url ??
@@ -259,10 +259,10 @@ export function JobNotificationProvider({ children }: { children: React.ReactNod
           const result = data.result as Record<string, unknown> | undefined;
           const totalCerts =
             result?.total_certificates ??
-            (result?.results as any[] | undefined)?.reduce((s: number, r: any) => s + (r.count ?? 0), 0);
+            (result?.results as Array<Record<string, unknown>> | undefined)?.reduce((s: number, r) => s + ((r.count as number) ?? 0), 0);
           const downloadUrl =
-            result?.last_download_url ??
-            (result?.results as any[] | undefined)?.[0]?.download_url ??
+            (result?.last_download_url as string | undefined) ??
+            ((result?.results as Array<Record<string, unknown>> | undefined)?.[0]?.download_url as string | undefined) ??
             undefined;
 
           setJobs(prev => prev.map(j => {

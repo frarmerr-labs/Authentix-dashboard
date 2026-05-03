@@ -14,6 +14,14 @@ import type { CertificateConfig } from "../components/ExportSection";
 export type GenerateStep = "template" | "design" | "data" | "export";
 export type TemplateMode = "single" | "multi";
 
+export interface SavedImport {
+  id: string;
+  file_name?: string;
+  total_rows?: number;
+  status?: string;
+  created_at?: string;
+}
+
 // ── Per-template config (multi-template mode) ─────────────────────────────────
 
 export interface TemplateConfig {
@@ -64,7 +72,7 @@ export interface GenerateCertificateState {
 
   // Data import
   importedData: ImportedData | null;
-  savedImports: unknown[];
+  savedImports: SavedImport[];
   fieldMappings: FieldMapping[];
 
   // Additional cert configs (multi-cert generation)

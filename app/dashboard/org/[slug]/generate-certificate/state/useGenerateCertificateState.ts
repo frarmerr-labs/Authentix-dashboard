@@ -11,7 +11,7 @@ import type { RecentGeneratedTemplate, InProgressTemplate } from "@/lib/api/clie
 import type { Asset } from "../components/AssetLibrary";
 import type { SaveStatus } from "../components/InfiniteCanvas";
 import type { CertificateConfig } from "../components/ExportSection";
-import type { TemplateConfig, TemplateMeta, PanelPosition, GenerateCertificateState } from "../schema/types";
+import type { TemplateConfig, TemplateMeta, PanelPosition, GenerateCertificateState, SavedImport } from "../schema/types";
 import { generateCertificateReducer, createInitialState } from "./generateCertificateReducer";
 
 export function useGenerateCertificateState(templateIdFromUrl: string | null) {
@@ -122,7 +122,7 @@ export function useGenerateCertificateState(templateIdFromUrl: string | null) {
     dispatch({ type: "SET_IMPORTED_DATA", data });
   }, []);
 
-  const setSavedImports = useCallback((imports: unknown[]) => {
+  const setSavedImports = useCallback((imports: SavedImport[]) => {
     dispatch({ type: "SET_SAVED_IMPORTS", imports });
   }, []);
 

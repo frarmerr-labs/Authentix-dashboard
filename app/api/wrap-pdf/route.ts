@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const res = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`Upstream ${res.status}`);
     imageBytes = await res.arrayBuffer();
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to fetch image' },
       { status: 502 },
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'private, max-age=300',
       },
     });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 });
   }
 }

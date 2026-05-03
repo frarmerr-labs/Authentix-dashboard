@@ -226,8 +226,7 @@ export function DraggableField({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  // Intentionally excludes onDrag/onResize — latest versions are accessed via refs above.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Intentionally omits onDrag/onResize — latest versions are accessed via refs above.
   }, [isDragging, isResizing]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -352,7 +351,7 @@ export function DraggableField({
       {/* Resize Handles (when selected) */}
       {isSelected && (
         <div
-          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 rounded-[2px] cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
+          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 rounded-xs cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
           style={{ borderColor: 'var(--primary)' }}
           onMouseDown={handleResizeStart}
         />
