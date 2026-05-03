@@ -385,7 +385,7 @@ export function DataSelector({
       .filter((m) => {
         if (!m.columnName || !importedData) return false;
         const field = fields.find(f => f.id === m.fieldId);
-        if (!field || field.type === 'number' || field.type === 'qr_code' || field.type === 'image') return false;
+        if (!field || field.type === 'qr_code' || field.type === 'image') return false;
         const sampleValues = importedData.rows.map(r => String(r[m.columnName] ?? '')).filter(v => v !== '');
         return sampleValues.length > 0 && sampleValues.every(v => !isNaN(Number(v)));
       })
