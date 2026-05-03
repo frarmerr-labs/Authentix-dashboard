@@ -237,7 +237,21 @@ async function proxyRequest(
       if (response.status === 204) {
         return new NextResponse(null, { status: 204 });
       }
-      // For non-JSON responses (e.g., file downloads), stream through
+      // SSE — pipe the stream directly without buffering so events reach the
+      // browser in real-time.  The timeout was already cleared above, so the
+      // AbortController won't interrupt a long-running stream.
+      if (responseContentType?.includes("text/event-stream")) {
+        return new NextResponse(response.body, {
+          status: response.status,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "X-Request-ID": requestId,
+          },
+        });
+      }
+      // For non-JSON responses (e.g., file downloads), buffer and forward
       const responseBody = await response.arrayBuffer();
       return new NextResponse(responseBody, {
         status: response.status,

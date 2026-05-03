@@ -6,6 +6,9 @@
    ============================================ */
 
 @theme {
+  /* Typography — Inter as the default sans-serif font */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
   /* Border radius — matches shadcn default radius 0.625rem */
   --radius: 0.625rem;
   --radius-sm: calc(var(--radius) * 0.6);
