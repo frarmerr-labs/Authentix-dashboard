@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { CertificateField } from '@/lib/types/certificate';
 import QRCodeLib from 'qrcode';
 
@@ -173,11 +173,19 @@ export function DraggableField({
   const fieldRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  // Refs instead of state: state updates are async, so using setState for drag coordinates
-  // causes stale reads when mousemove fires faster than React's render cycle, making
-  // dragging feel sticky/jittery. Refs update synchronously within the same event.
+  // Refs for coordinates — synchronous updates prevent stale reads between mousemove events.
   const dragStartRef = useRef({ x: 0, y: 0 });
   const initialDimsRef = useRef({ width: 0, height: 0 });
+
+  // Keep latest callbacks in refs so the mousemove/mouseup effect below never needs
+  // to be re-registered just because the parent re-rendered with new function references.
+  // Without this, every onFieldUpdate call (which happens on each drag tick) causes the
+  // parent to re-render → new onDrag/onResize references → effect cleanup → brief gap
+  // with no listeners → lost mousemove events → sticky/jittery drag.
+  const onDragRef = useRef(onDrag);
+  const onResizeRef = useRef(onResize);
+  useLayoutEffect(() => { onDragRef.current = onDrag; }, [onDrag]);
+  useLayoutEffect(() => { onResizeRef.current = onResize; }, [onResize]);
 
   // Calculate scaled dimensions
   const scaledX = field.x * scale;
@@ -191,16 +199,15 @@ export function DraggableField({
       if (isDragging) {
         const deltaX = e.clientX - dragStartRef.current.x;
         const deltaY = e.clientY - dragStartRef.current.y;
-        // Update ref synchronously so next event sees the fresh origin
         dragStartRef.current = { x: e.clientX, y: e.clientY };
-        onDrag(deltaX, deltaY);
+        onDragRef.current(deltaX, deltaY);
       } else if (isResizing) {
         const deltaX = e.clientX - dragStartRef.current.x;
         const deltaY = e.clientY - dragStartRef.current.y;
         const newWidth = initialDimsRef.current.width + deltaX;
         const newHeight = initialDimsRef.current.height + deltaY;
         if (newWidth > 20 && newHeight > 20) {
-          onResize(newWidth, newHeight);
+          onResizeRef.current(newWidth, newHeight);
         }
       }
     };
@@ -219,7 +226,9 @@ export function DraggableField({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, onDrag, onResize]);
+  // Intentionally excludes onDrag/onResize — latest versions are accessed via refs above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging, isResizing]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
