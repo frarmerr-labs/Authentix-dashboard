@@ -224,6 +224,21 @@ export function InfiniteCanvas({
   const [toolbarMinimized, setToolbarMinimized] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
 
+  // Inject Google Fonts stylesheets for all fonts used by current fields so text renders
+  // in the correct typeface while editing (not just in the preview panel).
+  useEffect(() => {
+    const families = [...new Set(fields.map(f => f.fontFamily).filter(Boolean))];
+    families.forEach(family => {
+      const id = `gf-canvas-${family.replace(/\s+/g, '-')}`;
+      if (document.getElementById(id)) return;
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap`;
+      document.head.appendChild(link);
+    });
+  }, [fields]);
+
   // Panning refs
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const scaleRef = useRef(scale);
