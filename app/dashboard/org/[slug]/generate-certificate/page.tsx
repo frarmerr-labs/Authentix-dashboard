@@ -1991,28 +1991,39 @@ function mapBackendTypeToFrontend(backendType: string): CertificateField['type']
 // Auto-map Excel columns to certificate fields
 function autoMapColumns(fields: CertificateField[], headers: string[]): FieldMapping[] {
   const mappings: FieldMapping[] = [];
+  const usedHeaders = new Set<string>();
 
+  // Pass 1: exact label matches — highest priority, never stolen by fuzzy matching.
+  // "Course Name" column belongs to the field labeled "Course Name", period.
   fields.forEach((field) => {
+    const exactMatch = headers.find(
+      (h) => h.toLowerCase().trim() === field.label.toLowerCase().trim()
+    );
+    if (exactMatch) {
+      mappings.push({ fieldId: field.id, columnName: exactMatch });
+      usedHeaders.add(exactMatch);
+    }
+  });
+
+  // Pass 2: semantic type fuzzy matches — only for fields still unmatched, only on unclaimed headers.
+  // This prevents "Course Name" from also matching the `name` type field because
+  // 'course name'.includes('name') is true.
+  fields.forEach((field) => {
+    if (mappings.some((m) => m.fieldId === field.id)) return;
     const matchingHeader = headers.find((header) => {
-      const normalizedHeader = header.toLowerCase().trim();
-      const normalizedLabel = field.label.toLowerCase().trim();
-
-      if (normalizedHeader === normalizedLabel) return true;
-      if (field.type === 'name' && normalizedHeader.includes('name')) return true;
-      if (field.type === 'course' && (normalizedHeader.includes('course') || normalizedHeader.includes('program'))) return true;
-      if (field.type === 'start_date' && (normalizedHeader.includes('start') || normalizedHeader.includes('issue'))) return true;
-      if (field.type === 'end_date' && (normalizedHeader.includes('end') || normalizedHeader.includes('expir'))) return true;
-      if (field.type === 'email' && (normalizedHeader.includes('email') || normalizedHeader.includes('e-mail'))) return true;
-      if (field.type === 'phone' && (normalizedHeader.includes('phone') || normalizedHeader.includes('mobile') || normalizedHeader.includes('contact'))) return true;
-
+      if (usedHeaders.has(header)) return false;
+      const nh = header.toLowerCase().trim();
+      if (field.type === 'name' && nh.includes('name')) return true;
+      if (field.type === 'course' && (nh.includes('course') || nh.includes('program'))) return true;
+      if (field.type === 'start_date' && (nh.includes('start') || nh.includes('issue'))) return true;
+      if (field.type === 'end_date' && (nh.includes('end') || nh.includes('expir'))) return true;
+      if (field.type === 'email' && (nh.includes('email') || nh.includes('e-mail'))) return true;
+      if (field.type === 'phone' && (nh.includes('phone') || nh.includes('mobile') || nh.includes('contact'))) return true;
       return false;
     });
-
     if (matchingHeader) {
-      mappings.push({
-        fieldId: field.id,
-        columnName: matchingHeader,
-      });
+      mappings.push({ fieldId: field.id, columnName: matchingHeader });
+      usedHeaders.add(matchingHeader);
     }
   });
 

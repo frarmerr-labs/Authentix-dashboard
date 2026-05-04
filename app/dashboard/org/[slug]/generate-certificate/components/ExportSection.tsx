@@ -964,6 +964,51 @@ export function ExportSection({
   const isMountedRef = useRef(true);
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
+  // Poll for job completion after submission — transitions overlay from 'generating' to 'success'
+  // when the job finishes while the user is still watching. Stops once a terminal status is reached.
+  useEffect(() => {
+    if (!generationJobId) return;
+
+    let stopped = false;
+    let timerId: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      if (stopped || !isMountedRef.current) return;
+      try {
+        const status = await api.certificates.pollJobStatus(generationJobId);
+        if (!isMountedRef.current || stopped) return;
+
+        if (status.status === 'completed') {
+          stopped = true;
+          const total = (status.result?.total_certificates as number | undefined) ?? 0;
+          const result = status.result as Record<string, unknown> | null;
+          const resultsArr = result?.results as Array<{ download_url: string | null }> | undefined;
+          const url = (result?.last_download_url as string | null | undefined) ?? resultsArr?.[0]?.download_url ?? null;
+          setTotalGenerated(total);
+          setDownloadUrl(url ?? null);
+          setGenerationStatus('completed');
+          setProgress(100);
+          // Transition to success if the overlay is still visible; otherwise leave it hidden
+          setOverlayState(prev => prev !== 'hidden' ? 'success' : 'hidden');
+          return;
+        }
+
+        if (status.status === 'failed') {
+          stopped = true;
+          setGenerationError(status.error ?? 'Certificate generation failed. Please try again.');
+          setGenerationStatus('error');
+          setOverlayState('hidden');
+          return;
+        }
+      } catch { /* network errors silently ignored — retry next tick */ }
+
+      timerId = setTimeout(poll, 5000);
+    };
+
+    timerId = setTimeout(poll, 4000);
+    return () => { stopped = true; clearTimeout(timerId); };
+  }, [generationJobId]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Expiry settings
   const [expiryType, setExpiryType] = useState<ExpiryType>('year');
@@ -1365,6 +1410,21 @@ export function ExportSection({
                   {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
                 </p>
               </div>
+
+              {/* Dismiss CTA */}
+              <button
+                onClick={() => setOverlayState('hidden')}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+                style={{
+                  background: 'rgba(62,207,142,0.15)',
+                  border: '1.5px solid rgba(62,207,142,0.5)',
+                  color: '#3ECF8E',
+                  animation: 'genFadeSlide 0.5s ease-out 0.6s both',
+                }}
+              >
+                View Results
+                <ArrowRight style={{ width: 16, height: 16 }} />
+              </button>
             </div>
           ) : overlayState === 'queued' ? (
             /* ── Running in background ── */
