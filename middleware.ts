@@ -4,29 +4,33 @@ const VERIFY_HOSTNAME = 'verify.digicertificates.in';
 
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') ?? '';
+  const isVerifyDomain = hostname === VERIFY_HOSTNAME || hostname.startsWith(`${VERIFY_HOSTNAME}:`);
 
-  if (!hostname.startsWith(VERIFY_HOSTNAME)) return NextResponse.next();
+  if (!isVerifyDomain) return NextResponse.next();
 
   const { pathname } = request.nextUrl;
+  const url = request.nextUrl.clone();
 
-  // Already routed to /verify/... — let Next.js serve it normally (backward compat)
-  if (pathname.startsWith('/verify/')) return NextResponse.next();
+  // Root → verify landing page (never hit the dashboard login redirect)
+  if (pathname === '/') {
+    url.pathname = '/verify';
+    return NextResponse.rewrite(url);
+  }
 
-  // New format: /{orgSlug}/{token} — rewrite internally to /verify/{token}
-  // The orgSlug is decorative in the URL; the token is sufficient for lookup.
+  // Already under /verify/... — serve normally (backward compat with old QR codes)
+  if (pathname.startsWith('/verify')) return NextResponse.next();
+
+  // New format: /{orgSlug}/{token} → rewrite to /verify/{token}
+  // orgSlug is contextual in the URL; the token alone identifies the certificate.
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 2) {
-    const url = request.nextUrl.clone();
     url.pathname = `/verify/${parts[1]}`;
     return NextResponse.rewrite(url);
   }
 
-  // Root or unrecognised path on verify domain — redirect to dashboard
-  if (parts.length === 0) {
-    return NextResponse.redirect('https://dashboard.digicertificates.in');
-  }
-
-  return NextResponse.next();
+  // Any other path on the verify domain — show the verify landing page
+  url.pathname = '/verify';
+  return NextResponse.rewrite(url);
 }
 
 export const config = {
