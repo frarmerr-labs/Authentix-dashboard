@@ -1606,6 +1606,36 @@ export function ExportSection({
 
   return (
     <div className="space-y-6">
+      {/* Completion summary — shown when polling completes but individual certs aren't loaded */}
+      {generationStatus === 'completed' && generatedCertificates.length === 0 && totalGenerated > 0 && (
+        <div className="rounded-lg border border-[#3ECF8E]/30 bg-[#3ECF8E]/5 px-4 py-4 flex items-center gap-4">
+          <CheckCircle2 className="w-8 h-8 text-[#3ECF8E] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">
+              {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+            </p>
+            {generationSummary.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {generationSummary.map((s, i) => (
+                  <Badge key={i} variant="outline" className="gap-1 text-xs">
+                    <FileText className="w-3 h-3" />
+                    {s.label}: {s.count}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          {downloadUrl && (
+            <a href={downloadUrl} download>
+              <Button size="sm" className="gap-1.5 shrink-0">
+                <Download className="w-4 h-4" />
+                Download ZIP
+              </Button>
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Results table */}
       {generationStatus === 'completed' && generatedCertificates.length > 0 && (
         <div className="space-y-4">

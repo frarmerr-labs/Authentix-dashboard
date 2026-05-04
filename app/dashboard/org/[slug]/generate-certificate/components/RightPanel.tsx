@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlignLeft, AlignCenter, AlignRight, Italic, GripHorizontal, X, ChevronDown, ChevronRight, MoveHorizontal, MoveVertical, ArrowLeftRight, ArrowUpDown, Upload, Image as ImageIcon, ZoomIn, ZoomOut, Maximize2, Magnet, MousePointer2, Lock, Unlock, RefreshCw, Trash2, Search } from 'lucide-react';
 import { RgbaColorPicker } from 'react-colorful';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, startTransition } from 'react';
 import { api } from '@/lib/api/client';
 import type { GoogleFont } from '@/app/api/fonts/route';
 
@@ -558,7 +558,7 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
   // Filtered + grouped fonts for the picker
   const filteredFonts = useMemo(() => {
     const q = fontSearch.trim().toLowerCase();
-    const list = q ? googleFonts.filter((f) => f.family.toLowerCase().includes(q)) : googleFonts;
+    const list = q ? googleFonts.filter((f) => f.family.toLowerCase().includes(q)) : googleFonts.slice(0, 200);
     const grouped: Record<string, GoogleFont[]> = {};
     for (const f of list) {
       const cat = f.category ?? 'sans-serif';
@@ -844,7 +844,7 @@ export function RightPanel({ selectedField, onFieldUpdate, allFieldLabels, scale
           <div className="space-y-3">
 
             {/* Font family — searchable combobox backed by full Google Fonts library */}
-            <Popover open={fontPickerOpen} onOpenChange={setFontPickerOpen}>
+            <Popover open={fontPickerOpen} onOpenChange={(open) => startTransition(() => setFontPickerOpen(open))}>
               <PopoverTrigger asChild>
                 <button className={`${selCls} w-full flex items-center justify-between px-3 h-8 text-xs`}>
                   <span style={{ fontFamily: selectedField.fontFamily, fontSize: '13px' }}>
