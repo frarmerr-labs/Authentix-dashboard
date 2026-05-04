@@ -231,7 +231,7 @@ export function DataSelector({
     const allRawFields = templateGroups ? templateGroups.flatMap(g => g.fields) : fields;
     const seenTypes = new Set<string>();
     const seenLabels = new Set<string>();
-    const mappableFields = allRawFields.filter(f => {
+    const mappableFields = sortFields(allRawFields.filter(f => {
       if (f.type === 'qr_code' || f.type === 'image') return false;
       if (SEMANTIC_TYPES.has(f.type)) {
         if (seenTypes.has(f.type)) return false;
@@ -241,7 +241,7 @@ export function DataSelector({
       if (seenLabels.has(key)) return false;
       seenLabels.add(key);
       return true;
-    });
+    }));
 
     const hasEmailCol = mappableFields.some(f => f.type === 'email' || f.label.toLowerCase().includes('email'));
     const sampleData = [];
@@ -277,7 +277,7 @@ export function DataSelector({
     const allRawFields = templateGroups ? templateGroups.flatMap(g => g.fields) : fields;
     const seenTypes = new Set<string>();
     const seenLabels = new Set<string>();
-    const mappableFields = allRawFields.filter(f => {
+    const mappableFields = sortFields(allRawFields.filter(f => {
       if (f.type === 'qr_code' || f.type === 'image') return false;
       if (SEMANTIC_TYPES.has(f.type)) {
         if (seenTypes.has(f.type)) return false;
@@ -287,7 +287,7 @@ export function DataSelector({
       if (seenLabels.has(key)) return false;
       seenLabels.add(key);
       return true;
-    });
+    }));
 
     const hasEmailCol = mappableFields.some(f => f.type === 'email' || f.label.toLowerCase().includes('email'));
     const headers = [...mappableFields.map(f => f.label), ...(hasEmailCol ? [] : ['Email'])];

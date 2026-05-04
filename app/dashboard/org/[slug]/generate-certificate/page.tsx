@@ -1239,14 +1239,16 @@ export default function GenerateCertificatePage() {
   };
 
   const handleDataImport = (data: ImportedData | null) => {
-    setImportedData(data);
     setAdditionalRows([]);
     if (data) {
       // In multi mode, auto-map for ALL templates' fields
       const allFields = templateMode === 'multi' && templateConfigs.length > 0
         ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
         : fields;
-      const autoMappings = autoMapColumns(allFields, data.headers);
+      // Sort headers to match semantic field order (name → course → dates → email → phone → custom)
+      const sortedData: ImportedData = { ...data, headers: sortHeadersByFieldOrder(data.headers, allFields) };
+      setImportedData(sortedData);
+      const autoMappings = autoMapColumns(allFields, sortedData.headers);
       setFieldMappings(autoMappings);
 
       // Re-auto-map additional cert configs so their mappings stay current
@@ -1254,11 +1256,12 @@ export default function GenerateCertificatePage() {
         setAdditionalCertConfigs(
           additionalCertConfigs.map(cfg => ({
             ...cfg,
-            fieldMappings: autoMapColumns(cfg.fields, data.headers),
+            fieldMappings: autoMapColumns(cfg.fields, sortedData.headers),
           }))
         );
       }
     } else {
+      setImportedData(null);
       setFieldMappings([]);
     }
   };
@@ -1986,6 +1989,18 @@ function mapBackendTypeToFrontend(backendType: string): CertificateField['type']
     default:
       return 'custom_text';
   }
+}
+
+// Sort CSV headers to match semantic field order so data preview columns are predictable
+function sortHeadersByFieldOrder(headers: string[], fields: CertificateField[]): string[] {
+  const TYPE_ORDER: Record<string, number> = { name: 0, course: 1, start_date: 2, end_date: 3, email: 4, phone: 5 };
+  const labelToOrder = new Map<string, number>();
+  fields.forEach(f => { labelToOrder.set(f.label.toLowerCase().trim(), TYPE_ORDER[f.type] ?? 99); });
+  return [...headers].sort((a, b) => {
+    const oa = labelToOrder.get(a.toLowerCase().trim()) ?? 99;
+    const ob = labelToOrder.get(b.toLowerCase().trim()) ?? 99;
+    return oa - ob;
+  });
 }
 
 // Auto-map Excel columns to certificate fields
