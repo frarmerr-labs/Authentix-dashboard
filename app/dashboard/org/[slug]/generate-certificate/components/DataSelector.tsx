@@ -446,7 +446,13 @@ export function DataSelector({
       {/* Saved Imports */}
       {savedImports.length > 0 && showUpload && (
         <div>
-          <h3 className="text-lg font-semibold mb-4">Recent Uploads</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Recent Uploads</h3>
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Info className="w-3 h-3" />
+              All recent uploads across your templates
+            </span>
+          </div>
           {loadImportError && (
             <p className="text-sm text-destructive mb-3">{loadImportError}</p>
           )}
@@ -461,6 +467,8 @@ export function DataSelector({
                   setIsProcessing(true);
                   try {
                     await onLoadImport(importJob.id);
+                    // Transition to the mapping UI — parent has now set importedData
+                    setShowUpload(false);
                   } catch {
                     setLoadImportError('Failed to load import data. Please try again.');
                   } finally {

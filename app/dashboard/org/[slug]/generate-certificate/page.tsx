@@ -1297,6 +1297,32 @@ export default function GenerateCertificatePage() {
       if (rows.length === 0) throw new Error('The import file is empty or has no data.');
 
       const headers = Object.keys(rows[0]!);
+
+      // All fields across the active template(s)
+      const allFields = templateMode === 'multi' && templateConfigs.length > 0
+        ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
+        : fields;
+      const currentFieldIds = new Set(allFields.map(f => f.id));
+
+      // Smart re-mapping: start from the saved mapping, but only for fields that
+      // still exist in the current template design. Then auto-map any new or
+      // renamed fields the saved mapping doesn't cover.
+      let resolvedMappings: FieldMapping[];
+      if (importJob.mapping && Object.keys(importJob.mapping).length > 0) {
+        const validSaved: FieldMapping[] = Object.entries(importJob.mapping)
+          .filter(([fieldId]) => currentFieldIds.has(fieldId))
+          .map(([fieldId, columnName]) => ({ fieldId, columnName: columnName as string }));
+
+        const savedFieldIds = new Set(validSaved.map(m => m.fieldId));
+        const unmappedFields = allFields.filter(
+          f => !savedFieldIds.has(f.id) && f.type !== 'qr_code' && f.type !== 'image'
+        );
+        const additionalMappings = autoMapColumns(unmappedFields, headers);
+        resolvedMappings = [...validSaved, ...additionalMappings];
+      } else {
+        resolvedMappings = autoMapColumns(allFields, headers);
+      }
+
       setImportedData({
         fileName: importJob.file_name,
         headers,
@@ -1305,17 +1331,10 @@ export default function GenerateCertificatePage() {
         importId: importId,
         importIds: [importId],
       });
+      setFieldMappings(resolvedMappings);
 
-      if (importJob.mapping) {
-        setFieldMappings(
-          Object.entries(importJob.mapping).map(([fieldId, columnName]) => ({
-            fieldId,
-            columnName: columnName as string,
-          }))
-        );
-      }
-
-      setCurrentStep('export');
+      // Stay on the data step so the user can review/adjust mappings before generating.
+      // (DataSelector shows the mapping UI once importedData is set and showUpload → false.)
     } catch (error) {
       console.error('Error loading import:', error);
       throw error;
