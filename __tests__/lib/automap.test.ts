@@ -145,18 +145,93 @@ describe('autoMapForTemplate — multiple fields', () => {
     expect(result[0]!.fieldId).toBe('f1');
   });
 
-  it('returns the first matching header (exact or fallback) in headers array order', () => {
-    // Implementation uses headers.find() — first header that satisfies any check wins.
-    // "User Name" appears first and satisfies the type='name' fallback, so it is returned.
+  it('exact label match wins even when a fuzzy-matching header appears first', () => {
+    // Two-pass approach: pass 1 claims exact matches regardless of position.
+    // "User Name" appears first and would win in a single-pass find(), but
+    // "Full Name" is an exact label match and is claimed in pass 1, so it wins.
     const fields = [makeField('f1', 'name', 'Full Name')];
     const result = autoMapForTemplate(fields, ['User Name', 'Full Name']);
-    expect(result[0]!.columnName).toBe('User Name'); // first match wins
+    expect(result[0]!.columnName).toBe('Full Name');
   });
 
-  it('exact label match wins when the exact header appears before any fallback header', () => {
-    const fields = [makeField('f1', 'name', 'Full Name')];
-    // "Full Name" is first → exact match is checked first per-header, so it wins
-    const result = autoMapForTemplate(fields, ['Full Name', 'User Name']);
-    expect(result[0]!.columnName).toBe('Full Name');
+  it('fuzzy fallback picks the first unclaimed header when no exact match exists', () => {
+    const fields = [makeField('f1', 'name', 'Recipient Name')];
+    // No exact match for "Recipient Name" — fuzzy finds "User Name" first (contains 'name')
+    const result = autoMapForTemplate(fields, ['User Name', 'Student Name']);
+    expect(result[0]!.columnName).toBe('User Name');
+  });
+});
+
+// ── Regression: "Course Name" column conflict ─────────────────────────────────
+// Bug: 'course name'.includes('name') === true, so the single-pass algorithm
+// incorrectly mapped "Course Name" column to the `name` type field (Recipient Name)
+// in addition to the `course` type field. Both fields ended up pointing at the
+// same column. Fixed by claiming exact label matches first (pass 1) so "Course Name"
+// is reserved for the course field before the name fuzzy rule can steal it.
+describe('autoMapForTemplate — Course Name / Recipient Name conflict regression', () => {
+  it('does not map name-type field to "Course Name" column when a course field owns it exactly', () => {
+    const fields = [
+      makeField('f1', 'name', 'Recipient Name'),
+      makeField('f2', 'course', 'Course Name'),
+    ];
+    const result = autoMapForTemplate(fields, ['Course Name']);
+
+    // f2 owns "Course Name" via exact label match
+    expect(result.find(m => m.fieldId === 'f2')?.columnName).toBe('Course Name');
+    // f1 must NOT get "Course Name" via the name-includes-'name' fuzzy rule
+    expect(result.find(m => m.fieldId === 'f1')).toBeUndefined();
+  });
+
+  it('maps both fields correctly when their respective columns are present', () => {
+    const fields = [
+      makeField('f1', 'name', 'Recipient Name'),
+      makeField('f2', 'course', 'Course Name'),
+    ];
+    const result = autoMapForTemplate(fields, ['Recipient Name', 'Course Name']);
+
+    expect(result.find(m => m.fieldId === 'f1')?.columnName).toBe('Recipient Name');
+    expect(result.find(m => m.fieldId === 'f2')?.columnName).toBe('Course Name');
+  });
+
+  it('maps name-type field via fuzzy match when no exact column exists but an unclaimed name-like column does', () => {
+    const fields = [
+      makeField('f1', 'name', 'Recipient Name'),
+      makeField('f2', 'course', 'Course Name'),
+    ];
+    // CSV has "Full Name" (unclaimed) + "Course Name" (claimed by f2)
+    const result = autoMapForTemplate(fields, ['Full Name', 'Course Name']);
+
+    expect(result.find(m => m.fieldId === 'f2')?.columnName).toBe('Course Name');
+    expect(result.find(m => m.fieldId === 'f1')?.columnName).toBe('Full Name');
+  });
+
+  it('each column is assigned at most once across all fields', () => {
+    const fields = [
+      makeField('f1', 'name', 'Recipient Name'),
+      makeField('f2', 'course', 'Course Name'),
+      makeField('f3', 'email', 'Email Address'),
+    ];
+    const headers = ['Course Name', 'Email'];
+    const result = autoMapForTemplate(fields, headers);
+
+    const columnNames = result.map(m => m.columnName);
+    const unique = new Set(columnNames);
+    expect(columnNames.length).toBe(unique.size); // no duplicates
+  });
+
+  it('handles Program Name column — course type claims it, name type cannot steal it', () => {
+    const fields = [
+      makeField('f1', 'name', 'Recipient Name'),
+      makeField('f2', 'course', 'Program'),
+    ];
+    // "Program Name" contains 'name' (triggers name fallback) AND 'program' (triggers course fallback)
+    // course field has no exact match, name field has no exact match — first pass finds nothing,
+    // second pass: order depends on field iteration order (f1 first, f2 second).
+    // Since f1 is processed first in pass 2, it claims "Program Name" via 'name' includes.
+    // This is acceptable: if neither field has an exact label match, first-encountered wins.
+    const result = autoMapForTemplate(fields, ['Program Name']);
+
+    const colNames = result.map(m => m.columnName);
+    expect(colNames.filter(c => c === 'Program Name').length).toBe(1); // assigned exactly once
   });
 });

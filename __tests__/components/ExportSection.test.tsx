@@ -4,7 +4,7 @@
  * (hidden → generating → success → hidden), and progress behaviour.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock('@/lib/org', () => ({
@@ -20,6 +20,7 @@ vi.mock('@/lib/api/client', () => ({
     certificates: {
       generate: vi.fn(),
       batchGenerate: vi.fn(),
+      pollJobStatus: vi.fn(),
     },
     templates: {
       getEditorData: vi.fn(),
@@ -476,5 +477,131 @@ describe('ExportSection — full payload assembly (import + mappings + options)'
     // Verify the component accepts the additional rows via prop
     // (tested via the payload when additional rows are passed through page.tsx)
     expect(screen.getByRole('button', { name: /Generate/i })).not.toBeDisabled();
+  });
+});
+
+// ── Overlay → success via polling ────────────────────────────────────────────
+// Strategy: spy on global.setTimeout to call callbacks immediately (as
+// microtasks via queueMicrotask) so the polling useEffect fires without real
+// delays. clearTimeout is a no-op. setInterval/clearInterval are stubbed so
+// the progress bar animation doesn't interfere.
+describe('ExportSection — overlay transitions to success when job completes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.certificates.batchGenerate as ReturnType<typeof vi.fn>).mockResolvedValue({ job_id: 'job-poll-1' });
+    vi.spyOn(global, 'setTimeout').mockImplementation((fn) => {
+      if (typeof fn === 'function') queueMicrotask(fn as () => void);
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    });
+    vi.spyOn(global, 'clearTimeout').mockReturnValue(undefined as unknown as void);
+    vi.spyOn(global, 'setInterval').mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
+    vi.spyOn(global, 'clearInterval').mockReturnValue(undefined as unknown as void);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  // Flush microtask queue multiple times to let async chains settle.
+  async function flushMicrotasks(rounds = 5) {
+    for (let i = 0; i < rounds; i++) {
+      await act(async () => { await Promise.resolve(); });
+    }
+  }
+
+  it('transitions overlay from generating to success when poll returns completed', async () => {
+    (api.certificates.pollJobStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'completed',
+      result: { total_certificates: 5, last_download_url: 'https://example.com/certs.zip' },
+      error: null,
+    });
+
+    render(
+      <ExportSection
+        template={makeTemplate()}
+        fields={[]}
+        importedData={makeImportedData({ importId: 'imp-1', rowCount: 5 })}
+        fieldMappings={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    await flushMicrotasks(8);
+
+    expect(screen.getByText(/All done/i)).toBeInTheDocument();
+    expect(screen.getByText(/5 certificate/i)).toBeInTheDocument();
+  });
+
+  it('shows View Results button in success overlay and dismisses to hidden on click', async () => {
+    (api.certificates.pollJobStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'completed',
+      result: { total_certificates: 3, last_download_url: null },
+      error: null,
+    });
+
+    render(
+      <ExportSection
+        template={makeTemplate()}
+        fields={[]}
+        importedData={makeImportedData({ importId: 'imp-2', rowCount: 3 })}
+        fieldMappings={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    await flushMicrotasks(8);
+
+    expect(screen.getByRole('button', { name: /View Results/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /View Results/i }));
+    await flushMicrotasks(2);
+
+    expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
+  });
+
+  it('hides overlay and shows error banner when poll returns failed', async () => {
+    (api.certificates.pollJobStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'failed',
+      result: null,
+      error: 'Font rendering failed',
+    });
+
+    render(
+      <ExportSection
+        template={makeTemplate()}
+        fields={[]}
+        importedData={makeImportedData({ importId: 'imp-3' })}
+        fieldMappings={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    await flushMicrotasks(8);
+
+    expect(screen.getByText(/Generation failed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/All done/i)).not.toBeInTheDocument();
+  });
+
+  it('retries polling once when first attempt throws a network error', async () => {
+    (api.certificates.pollJobStatus as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValue({
+        status: 'completed',
+        result: { total_certificates: 2, last_download_url: null },
+        error: null,
+      });
+
+    render(
+      <ExportSection
+        template={makeTemplate()}
+        fields={[]}
+        importedData={makeImportedData({ importId: 'imp-4', rowCount: 2 })}
+        fieldMappings={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
+    // Extra rounds: error → retry setTimeout → second poll → success
+    await flushMicrotasks(12);
+
+    expect(screen.getByText(/All done/i)).toBeInTheDocument();
   });
 });

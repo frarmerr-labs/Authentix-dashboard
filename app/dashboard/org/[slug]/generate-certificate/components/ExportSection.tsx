@@ -101,12 +101,26 @@ export function autoMapForTemplate(
   headers: string[]
 ): FieldMapping[] {
   const mappings: FieldMapping[] = [];
+  const usedHeaders = new Set<string>();
+
+  // Pass 1: exact label matches — claimed first so fuzzy matching can't steal them.
+  // Prevents 'course name'.includes('name') from mapping "Course Name" to a `name` field.
   fields.forEach((field) => {
+    const exact = headers.find(
+      (h) => h.toLowerCase().trim() === field.label.toLowerCase().trim()
+    );
+    if (exact) {
+      mappings.push({ fieldId: field.id, columnName: exact });
+      usedHeaders.add(exact);
+    }
+  });
+
+  // Pass 2: semantic type fuzzy matches — only on unclaimed headers, only for unmatched fields.
+  fields.forEach((field) => {
+    if (mappings.some((m) => m.fieldId === field.id)) return;
     const match = headers.find((h) => {
+      if (usedHeaders.has(h)) return false;
       const nh = h.toLowerCase().trim();
-      const nl = field.label.toLowerCase().trim();
-      if (nh === nl) return true;
-      // Type-based fallback for semantic fields
       if (field.type === 'name' && nh.includes('name')) return true;
       if (field.type === 'course' && (nh.includes('course') || nh.includes('program'))) return true;
       if (field.type === 'start_date' && (nh.includes('start') || nh.includes('issue'))) return true;
@@ -115,8 +129,12 @@ export function autoMapForTemplate(
       if (field.type === 'phone' && (nh.includes('phone') || nh.includes('mobile') || nh.includes('contact'))) return true;
       return false;
     });
-    if (match) mappings.push({ fieldId: field.id, columnName: match });
+    if (match) {
+      mappings.push({ fieldId: field.id, columnName: match });
+      usedHeaders.add(match);
+    }
   });
+
   return mappings;
 }
 
@@ -964,6 +982,9 @@ export function ExportSection({
   const isMountedRef = useRef(true);
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
+  // Declared here so the polling effect below can reference it before other state declarations.
+  const [generationJobId, setGenerationJobId] = useState<string | null>(null);
+
   // Poll for job completion after submission — transitions overlay from 'generating' to 'success'
   // when the job finishes while the user is still watching. Stops once a terminal status is reached.
   useEffect(() => {
@@ -1020,7 +1041,6 @@ export function ExportSection({
   const [generatedCertificates, setGeneratedCertificates] = useState<GeneratedCertificate[]>([]);
   const [totalGenerated, setTotalGenerated] = useState(0);
   const [generationSummary, setGenerationSummary] = useState<Array<{ label: string; count: number }>>([]);
-  const [generationJobId, setGenerationJobId] = useState<string | null>(null);
 
   // Send via Email modal
   const [sendModalOpen, setSendModalOpen] = useState(false);
