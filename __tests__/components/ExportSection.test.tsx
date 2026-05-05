@@ -211,14 +211,15 @@ describe('ExportSection — generation overlay', () => {
   it('overlay is NOT visible before generation starts', () => {
     renderExport();
     expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
-    expect(screen.queryByText(/Submitting your job/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Generating.*certificate/i)).not.toBeInTheDocument();
   });
 
   it('clicking Generate shows the generating overlay', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    // setOverlayState('generating') is the first synchronous line of handleGenerate
-    expect(screen.getByText(/Submitting your job/i)).toBeInTheDocument();
+    // setOverlayState('generating') and setProgressLabel are synchronous — overlay replaces UI
+    expect(screen.queryByRole('button', { name: /Generate/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Generating.*certificate/i)).toBeInTheDocument();
   });
 
   it('Generate button disappears (overlay replaces UI) once generation starts', () => {
@@ -227,15 +228,15 @@ describe('ExportSection — generation overlay', () => {
     expect(screen.queryByRole('button', { name: /Generate/i })).not.toBeInTheDocument();
   });
 
-  it('queued overlay appears after user clicks "Continue in background"', async () => {
+  it('queued overlay appears after user clicks "Run in background"', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    // After API resolves, overlay stays on 'generating' — helper text updates and CTA appears
+    // After API resolves, generationJobId is set and the background CTA button appears
     await waitFor(() => {
-      expect(screen.getByText(/Job queued/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Run in background/i })).toBeInTheDocument();
     }, { timeout: 3000 });
-    // User explicitly clicks "Continue in background" to transition to queued state
-    fireEvent.click(screen.getByRole('button', { name: /Continue in background/i }));
+    // User clicks "Run in background" to transition to queued state
+    fireEvent.click(screen.getByRole('button', { name: /Run in background/i }));
     await waitFor(() => {
       expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
     }, { timeout: 2000 });
@@ -244,17 +245,17 @@ describe('ExportSection — generation overlay', () => {
   it('overlay hides after user dismisses the queued overlay', async () => {
     renderExport();
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    // Wait for API to resolve and CTA to appear
+    // Wait for API to resolve and background CTA to appear
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Continue in background/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Run in background/i })).toBeInTheDocument();
     }, { timeout: 3000 });
     // Transition to queued state
-    fireEvent.click(screen.getByRole('button', { name: /Continue in background/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Run in background/i }));
     await waitFor(() => {
       expect(screen.getByText(/Generating in background/i)).toBeInTheDocument();
     }, { timeout: 2000 });
     // Dismiss the overlay
-    fireEvent.click(screen.getByRole('button', { name: /Got it|back|continue working/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Continue Working/i }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Generate/i })).toBeInTheDocument();
     }, { timeout: 2000 });
@@ -271,7 +272,8 @@ describe('ExportSection — generation overlay', () => {
   it('shows the generating overlay (progress bar container) during generation', () => {
     renderExport({ neverResolve: true });
     fireEvent.click(screen.getByRole('button', { name: /Generate/i }));
-    expect(screen.getByText(/Submitting your job/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Generating.*certificate/i)).toBeInTheDocument();
   });
 });
 
@@ -527,7 +529,7 @@ describe('ExportSection — overlay transitions to success when job completes', 
     await flushMicrotasks(8);
 
     expect(screen.getByText(/All done/i)).toBeInTheDocument();
-    expect(screen.getByText(/5 certificate/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /View Results/i })).toBeInTheDocument();
   });
 
   it('shows View Results button in success overlay and dismisses to hidden on click', async () => {

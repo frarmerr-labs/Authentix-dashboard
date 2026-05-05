@@ -53,7 +53,7 @@ interface RecentTemplate {
 interface TemplateSelectorProps {
   savedTemplates: any[];
   onSelectTemplate: (template: any) => void;
-  onNewUpload: (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => void;
+  onNewUpload: (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => Promise<any>;
   onDeleteTemplate?: (templateId: string) => Promise<void>;
   recentGenerated?: RecentGeneratedTemplate[];
   inProgress?: InProgressTemplate[];
@@ -233,7 +233,18 @@ export function TemplateSelector({
         });
       }
 
-      onNewUpload(uploadFile, width, height, saveTemplate, templateName.trim(), categoryId, subcategoryId);
+      // In multi mode always save (blob URLs can't be reloaded across renders).
+      const shouldSave = templateMode === 'multi' ? true : saveTemplate;
+      const savedTemplate = await onNewUpload(uploadFile, width, height, shouldSave, templateName.trim(), categoryId, subcategoryId);
+
+      // Multi mode: auto-add the newly saved template to the selection and stay on this step
+      if (templateMode === 'multi' && savedTemplate) {
+        setMultiSelected(prev => {
+          const exists = prev.some(t => t.id === savedTemplate.id);
+          return exists ? prev : [...prev, savedTemplate];
+        });
+      }
+
       setShowUploadDialog(false);
       setUploadFile(null);
       setTemplateName('');
@@ -536,20 +547,22 @@ export function TemplateSelector({
                         </div>
                       )}
 
-                      {/* Save toggle */}
-                      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-                        <div className="space-y-0.5">
-                          <Label className="text-base">Save to Templates</Label>
-                          <p className="text-sm text-muted-foreground">Save for future use in the templates library</p>
+                      {/* Save toggle — hidden in multi mode (always saved, required for multi-load) */}
+                      {templateMode !== 'multi' && (
+                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+                          <div className="space-y-0.5">
+                            <Label className="text-base">Save to Templates</Label>
+                            <p className="text-sm text-muted-foreground">Save for future use in the templates library</p>
+                          </div>
+                          <button
+                            onClick={() => setSaveTemplate(!saveTemplate)}
+                            disabled={isProcessing}
+                            className={cn('w-11 h-6 rounded-full transition-colors relative', saveTemplate ? 'bg-primary' : 'bg-muted-foreground/30', isProcessing && 'opacity-50 cursor-not-allowed')}
+                          >
+                            <div className={cn('absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform', saveTemplate && 'translate-x-5')} />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setSaveTemplate(!saveTemplate)}
-                          disabled={isProcessing}
-                          className={cn('w-11 h-6 rounded-full transition-colors relative', saveTemplate ? 'bg-primary' : 'bg-muted-foreground/30', isProcessing && 'opacity-50 cursor-not-allowed')}
-                        >
-                          <div className={cn('absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform', saveTemplate && 'translate-x-5')} />
-                        </button>
-                      </div>
+                      )}
 
                       {error && !isProcessing && (
                         <Alert variant="destructive">
@@ -564,7 +577,9 @@ export function TemplateSelector({
                         className="w-full"
                         size="lg"
                       >
-                        {isProcessing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing template...</> : 'Start Designing'}
+                        {isProcessing
+                          ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving template…</>
+                          : templateMode === 'multi' ? 'Add to Selection' : 'Start Designing'}
                       </Button>
                     </div>
                   )}
@@ -574,8 +589,13 @@ export function TemplateSelector({
 
             {/* Empty state (no saved templates) */}
             {savedTemplates.length === 0 && (
-              <div className="flex items-center justify-center text-muted-foreground text-sm px-8 py-12">
-                No saved templates yet — upload one to get started
+              <div className="flex flex-col items-center justify-center text-center px-8 py-12 gap-2">
+                <p className="text-muted-foreground text-sm font-medium">No saved templates yet</p>
+                <p className="text-muted-foreground/70 text-xs">
+                  {templateMode === 'multi'
+                    ? 'Upload your first template — it will be added to your selection automatically'
+                    : 'Upload a template to get started'}
+                </p>
               </div>
             )}
 
@@ -695,7 +715,9 @@ export function TemplateSelector({
         )}>
           {multiSelected.length === 0 ? (
             <p className="text-sm text-center text-muted-foreground py-1">
-              Click templates above to select them for bulk generation
+              {savedTemplates.length === 0
+                ? 'Click "Upload Template" above to add your first template — it will auto-select here'
+                : 'Click templates above to select them · Upload new ones to add to the selection'}
             </p>
           ) : (
             <div className="flex items-center gap-3">

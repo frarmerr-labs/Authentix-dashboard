@@ -979,8 +979,24 @@ export function ExportSection({
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewImageLoaded, setPreviewImageLoaded] = useState(false);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [statusMsgIndex, setStatusMsgIndex] = useState(0);
   const isMountedRef = useRef(true);
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
+
+  // Cycle through encouraging status messages while generating
+  const STATUS_MESSAGES = [
+    'Processing your data…',
+    'Laying out certificate fields…',
+    'Applying fonts and styles…',
+    'Embedding verification seals…',
+    'Packaging your certificates…',
+    'Almost there…',
+  ];
+  useEffect(() => {
+    if (overlayState !== 'generating') { setStatusMsgIndex(0); return; }
+    const id = setInterval(() => setStatusMsgIndex(i => (i + 1) % STATUS_MESSAGES.length), 3500);
+    return () => clearInterval(id);
+  }, [overlayState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Declared here so the polling effect below can reference it before other state declarations.
   const [generationJobId, setGenerationJobId] = useState<string | null>(null);
@@ -1001,6 +1017,7 @@ export function ExportSection({
 
         if (status.status === 'completed') {
           stopped = true;
+          if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
           const total = (status.result?.total_certificates as number | undefined) ?? 0;
           const result = status.result as Record<string, unknown> | null;
           const resultsArr = result?.results as Array<{ download_url: string | null }> | undefined;
@@ -1016,6 +1033,7 @@ export function ExportSection({
 
         if (status.status === 'failed') {
           stopped = true;
+          if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
           setGenerationError(status.error ?? 'Certificate generation failed. Please try again.');
           setGenerationStatus('error');
           setOverlayState('hidden');
@@ -1023,10 +1041,10 @@ export function ExportSection({
         }
       } catch { /* network errors silently ignored — retry next tick */ }
 
-      timerId = setTimeout(poll, 5000);
+      timerId = setTimeout(poll, 3000);
     };
 
-    timerId = setTimeout(poll, 4000);
+    timerId = setTimeout(poll, 2000);
     return () => { stopped = true; clearTimeout(timerId); };
   }, [generationJobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1041,6 +1059,23 @@ export function ExportSection({
   const [generatedCertificates, setGeneratedCertificates] = useState<GeneratedCertificate[]>([]);
   const [totalGenerated, setTotalGenerated] = useState(0);
   const [generationSummary, setGenerationSummary] = useState<Array<{ label: string; count: number }>>([]);
+  const [displayCount, setDisplayCount] = useState(0);
+
+  // Animate the count up when success overlay appears
+  useEffect(() => {
+    if (overlayState !== 'success' || totalGenerated === 0) { setDisplayCount(0); return; }
+    setDisplayCount(0);
+    const duration = Math.min(1200, totalGenerated * 60);
+    const steps = Math.min(totalGenerated, 30);
+    const stepMs = duration / steps;
+    let current = 0;
+    const id = setInterval(() => {
+      current = Math.min(current + Math.ceil(totalGenerated / steps), totalGenerated);
+      setDisplayCount(current);
+      if (current >= totalGenerated) clearInterval(id);
+    }, stepMs);
+    return () => clearInterval(id);
+  }, [overlayState, totalGenerated]);
 
   // Send via Email modal
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -1260,15 +1295,18 @@ export function ExportSection({
 
     setProgressLabel(`Generating ${totalRows} certificate${totalRows !== 1 ? 's' : ''}…`);
 
-    // Simulate progress during submit + poll — cap at 90% until job completes
-    const estimatedMs = Math.max(5000, totalRows * configsToRun.length * 200);
-    const tickMs = 200;
+    // Simulate smooth progress — asymptotic curve so it never feels stuck.
+    // Estimate total time: 2s submit latency + 1.5s per cert (capped at 120s).
+    const estimatedMs = Math.min(Math.max(5000, 2000 + totalRows * configsToRun.length * 1500), 120000);
+    const tickMs = 300;
     let elapsed = 0;
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     progressTimerRef.current = setInterval(() => {
       elapsed += tickMs;
-      const frac = Math.min(elapsed / estimatedMs, 0.9);
-      setProgress(Math.round(frac * 90));
+      // Asymptotic: fast at first, slows near 88% — never reaches 90 on its own
+      const frac = 1 - Math.exp(-3 * elapsed / estimatedMs);
+      const pct = Math.round(frac * 88);
+      setProgress(pct);
       setSimulatedCount(Math.max(1, Math.round(frac * totalRows)));
     }, tickMs);
 
@@ -1319,7 +1357,7 @@ export function ExportSection({
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
 
       setGenerationJobId(firstJobId);
-      // Stay on 'generating' overlay — user decides when to move to background via the CTA
+      // Progress timer keeps running through polling — cleared only on completion or error
     } catch (err: any) {
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       if (!isMountedRef.current) return;
@@ -1344,45 +1382,52 @@ export function ExportSection({
 
   // Full-screen generation overlay
   if (overlayState !== 'hidden') {
+    const PARTICLE_ANGLES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background select-none overflow-hidden">
         <style>{`
           @keyframes genZoomIn    { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
-          @keyframes genRipple    { 0%{transform:scale(1);opacity:0.65} 100%{transform:scale(2.6);opacity:0} }
+          @keyframes genRipple    { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(3);opacity:0} }
           @keyframes genShieldPop { 0%{opacity:0;transform:scale(0.4) rotate(-12deg)} 65%{transform:scale(1.12) rotate(4deg)} 100%{opacity:1;transform:scale(1) rotate(0deg)} }
           @keyframes genBadgePop  { 0%{opacity:0;transform:scale(0) rotate(20deg)} 70%{transform:scale(1.18) rotate(-6deg)} 100%{opacity:1;transform:scale(1) rotate(0deg)} }
-          @keyframes genBadgeFloat{ 0%,100%{transform:translateY(0px) rotate(-6deg)} 50%{transform:translateY(-6px) rotate(-2deg)} }
-          @keyframes genShieldGlow{ 0%,100%{filter:drop-shadow(0 0 8px #3ECF8E55)} 50%{filter:drop-shadow(0 0 22px #3ECF8Eaa)} }
+          @keyframes genBadgeFloat{ 0%,100%{transform:translateY(0px) rotate(-6deg)} 50%{transform:translateY(-8px) rotate(-2deg)} }
+          @keyframes genShieldGlow{ 0%,100%{filter:drop-shadow(0 0 10px #3ECF8E66)} 50%{filter:drop-shadow(0 0 28px #3ECF8Ecc)} }
           @keyframes genPulse     { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
           @keyframes genSpin      { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
           @keyframes genSpinRev   { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
           @keyframes genOrbit     { from{transform:rotate(0deg) translateX(90px) rotate(0deg)} to{transform:rotate(360deg) translateX(90px) rotate(-360deg)} }
           @keyframes genOrbit2    { from{transform:rotate(120deg) translateX(70px) rotate(-120deg)} to{transform:rotate(480deg) translateX(70px) rotate(-480deg)} }
           @keyframes genOrbit3    { from{transform:rotate(240deg) translateX(110px) rotate(-240deg)} to{transform:rotate(600deg) translateX(110px) rotate(-600deg)} }
-          @keyframes genDocLine   { 0%,100%{opacity:0.25} 50%{opacity:0.7} }
-          @keyframes genFadeSlide { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes genDocLine   { 0%,100%{opacity:0.2} 50%{opacity:0.75} }
+          @keyframes genFadeSlide { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes genFadeUp    { from{opacity:0;transform:translateY(16px) scale(0.95)} to{opacity:1;transform:translateY(0) scale(1)} }
+          @keyframes genCountPop  { 0%{transform:scale(0.6);opacity:0} 60%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+          @keyframes genParticle  { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:var(--tx,0) var(--ty,0) scale(0);opacity:0} }
+          @keyframes genRay       { 0%,100%{opacity:0.15} 50%{opacity:0.5} }
+          @keyframes genMsgFade   { from{opacity:0;transform:translateY(4px)} to{opacity:0.6;transform:translateY(0)} }
+          @keyframes genBgPulse   { 0%,100%{opacity:0} 50%{opacity:1} }
         `}</style>
 
         {/* Bottom CTA — while generating animation plays */}
-        {overlayState === 'generating' && (
-          <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3">
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {generationJobId ? 'Job queued! Click below to continue working while we process it.' : 'Submitting your job…'}
+        {overlayState === 'generating' && generationJobId && (
+          <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3" style={{ animation: 'genFadeSlide 0.4s ease-out 1s both' }}>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Want to keep working? Run this in the background.
             </p>
             <button
               onClick={() => {
                 if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
                 setOverlayState('queued');
               }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-white/10"
               style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: 'rgba(255,255,255,0.55)',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.5)',
               }}
             >
               <Bell style={{ width: 14, height: 14 }} />
-              Continue in background
+              Run in background
             </button>
           </div>
         )}
@@ -1390,61 +1435,107 @@ export function ExportSection({
         <div className="flex flex-col items-center gap-10">
           {overlayState === 'success' ? (
             /* ── Success ── */
-            <div className="flex flex-col items-center gap-10">
-              {/* Icon cluster */}
-              <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
+            <div className="flex flex-col items-center gap-8">
+              {/* Icon cluster with particles */}
+              <div className="relative flex items-center justify-center" style={{ width: 240, height: 240 }}>
+                {/* Particle burst */}
+                {PARTICLE_ANGLES.map((angle, i) => {
+                  const rad = (angle * Math.PI) / 180;
+                  const dist = 90 + (i % 3) * 20;
+                  const tx = `translateX(${Math.round(Math.cos(rad) * dist)}px)`;
+                  const ty = `translateY(${Math.round(Math.sin(rad) * dist)}px)`;
+                  const size = i % 3 === 0 ? 8 : i % 3 === 1 ? 5 : 6;
+                  const colors = ['#3ECF8E', '#3ECF8Eaa', '#3ECF8E77'];
+                  return (
+                    <div key={angle} style={{
+                      position: 'absolute',
+                      width: size, height: size,
+                      borderRadius: i % 2 === 0 ? '50%' : '2px',
+                      background: colors[i % 3],
+                      boxShadow: i % 3 === 0 ? `0 0 6px #3ECF8E` : 'none',
+                      // @ts-expect-error css custom properties
+                      '--tx': tx, '--ty': ty,
+                      animation: `genParticle 0.9s cubic-bezier(0.2,0,0.8,1) ${i * 0.04}s both`,
+                    }} />
+                  );
+                })}
+
                 {/* Ripple rings */}
-                <div className="absolute w-48 h-48 rounded-full" style={{ border: '2px solid #3ECF8E55', animation: 'genRipple 1.6s ease-out infinite' }} />
-                <div className="absolute w-48 h-48 rounded-full" style={{ border: '1.5px solid #3ECF8E33', animation: 'genRipple 1.6s ease-out 0.5s infinite' }} />
-                <div className="absolute w-48 h-48 rounded-full" style={{ border: '1px solid #3ECF8E1a', animation: 'genRipple 1.6s ease-out 1s infinite' }} />
+                <div className="absolute w-56 h-56 rounded-full" style={{ border: '1.5px solid #3ECF8E44', animation: 'genRipple 2s ease-out 0.1s infinite' }} />
+                <div className="absolute w-56 h-56 rounded-full" style={{ border: '1px solid #3ECF8E22', animation: 'genRipple 2s ease-out 0.7s infinite' }} />
+                <div className="absolute w-56 h-56 rounded-full" style={{ border: '1px solid #3ECF8E11', animation: 'genRipple 2s ease-out 1.3s infinite' }} />
+
+                {/* Rotating rays */}
+                {[0,45,90,135].map(r => (
+                  <div key={r} style={{
+                    position: 'absolute', width: 2, height: 70, borderRadius: 1,
+                    background: 'linear-gradient(to bottom, #3ECF8E66, transparent)',
+                    transformOrigin: 'bottom center',
+                    transform: `rotate(${r}deg) translateY(-70px)`,
+                    animation: `genRay 2s ease-in-out ${r * 0.015}s infinite`,
+                  }} />
+                ))}
 
                 {/* Glow backdrop */}
-                <div className="absolute w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle, #3ECF8E22 0%, transparent 70%)' }} />
+                <div className="absolute rounded-full" style={{ width: 140, height: 140, background: 'radial-gradient(circle, #3ECF8E28 0%, transparent 70%)' }} />
 
                 {/* Main shield */}
-                <ShieldCheck
-                  style={{
-                    width: 96, height: 96,
-                    color: '#3ECF8E',
-                    animation: 'genShieldPop 0.55s cubic-bezier(0.34,1.56,0.64,1) both, genShieldGlow 2s ease-in-out 0.6s infinite',
-                  }}
-                />
+                <ShieldCheck style={{
+                  width: 100, height: 100, color: '#3ECF8E',
+                  animation: 'genShieldPop 0.6s cubic-bezier(0.34,1.56,0.64,1) both, genShieldGlow 2.2s ease-in-out 0.6s infinite',
+                }} />
 
-                {/* Floating badge — top right */}
-                <div style={{
-                  position: 'absolute', top: 14, right: 10,
-                  animation: 'genBadgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.2s both',
-                }}>
-                  <div style={{
-                    animation: 'genBadgeFloat 2.8s ease-in-out 0.7s infinite',
-                  }}>
-                    <BadgeCheck style={{ width: 36, height: 36, color: '#3ECF8E' }} />
+                {/* Floating badge */}
+                <div style={{ position: 'absolute', top: 20, right: 16, animation: 'genBadgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.25s both' }}>
+                  <div style={{ animation: 'genBadgeFloat 3s ease-in-out 0.8s infinite' }}>
+                    <BadgeCheck style={{ width: 38, height: 38, color: '#3ECF8E' }} />
                   </div>
                 </div>
               </div>
 
-              {/* Text */}
-              <div className="text-center" style={{ animation: 'genFadeSlide 0.5s ease-out 0.35s both' }}>
-                <p className="text-4xl font-bold mb-4">All done!</p>
-                <p className="text-lg text-muted-foreground">
-                  {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+              {/* Text with count-up */}
+              <div className="text-center space-y-3" style={{ animation: 'genFadeUp 0.5s ease-out 0.3s both' }}>
+                <p className="font-black tracking-tight" style={{ fontSize: 40, lineHeight: 1, animation: 'genCountPop 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.15s both' }}>
+                  🎉 All done!
                 </p>
+                <p className="text-muted-foreground" style={{ fontSize: 17 }}>
+                  <span style={{ color: '#3ECF8E', fontWeight: 800, fontSize: 22 }}>{displayCount}</span>
+                  {' '}certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+                </p>
+                {generationSummary.length > 1 && (
+                  <div className="flex flex-wrap justify-center gap-2 mt-1">
+                    {generationSummary.map((s, i) => (
+                      <span key={i} className="text-xs px-2.5 py-1 rounded-full" style={{ background: 'rgba(62,207,142,0.12)', color: '#3ECF8E', border: '1px solid rgba(62,207,142,0.3)' }}>
+                        {s.label}: {s.count}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Dismiss CTA */}
-              <button
-                onClick={() => setOverlayState('hidden')}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
-                style={{
-                  background: 'rgba(62,207,142,0.15)',
-                  border: '1.5px solid rgba(62,207,142,0.5)',
-                  color: '#3ECF8E',
-                  animation: 'genFadeSlide 0.5s ease-out 0.6s both',
-                }}
-              >
-                View Results
-                <ArrowRight style={{ width: 16, height: 16 }} />
-              </button>
+              {/* CTAs */}
+              <div className="flex gap-3" style={{ animation: 'genFadeUp 0.5s ease-out 0.55s both' }}>
+                {downloadUrl && (
+                  <a href={downloadUrl} download>
+                    <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm" style={{ background: '#3ECF8E', color: '#000' }}>
+                      <Download style={{ width: 15, height: 15 }} />
+                      Download All
+                    </button>
+                  </a>
+                )}
+                <button
+                  onClick={() => setOverlayState('hidden')}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-white/10"
+                  style={{
+                    background: 'rgba(62,207,142,0.12)',
+                    border: '1.5px solid rgba(62,207,142,0.45)',
+                    color: '#3ECF8E',
+                  }}
+                >
+                  View Results
+                  <ArrowRight style={{ width: 15, height: 15 }} />
+                </button>
+              </div>
             </div>
           ) : overlayState === 'queued' ? (
             /* ── Running in background ── */
@@ -1591,8 +1682,10 @@ export function ExportSection({
                 </div>
                 <div className="flex items-center justify-between px-0.5">
                   <span className="text-sm font-bold tabular-nums" style={{ color: '#3ECF8E' }}>{progress}%</span>
-                  <span className="text-xs text-muted-foreground">{progressLabel || 'Generating certificates…'}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)', animation: 'genMsgFade 0.4s ease-out both' }} key={statusMsgIndex}>
+                    {progressLabel || STATUS_MESSAGES[statusMsgIndex]}
+                  </span>
+                  <span className="text-xs tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>
                     {simulatedCount > 0 ? `${simulatedCount} / ${importedData?.rowCount ?? '?'}` : '—'}
                   </span>
                 </div>
@@ -1606,6 +1699,36 @@ export function ExportSection({
 
   return (
     <div className="space-y-6">
+      {/* Completion summary — shown when polling completes but individual certs aren't loaded */}
+      {generationStatus === 'completed' && generatedCertificates.length === 0 && totalGenerated > 0 && (
+        <div className="rounded-lg border border-[#3ECF8E]/30 bg-[#3ECF8E]/5 px-4 py-4 flex items-center gap-4">
+          <CheckCircle2 className="w-8 h-8 text-[#3ECF8E] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">
+              {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+            </p>
+            {generationSummary.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {generationSummary.map((s, i) => (
+                  <Badge key={i} variant="outline" className="gap-1 text-xs">
+                    <FileText className="w-3 h-3" />
+                    {s.label}: {s.count}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          {downloadUrl && (
+            <a href={downloadUrl} download>
+              <Button size="sm" className="gap-1.5 shrink-0">
+                <Download className="w-4 h-4" />
+                Download ZIP
+              </Button>
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Results table */}
       {generationStatus === 'completed' && generatedCertificates.length > 0 && (
         <div className="space-y-4">

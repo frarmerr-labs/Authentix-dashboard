@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
         width: template.width || null,
         height: template.height || null,
         fields: template.fields || [],
-        certificate_count: template.certificate_count || 0,
+        certificate_count: (template as any).certificates_count ?? template.certificate_count ?? 0,
         organization_id: template.organization_id,
         created_at: template.created_at,
         updated_at: template.updated_at,

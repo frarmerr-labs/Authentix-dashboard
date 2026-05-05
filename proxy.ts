@@ -51,9 +51,32 @@ function nextWithNonce(request: NextRequest, nonce: string): NextResponse {
   return response;
 }
 
+const VERIFY_HOSTNAME = "verify.digicertificates.in";
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host") ?? request.nextUrl.host;
+  const isVerifyDomain = host === VERIFY_HOSTNAME || host.startsWith(`${VERIFY_HOSTNAME}:`);
+
+  // ── verify.digicertificates.in domain routing ────────────────────────────
+  // All traffic on the verify subdomain is public — no auth checks needed.
+  if (isVerifyDomain) {
+    const url = request.nextUrl.clone();
+    if (pathname === "/") {
+      url.pathname = "/verify";
+      return NextResponse.rewrite(url);
+    }
+    // Already under /verify/... — serve normally (backward compat with old QR codes)
+    if (pathname.startsWith("/verify")) return NextResponse.next();
+    // New format: /{orgSlug}/{token} → rewrite to /verify/{token}
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts.length === 2) {
+      url.pathname = `/verify/${parts[1]}`;
+      return NextResponse.rewrite(url);
+    }
+    url.pathname = "/verify";
+    return NextResponse.rewrite(url);
+  }
 
   // Redirect verify/short-link paths on the dashboard subdomain to the clean public domain
   if (host === DASHBOARD_HOST && (pathname.startsWith("/verify/") || pathname.startsWith("/c/"))) {

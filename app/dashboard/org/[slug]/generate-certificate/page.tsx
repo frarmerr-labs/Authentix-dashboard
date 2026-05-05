@@ -721,7 +721,7 @@ export default function GenerateCertificatePage() {
     setCanRedo((cfg.future?.length ?? 0) > 0);
   };
 
-  const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string) => {
+  const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string): Promise<any> => {
     const fileType: 'pdf' | 'image' = file.type === 'application/pdf' ? 'pdf' : 'image';
     const baseName = templateName || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
     const existingNames = savedTemplates.map(t => t.title?.toLowerCase() ?? '');
@@ -733,6 +733,30 @@ export default function GenerateCertificatePage() {
       finalTemplateName = `${stripped} (${n})`;
     }
 
+    // ── Multi mode: save + return template for carousel selection, never navigate ──
+    if (templateMode === 'multi') {
+      if (!categoryId || !subcategoryId) return null;
+      try {
+        const templateData = await api.templates.create(file, {
+          title: finalTemplateName.trim(),
+          category_id: categoryId,
+          subcategory_id: subcategoryId,
+        });
+        // Try to attach a preview URL so the carousel card shows the thumbnail
+        let withPreview: any = templateData;
+        try {
+          const previewUrl = await api.templates.getPreviewUrl(templateData.id);
+          withPreview = { ...templateData, preview_url: previewUrl };
+        } catch { /* preview not critical */ }
+        setSavedTemplates(prev => [withPreview, ...prev]);
+        return withPreview;
+      } catch (error: any) {
+        console.error('Error saving template in multi mode:', error);
+        return null;
+      }
+    }
+
+    // ── Single mode: open design canvas immediately ───────────────────────────
     const newTemplate: CertificateTemplate = {
       templateName: finalTemplateName,
       fileUrl: URL.createObjectURL(file),
@@ -750,35 +774,21 @@ export default function GenerateCertificatePage() {
 
     if (saveTemplate) {
       try {
-        // Validate category/subcategory IDs are provided
         if (!categoryId || !subcategoryId) {
           throw new Error('Category and subcategory IDs are required');
         }
-        
-        // Use backend API to create template (same as TemplateUploadDialog)
         const templateData = await api.templates.create(file, {
           title: finalTemplateName.trim(),
           category_id: categoryId,
           subcategory_id: subcategoryId,
         });
-
-        // Update saved templates list
         setSavedTemplates((prev) => [templateData, ...prev]);
-
-        // Update template with database ID and get version ID for autosave
         if (templateData.version?.id) {
           setTemplateVersionId(templateData.version.id);
         }
         setTemplate((prev) => prev ? { ...prev, id: templateData.id } : null);
       } catch (error: any) {
         console.error('Error saving template:', error);
-        console.error('Error details:', {
-          message: error?.message,
-          statusCode: error?.statusCode,
-          error: error
-        });
-        
-        // Check if it's a bucket not found error
         if (error?.message?.includes('Bucket not found') || error?.message?.includes('bucket') || error?.statusCode === 404) {
           alert(
             '❌ Storage Bucket Error\n\n' +
@@ -794,6 +804,7 @@ export default function GenerateCertificatePage() {
         }
       }
     }
+    return null;
   };
 
   const handleDeleteTemplate = async (templateId: string) => {
@@ -1286,6 +1297,32 @@ export default function GenerateCertificatePage() {
       if (rows.length === 0) throw new Error('The import file is empty or has no data.');
 
       const headers = Object.keys(rows[0]!);
+
+      // All fields across the active template(s)
+      const allFields = templateMode === 'multi' && templateConfigs.length > 0
+        ? templateConfigs.map((c, i) => i === activeTemplateIndex ? fields : c.fields).flat()
+        : fields;
+      const currentFieldIds = new Set(allFields.map(f => f.id));
+
+      // Smart re-mapping: start from the saved mapping, but only for fields that
+      // still exist in the current template design. Then auto-map any new or
+      // renamed fields the saved mapping doesn't cover.
+      let resolvedMappings: FieldMapping[];
+      if (importJob.mapping && Object.keys(importJob.mapping).length > 0) {
+        const validSaved: FieldMapping[] = Object.entries(importJob.mapping)
+          .filter(([fieldId]) => currentFieldIds.has(fieldId))
+          .map(([fieldId, columnName]) => ({ fieldId, columnName: columnName as string }));
+
+        const savedFieldIds = new Set(validSaved.map(m => m.fieldId));
+        const unmappedFields = allFields.filter(
+          f => !savedFieldIds.has(f.id) && f.type !== 'qr_code' && f.type !== 'image'
+        );
+        const additionalMappings = autoMapColumns(unmappedFields, headers);
+        resolvedMappings = [...validSaved, ...additionalMappings];
+      } else {
+        resolvedMappings = autoMapColumns(allFields, headers);
+      }
+
       setImportedData({
         fileName: importJob.file_name,
         headers,
@@ -1294,17 +1331,10 @@ export default function GenerateCertificatePage() {
         importId: importId,
         importIds: [importId],
       });
+      setFieldMappings(resolvedMappings);
 
-      if (importJob.mapping) {
-        setFieldMappings(
-          Object.entries(importJob.mapping).map(([fieldId, columnName]) => ({
-            fieldId,
-            columnName: columnName as string,
-          }))
-        );
-      }
-
-      setCurrentStep('export');
+      // Stay on the data step so the user can review/adjust mappings before generating.
+      // (DataSelector shows the mapping UI once importedData is set and showUpload → false.)
     } catch (error) {
       console.error('Error loading import:', error);
       throw error;
