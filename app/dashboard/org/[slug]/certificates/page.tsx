@@ -77,7 +77,7 @@ export default function CertificatesPage() {
     page,
     limit: 20,
     search: appliedFilters.search || undefined,
-    status: appliedFilters.status as 'issued' | 'revoked' | 'expired' | undefined,
+    status: (appliedFilters.status || undefined) as 'active' | 'revoked' | 'expired' | undefined,
     category_id: appliedFilters.category || undefined,
     subcategory_id: appliedFilters.subcategory || undefined,
     date_from: appliedFilters.dateFrom || undefined,
@@ -214,7 +214,7 @@ export default function CertificatesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All statuses</SelectItem>
-                  <SelectItem value="issued">Issued</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="revoked">Revoked</SelectItem>
                   <SelectItem value="expired">Expired</SelectItem>
                 </SelectContent>
@@ -483,7 +483,7 @@ export default function CertificatesPage() {
 
       {/* Certificate Preview Dialog */}
       <Dialog open={!!previewCertificate} onOpenChange={() => setPreviewCertificate(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Certificate Preview</DialogTitle>
           </DialogHeader>

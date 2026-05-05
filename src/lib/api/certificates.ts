@@ -47,7 +47,7 @@ export const certificatesApi = {
     page?: number;
     limit?: number;
     search?: string;
-    status?: "issued" | "revoked" | "expired";
+    status?: "active" | "revoked" | "expired";
     category_id?: string;
     subcategory_id?: string;
     date_from?: string;

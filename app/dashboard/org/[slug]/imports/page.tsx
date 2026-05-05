@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,20 @@ import { type ImportJob } from "@/lib/api/client";
 import { useImports, useImportData } from "@/lib/hooks/queries/imports";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+
+function getMimeTypeLabel(fileType: string): string {
+  const t = fileType.toLowerCase();
+  if (t === 'text/csv' || t === 'csv') return 'CSV';
+  if (t.includes('spreadsheetml') || t === 'xlsx') return 'XLSX';
+  if (t.includes('ms-excel') || t === 'xls') return 'XLS';
+  if (t === 'application/pdf' || t === 'pdf') return 'PDF';
+  if (t.includes('opendocument.spreadsheet') || t === 'ods') return 'ODS';
+  if (t === 'text/tab-separated-values' || t === 'tsv') return 'TSV';
+  if (t.includes('json')) return 'JSON';
+  // Fallback: grab the part after the last / or .
+  const short = t.split('/').pop()?.split('.').pop() ?? t;
+  return short.toUpperCase();
+}
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +57,8 @@ import { formatDistanceToNow, format } from "date-fns";
 
 function ImportPreview({ importId }: { importId: string }) {
   const { data, isLoading } = useImportData(importId, { page: 1, limit: 5 });
-  const rows = (data?.items ?? []) as Record<string, unknown>[];
+  // API returns { row_index, data: Record<string, unknown> } — extract the inner data object
+  const rows = (data?.items ?? []).map((r: any) => r.data ?? r) as Record<string, unknown>[];
 
   if (isLoading) {
     return (
@@ -98,6 +114,9 @@ function ImportPreview({ importId }: { importId: string }) {
 }
 
 export default function ImportsPage() {
+  const params = useParams();
+  const orgSlug = params.slug as string;
+
   const { imports, loading, refetch } = useImports({
     sort_by: "created_at",
     sort_order: "desc",
@@ -129,7 +148,7 @@ export default function ImportsPage() {
   };
 
   const handleUseForGeneration = (importId: string) => {
-    window.location.href = `/dashboard/generate-certificate?import=${importId}`;
+    window.location.href = `/dashboard/org/${orgSlug}/generate-certificate?import=${importId}`;
   };
 
   const getStatusBadge = (status: ImportJob["status"]) => {
@@ -197,7 +216,7 @@ export default function ImportsPage() {
               Data files will appear here after you upload them during certificate generation.
             </p>
             <Button asChild>
-              <a href="/dashboard/generate-certificate">Generate Certificates</a>
+              <a href={`/dashboard/org/${orgSlug}/generate-certificate`}>Generate Certificates</a>
             </Button>
           </CardContent>
         </Card>
@@ -326,7 +345,7 @@ export default function ImportsPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <p className="text-muted-foreground">File Type</p>
-                          <p className="font-medium">{importItem.file_type.toUpperCase()}</p>
+                          <p className="font-medium">{getMimeTypeLabel(importItem.file_type)}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Uploaded</p>

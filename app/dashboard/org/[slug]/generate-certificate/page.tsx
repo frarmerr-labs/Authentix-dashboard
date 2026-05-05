@@ -743,7 +743,7 @@ export default function GenerateCertificatePage() {
           subcategory_id: subcategoryId,
         });
         // Try to attach a preview URL so the carousel card shows the thumbnail
-        let withPreview = templateData;
+        let withPreview: any = templateData;
         try {
           const previewUrl = await api.templates.getPreviewUrl(templateData.id);
           withPreview = { ...templateData, preview_url: previewUrl };
