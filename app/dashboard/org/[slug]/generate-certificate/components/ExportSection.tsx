@@ -1206,7 +1206,6 @@ export function ExportSection({
 
   // Generated certificates
   const [generatedCertificates, setGeneratedCertificates] = useState<GeneratedCertificate[]>([]);
-  const [showAllCerts, setShowAllCerts] = useState(false);
   const [totalGenerated, setTotalGenerated] = useState(0);
   const [generationSummary, setGenerationSummary] = useState<Array<{ label: string; count: number }>>([]);
   const [displayCount, setDisplayCount] = useState(0);
@@ -1874,9 +1873,9 @@ export function ExportSection({
 
           {/* Certificate preview cards */}
           {generatedCertificates.length > 0 ? (
-            <>
+            <div className="max-h-[420px] overflow-y-auto pr-1">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {(showAllCerts ? generatedCertificates : generatedCertificates.slice(0, 12)).map((cert) => (
+                {generatedCertificates.map((cert) => (
                   <CertPreviewCard
                     key={cert.id}
                     cert={cert}
@@ -1885,17 +1884,7 @@ export function ExportSection({
                   />
                 ))}
               </div>
-              {generatedCertificates.length > 12 && (
-                <button
-                  className="w-full text-sm text-muted-foreground hover:text-foreground py-2.5 border border-dashed rounded-lg transition-colors"
-                  onClick={() => setShowAllCerts(p => !p)}
-                >
-                  {showAllCerts
-                    ? 'Show fewer'
-                    : `Show all ${generatedCertificates.length} certificates`}
-                </button>
-              )}
-            </>
+            </div>
           ) : totalGenerated > 0 && (
             /* Backend didn't return individual cert data — show download prompt */
             <div className="rounded-lg border bg-muted/20 p-6 text-center space-y-2">
@@ -2223,7 +2212,6 @@ export function ExportSection({
               setProgressLabel('');
               setGenerationJobId(null);
               setEmailStatuses(undefined);
-              setShowAllCerts(false);
             }}
           >
             Generate More
