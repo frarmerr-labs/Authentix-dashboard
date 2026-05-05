@@ -58,9 +58,22 @@ export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? request.nextUrl.host;
   const isVerifyDomain = host === VERIFY_HOSTNAME || host.startsWith(`${VERIFY_HOSTNAME}:`);
 
+  // Generate nonce once up-front — used by nextWithNonce throughout this handler.
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  const nonce = btoa(String.fromCharCode(...array));
+
   // ── verify.digicertificates.in domain routing ────────────────────────────
   // All traffic on the verify subdomain is public — no auth checks needed.
   if (isVerifyDomain) {
+    // Let Next.js internal routes (_next, API, static assets) pass through untouched.
+    if (
+      STATIC_ROUTES.some((r) => pathname.startsWith(r)) ||
+      API_ROUTES.some((r) => pathname.startsWith(r))
+    ) {
+      return nextWithNonce(request, nonce);
+    }
+
     const url = request.nextUrl.clone();
     if (pathname === "/") {
       url.pathname = "/verify";
@@ -83,11 +96,6 @@ export async function proxy(request: NextRequest) {
     const search = request.nextUrl.search;
     return NextResponse.redirect(`https://${PUBLIC_HOST}${pathname}${search}`, { status: 301 });
   }
-
-  // Generate a cryptographically random nonce for this request
-  const array = new Uint8Array(16);
-  crypto.getRandomValues(array);
-  const nonce = btoa(String.fromCharCode(...array));
 
   // Skip auth checks for static/API routes but still apply CSP
   if (STATIC_ROUTES.some((r) => pathname.startsWith(r)) || API_ROUTES.some((r) => pathname.startsWith(r))) {
