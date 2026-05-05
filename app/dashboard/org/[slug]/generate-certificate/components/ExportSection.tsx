@@ -19,6 +19,7 @@ import {
   Download, Loader2, CheckCircle2, AlertCircle, Calendar, Plus, X,
   FileText, ChevronDown, ChevronUp, Settings2, Eye, ChevronLeft, ChevronRight,
   ShieldCheck, BadgeCheck, Mail, Send, ExternalLink, Bell, ArrowRight,
+  FileArchive, FileCheck,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ExpiryDateSelector, type ExpiryType } from './ExpiryDateSelector';
@@ -949,6 +950,129 @@ function SendEmailModal({ jobId, recipientCount, certPreviewUrl, firstRecipientR
   );
 }
 
+// ── Certificate preview card ────────────────────────────────────────────────────
+
+function CertPreviewCard({
+  cert,
+  isImageTemplate,
+  emailStatus,
+}: {
+  cert: GeneratedCertificate;
+  isImageTemplate: boolean;
+  emailStatus?: string;
+}) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!cert.download_url) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(cert.download_url);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = isImageTemplate ? `${cert.certificate_number}.png` : `${cert.certificate_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch { /* silent */ }
+    setDownloading(false);
+  };
+
+  return (
+    <div className="group border rounded-xl overflow-hidden bg-card hover:shadow-md transition-shadow">
+      {/* Thumbnail */}
+      <div className="aspect-[4/3] bg-muted/40 relative overflow-hidden">
+        {cert.preview_url ? (
+          <img
+            src={cert.preview_url}
+            alt={cert.recipient_name}
+            className="w-full h-full object-contain"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <FileCheck className="w-10 h-10 text-muted-foreground/30" />
+          </div>
+        )}
+        {/* Hover action overlay */}
+        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+          {cert.preview_url && (
+            <button
+              className="h-9 w-9 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition"
+              onClick={() => window.open(cert.preview_url!, '_blank')}
+              title="View full size"
+            >
+              <Eye className="w-4 h-4 text-white" />
+            </button>
+          )}
+          {cert.download_url && (
+            <button
+              className="h-9 w-9 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition disabled:opacity-50"
+              onClick={handleDownload}
+              disabled={downloading}
+              title={isImageTemplate ? 'Download PNG' : 'Download PDF'}
+            >
+              {downloading
+                ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                : <Download className="w-4 h-4 text-white" />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Info row */}
+      <div className="px-3 py-2.5 space-y-0.5">
+        <p className="text-sm font-medium leading-tight truncate">{cert.recipient_name}</p>
+        <p className="text-xs text-muted-foreground font-mono truncate">{cert.certificate_number}</p>
+        {emailStatus && (
+          <div className="pt-1">
+            {(emailStatus === 'sent' || emailStatus === 'delivered') && (
+              <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                <CheckCircle2 className="w-3 h-3" />
+                {emailStatus === 'delivered' ? 'Delivered' : 'Sent'}
+              </span>
+            )}
+            {emailStatus === 'queued' && (
+              <span className="text-xs text-muted-foreground">Email queued</span>
+            )}
+            {emailStatus === 'failed' && (
+              <span className="text-xs text-destructive">Email failed</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      {(cert.preview_url || cert.download_url) && (
+        <div className="px-3 pb-3 flex gap-1.5">
+          {cert.preview_url && (
+            <button
+              className="flex-1 text-xs py-1.5 rounded-lg border hover:bg-muted/50 transition flex items-center justify-center gap-1"
+              onClick={() => window.open(cert.preview_url!, '_blank')}
+            >
+              <Eye className="w-3 h-3" />
+              View
+            </button>
+          )}
+          {cert.download_url && (
+            <button
+              className="flex-1 text-xs py-1.5 rounded-lg border hover:bg-muted/50 transition flex items-center justify-center gap-1 disabled:opacity-50"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              {downloading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Download className="w-3 h-3" />}
+              {isImageTemplate ? 'PNG' : 'PDF'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function ExportSection({
@@ -1020,10 +1144,35 @@ export function ExportSection({
           if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
           const total = (status.result?.total_certificates as number | undefined) ?? 0;
           const result = status.result as Record<string, unknown> | null;
-          const resultsArr = result?.results as Array<{ download_url: string | null }> | undefined;
+          type ResultEntry = {
+            label: string; count: number; download_url: string | null;
+            certificates?: Array<{
+              id: string; certificate_number: string; recipient_name: string;
+              recipient_email: string | null; issued_at: string; expires_at: string | null;
+              download_url: string | null; preview_url: string | null; recipient_id?: string | null;
+            }>;
+          };
+          const resultsArr = result?.results as ResultEntry[] | undefined;
           const url = (result?.last_download_url as string | null | undefined) ?? resultsArr?.[0]?.download_url ?? null;
+          // Extract individual certificates and per-template summary from job result
+          const allCerts: GeneratedCertificate[] = [];
+          const summary: Array<{ label: string; count: number }> = [];
+          for (const r of resultsArr ?? []) {
+            if (r.label) summary.push({ label: r.label, count: r.count });
+            for (const c of r.certificates ?? []) {
+              allCerts.push({
+                id: c.id, certificate_number: c.certificate_number,
+                recipient_name: c.recipient_name, recipient_email: c.recipient_email,
+                issued_at: c.issued_at, expires_at: c.expires_at,
+                download_url: c.download_url, preview_url: c.preview_url,
+                recipient_id: c.recipient_id ?? null,
+              });
+            }
+          }
           setTotalGenerated(total);
           setDownloadUrl(url ?? null);
+          setGeneratedCertificates(allCerts);
+          if (summary.length > 0) setGenerationSummary(summary);
           setGenerationStatus('completed');
           setProgress(100);
           // Transition to success if the overlay is still visible; otherwise leave it hidden
@@ -1057,6 +1206,7 @@ export function ExportSection({
 
   // Generated certificates
   const [generatedCertificates, setGeneratedCertificates] = useState<GeneratedCertificate[]>([]);
+  const [showAllCerts, setShowAllCerts] = useState(false);
   const [totalGenerated, setTotalGenerated] = useState(0);
   const [generationSummary, setGenerationSummary] = useState<Array<{ label: string; count: number }>>([]);
   const [displayCount, setDisplayCount] = useState(0);
@@ -1699,57 +1849,66 @@ export function ExportSection({
 
   return (
     <div className="space-y-6">
-      {/* Completion summary — shown when polling completes but individual certs aren't loaded */}
-      {generationStatus === 'completed' && generatedCertificates.length === 0 && totalGenerated > 0 && (
-        <div className="rounded-lg border border-[#3ECF8E]/30 bg-[#3ECF8E]/5 px-4 py-4 flex items-center gap-4">
-          <CheckCircle2 className="w-8 h-8 text-[#3ECF8E] shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">
-              {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
-            </p>
-            {generationSummary.length > 1 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {generationSummary.map((s, i) => (
-                  <Badge key={i} variant="outline" className="gap-1 text-xs">
-                    <FileText className="w-3 h-3" />
-                    {s.label}: {s.count}
-                  </Badge>
+      {/* Results — success header + certificate preview grid */}
+      {generationStatus === 'completed' && (
+        <div className="space-y-4">
+          {/* Success header */}
+          <div className="rounded-lg border border-[#3ECF8E]/30 bg-[#3ECF8E]/5 px-4 py-3 flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-[#3ECF8E] shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">
+                {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} generated successfully
+              </p>
+              {generationSummary.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {generationSummary.map((s, i) => (
+                    <Badge key={i} variant="outline" className="text-xs gap-1">
+                      <FileText className="w-3 h-3" />
+                      {s.label}: {s.count}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Certificate preview cards */}
+          {generatedCertificates.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {(showAllCerts ? generatedCertificates : generatedCertificates.slice(0, 12)).map((cert) => (
+                  <CertPreviewCard
+                    key={cert.id}
+                    cert={cert}
+                    isImageTemplate={template?.fileType !== 'pdf'}
+                    emailStatus={cert.recipient_id ? emailStatuses?.[cert.recipient_id] : undefined}
+                  />
                 ))}
               </div>
-            )}
-          </div>
-          {downloadUrl && (
-            <a href={downloadUrl} download>
-              <Button size="sm" className="gap-1.5 shrink-0">
-                <Download className="w-4 h-4" />
-                Download ZIP
-              </Button>
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* Results table */}
-      {generationStatus === 'completed' && generatedCertificates.length > 0 && (
-        <div className="space-y-4">
-          {/* Per-template summary */}
-          {generationSummary.length > 1 && (
-            <div className="flex flex-wrap gap-2">
-              {generationSummary.map((s, i) => (
-                <Badge key={i} variant="outline" className="gap-1.5">
-                  <FileText className="w-3 h-3" />
-                  {s.label}: {s.count} certificate{s.count !== 1 ? 's' : ''}
-                </Badge>
-              ))}
+              {generatedCertificates.length > 12 && (
+                <button
+                  className="w-full text-sm text-muted-foreground hover:text-foreground py-2.5 border border-dashed rounded-lg transition-colors"
+                  onClick={() => setShowAllCerts(p => !p)}
+                >
+                  {showAllCerts
+                    ? 'Show fewer'
+                    : `Show all ${generatedCertificates.length} certificates`}
+                </button>
+              )}
+            </>
+          ) : totalGenerated > 0 && (
+            /* Backend didn't return individual cert data — show download prompt */
+            <div className="rounded-lg border bg-muted/20 p-6 text-center space-y-2">
+              <FileCheck className="w-8 h-8 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {totalGenerated} certificate{totalGenerated !== 1 ? 's' : ''} are ready.
+                {downloadUrl ? ' Download the ZIP to view them all.' : ''}
+              </p>
+              <Link href={orgPath('/certificates')} className="text-xs text-primary underline underline-offset-2">
+                View in Certificates →
+              </Link>
             </div>
           )}
-          <CertificateTable
-            certificates={generatedCertificates}
-            zipDownloadUrl={downloadUrl}
-            totalCount={totalGenerated}
-            isImageTemplate={template?.fileType !== 'pdf'}
-            emailStatuses={emailStatuses}
-          />
         </div>
       )}
 
@@ -2042,6 +2201,14 @@ export function ExportSection({
       {/* ── Post-generation actions ── */}
       {generationStatus === 'completed' && (
         <div className="flex gap-2">
+          {downloadUrl && (
+            <Button variant="outline" className="gap-2 shrink-0" asChild>
+              <a href={downloadUrl} download>
+                <FileArchive className="w-4 h-4" />
+                Download ZIP
+              </a>
+            </Button>
+          )}
           <Button
             className="flex-1"
             variant="outline"
@@ -2056,6 +2223,7 @@ export function ExportSection({
               setProgressLabel('');
               setGenerationJobId(null);
               setEmailStatuses(undefined);
+              setShowAllCerts(false);
             }}
           >
             Generate More

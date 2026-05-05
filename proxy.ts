@@ -104,6 +104,11 @@ export async function proxy(request: NextRequest) {
     return nextWithNonce(request, nonce);
   }
 
+  // /verify/* is always public — old QR codes point to digicertificates.in/verify/TOKEN
+  if (pathname.startsWith('/verify/')) {
+    return nextWithNonce(request, nonce);
+  }
+
   // Protected routes need auth
   if (!hasAuthCookie) {
     const loginUrl = new URL("/login", request.url);

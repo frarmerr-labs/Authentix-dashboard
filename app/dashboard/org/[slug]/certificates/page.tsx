@@ -427,16 +427,20 @@ export default function CertificatesPage() {
                             <Download className="h-4 w-4 mr-2" />
                             Download
                           </DropdownMenuItem>
-                          {cert.verification_path && (
+                          {(cert.qr_payload_url || cert.verification_path) && (
                             <DropdownMenuItem
-                              onClick={() => window.open(cert.verification_path!, "_blank")}
+                              onClick={() => window.open(cert.qr_payload_url ?? cert.verification_path!, "_blank")}
                             >
                               <QrCode className="h-4 w-4 mr-2" />
                               Verify Link
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
-                            onClick={() => cert.verification_path && window.open(cert.verification_path, "_blank")}
+                            onClick={() => {
+                              const url = cert.qr_payload_url ?? cert.verification_path;
+                              if (url) window.open(url, "_blank");
+                            }}
+                            disabled={!cert.qr_payload_url && !cert.verification_path}
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />
                             Public Page
@@ -547,7 +551,7 @@ export default function CertificatesPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Verification Link</p>
-                  <p className="font-medium font-mono text-xs break-all">{previewCertificate.verification_path ?? '-'}</p>
+                  <p className="font-medium font-mono text-xs break-all">{previewCertificate.qr_payload_url ?? previewCertificate.verification_path ?? '-'}</p>
                 </div>
               </div>
 
@@ -559,8 +563,8 @@ export default function CertificatesPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => previewCertificate.verification_path && window.open(previewCertificate.verification_path, "_blank")}
-                  disabled={!previewCertificate.verification_path}
+                  onClick={() => { const url = previewCertificate.qr_payload_url ?? previewCertificate.verification_path; if (url) window.open(url, "_blank"); }}
+                  disabled={!previewCertificate.qr_payload_url && !previewCertificate.verification_path}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Open Public Page
