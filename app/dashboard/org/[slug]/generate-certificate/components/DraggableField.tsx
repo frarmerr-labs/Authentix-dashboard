@@ -348,10 +348,10 @@ export function DraggableField({
         </div>
       )}
 
-      {/* Resize Handles (when selected) */}
+      {/* Resize Handles (when selected) — larger hit area via padding trick */}
       {isSelected && (
         <div
-          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 rounded-xs cursor-nwse-resize shadow-sm hover:scale-125 transition-transform"
+          className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 rounded-sm cursor-nwse-resize shadow-md hover:scale-125 transition-transform"
           style={{ borderColor: 'var(--primary)' }}
           onMouseDown={handleResizeStart}
         />

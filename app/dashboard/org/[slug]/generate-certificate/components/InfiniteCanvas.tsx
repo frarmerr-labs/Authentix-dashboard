@@ -590,10 +590,18 @@ export function InfiniteCanvas({
 
     const onMove = (ev: MouseEvent) => {
       if (!toolbarDragRef.current.dragging) return;
-      setToolbarPos({
-        x: toolbarDragRef.current.origX + ev.clientX - toolbarDragRef.current.startX,
-        y: toolbarDragRef.current.origY + ev.clientY - toolbarDragRef.current.startY,
-      });
+      const rawX = toolbarDragRef.current.origX + ev.clientX - toolbarDragRef.current.startX;
+      const rawY = toolbarDragRef.current.origY + ev.clientY - toolbarDragRef.current.startY;
+      // Clamp toolbar within the container so it can't disappear behind panels
+      if (containerRef.current && toolbarRef.current) {
+        const ct = containerRef.current.getBoundingClientRect();
+        const tb = toolbarRef.current.getBoundingClientRect();
+        const maxX = ct.width - tb.width - 4;
+        const maxY = ct.height - tb.height - 4;
+        setToolbarPos({ x: Math.max(4, Math.min(rawX, maxX)), y: Math.max(4, Math.min(rawY, maxY)) });
+      } else {
+        setToolbarPos({ x: rawX, y: rawY });
+      }
     };
     const onUp = () => { toolbarDragRef.current.dragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     window.addEventListener('mousemove', onMove);
@@ -601,7 +609,6 @@ export function InfiniteCanvas({
   };
 
   // ── Field interactions ────────────────────────────────────────────────────
-  const SNAP_EDGE_THRESHOLD = 6; // px in screen space
 
   const handleFieldDrag = useCallback((id: string, deltaX: number, deltaY: number) => {
     const field = fields.find(f => f.id === id);
@@ -611,26 +618,6 @@ export function InfiniteCanvas({
     if (snapToGrid) {
       nx = Math.round(nx / SNAP_SIZE) * SNAP_SIZE;
       ny = Math.round(ny / SNAP_SIZE) * SNAP_SIZE;
-    } else {
-      // Snap-to-field-edges: check other fields
-      const threshold = SNAP_EDGE_THRESHOLD / scale;
-      for (const other of fields) {
-        if (other.id === id) continue;
-        const edges = [other.x, other.x + other.width, other.x + other.width / 2];
-        const myEdges = [nx, nx + field.width, nx + field.width / 2];
-        for (const oe of edges) {
-          for (const me of myEdges) {
-            if (Math.abs(oe - me) < threshold) { nx += oe - me; break; }
-          }
-        }
-        const yEdges = [other.y, other.y + other.height, other.y + other.height / 2];
-        const myYEdges = [ny, ny + field.height, ny + field.height / 2];
-        for (const oe of yEdges) {
-          for (const me of myYEdges) {
-            if (Math.abs(oe - me) < threshold) { ny += oe - me; break; }
-          }
-        }
-      }
     }
 
     // If multi-select active, move all selected fields together
@@ -655,7 +642,15 @@ export function InfiniteCanvas({
       w = Math.round(w / SNAP_SIZE) * SNAP_SIZE;
       h = Math.round(h / SNAP_SIZE) * SNAP_SIZE;
     }
-    onFieldUpdate(id, { width: Math.max(SNAP_SIZE, w), height: Math.max(SNAP_SIZE, h) });
+    const newW = Math.max(SNAP_SIZE, w);
+    const newH = Math.max(SNAP_SIZE, h);
+    const updates: Record<string, unknown> = { width: newW, height: newH };
+    // Scale font size proportionally for text fields
+    if (field && !['image', 'qr_code'].includes(field.type) && field.width > 0) {
+      const ratio = newW / field.width;
+      updates.fontSize = Math.max(6, Math.round(field.fontSize * ratio));
+    }
+    onFieldUpdate(id, updates as any);
   }, [fields, scale, snapToGrid, onFieldUpdate]);
 
   const alignSelectedField = useCallback((alignment: 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom') => {

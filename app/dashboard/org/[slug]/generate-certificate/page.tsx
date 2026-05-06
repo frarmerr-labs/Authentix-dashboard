@@ -131,7 +131,7 @@ export default function GenerateCertificatePage() {
   const sessionInitRef = useRef(false);
 
   useEffect(() => {
-    if (currentStep === 'design' && template?.id) {
+    if (template?.id && (currentStep === 'design' || currentStep === 'data' || currentStep === 'export')) {
       sessionInitRef.current = true; // session is now actively managed
       // Persist to sessionStorage for quick same-tab restore
       try {
@@ -141,10 +141,10 @@ export default function GenerateCertificatePage() {
           currentPage,
           canvasScale,
           templateVersionId,
+          currentStep,
         }));
       } catch { /* quota exceeded */ }
       // Persist template ID to localStorage so it survives browser close / system shutdown.
-      // Fields are in the DB (auto-saved), so only the ID is needed.
       try {
         localStorage.setItem('gencert_last_template_id', template.id);
       } catch { /* storage unavailable */ }
@@ -152,7 +152,6 @@ export default function GenerateCertificatePage() {
       // Only clear when the user deliberately navigates back to template selection,
       // not on the initial mount where currentStep starts as 'template'.
       sessionStorage.removeItem('gencert_session');
-      // Don't clear localStorage here — keep the last template for next session
     }
   }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
 
@@ -295,6 +294,8 @@ export default function GenerateCertificatePage() {
         let sessionScale: number | undefined;
         let sessionVersionId: string | null = null;
 
+        let sessionStep: string | null = null;
+
         try {
           const saved = sessionStorage.getItem('gencert_session');
           if (saved) {
@@ -304,6 +305,7 @@ export default function GenerateCertificatePage() {
             sessionPage = parsed.currentPage;
             sessionScale = parsed.canvasScale;
             sessionVersionId = parsed.templateVersionId ?? null;
+            sessionStep = parsed.currentStep ?? null;
           }
         } catch {
           sessionStorage.removeItem('gencert_session');
@@ -334,9 +336,11 @@ export default function GenerateCertificatePage() {
             if (sessionPage !== undefined) setCurrentPage(sessionPage);
             if (sessionScale) setCanvasScale(sessionScale);
             if (sessionVersionId) setTemplateVersionId(sessionVersionId);
+            // Restore the step the user was on (data or export) — always land on design
+            // after refresh so the user can verify their template before re-running.
           } catch {
-            sessionStorage.removeItem('gencert_session');
-            // Restore failed — ensure we never stay stuck on the loading skeleton
+            // Don't clear the session on restore failure — a transient network error
+            // would wipe the user's work. Just fall back to template selection.
             setIsTemplateLoading(false);
             setCurrentStep('template');
           }
