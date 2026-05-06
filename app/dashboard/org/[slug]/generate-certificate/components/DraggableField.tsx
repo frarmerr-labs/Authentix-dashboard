@@ -156,7 +156,7 @@ interface DraggableFieldProps {
   isMultiSelected?: boolean;
   onDrag: (deltaX: number, deltaY: number) => void;
   onDragStart?: () => void;
-  onResize: (width: number, height: number) => void;
+  onResize: (width: number, height: number, initialCanvasWidth: number, initialFontSize: number) => void;
   onSelect: (e: React.MouseEvent) => void;
 }
 
@@ -176,6 +176,8 @@ export function DraggableField({
   // Refs for coordinates — synchronous updates prevent stale reads between mousemove events.
   const dragStartRef = useRef({ x: 0, y: 0 });
   const initialDimsRef = useRef({ width: 0, height: 0 });
+  // Canvas-unit field dimensions captured at the start of a resize gesture
+  const initialFieldRef = useRef({ width: 0, fontSize: 0 });
 
   // Keep latest callbacks in refs so the mousemove/mouseup effect below never needs
   // to be re-registered just because the parent re-rendered with new function references.
@@ -207,7 +209,7 @@ export function DraggableField({
         const newWidth = initialDimsRef.current.width + deltaX;
         const newHeight = initialDimsRef.current.height + deltaY;
         if (newWidth > 20 && newHeight > 20) {
-          onResizeRef.current(newWidth, newHeight);
+          onResizeRef.current(newWidth, newHeight, initialFieldRef.current.width, initialFieldRef.current.fontSize);
         }
       }
     };
@@ -243,6 +245,7 @@ export function DraggableField({
     e.stopPropagation();
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     initialDimsRef.current = { width: scaledWidth, height: scaledHeight };
+    initialFieldRef.current = { width: field.width, fontSize: field.fontSize };
     setIsResizing(true);
   };
 

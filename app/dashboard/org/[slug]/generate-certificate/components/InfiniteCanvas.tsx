@@ -80,6 +80,8 @@ interface InfiniteCanvasProps {
   onSnapToggle?: () => void;
   // Fit-to-screen trigger (increment to fire)
   fitTrigger?: number;
+  // Left panel width in px so the toolbar clamp avoids it
+  leftPanelWidth?: number;
 }
 
 const SNAP_SIZE = 8;
@@ -164,6 +166,7 @@ export function InfiniteCanvas({
   snapToGrid: snapToGridProp,
   onSnapToggle,
   fitTrigger,
+  leftPanelWidth = 0,
 }: InfiniteCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -592,13 +595,14 @@ export function InfiniteCanvas({
       if (!toolbarDragRef.current.dragging) return;
       const rawX = toolbarDragRef.current.origX + ev.clientX - toolbarDragRef.current.startX;
       const rawY = toolbarDragRef.current.origY + ev.clientY - toolbarDragRef.current.startY;
-      // Clamp toolbar within the container so it can't disappear behind panels
+      // Clamp toolbar within the visible area, keeping it clear of the left panel
       if (containerRef.current && toolbarRef.current) {
         const ct = containerRef.current.getBoundingClientRect();
         const tb = toolbarRef.current.getBoundingClientRect();
+        const minX = leftPanelWidth + 4;
         const maxX = ct.width - tb.width - 4;
         const maxY = ct.height - tb.height - 4;
-        setToolbarPos({ x: Math.max(4, Math.min(rawX, maxX)), y: Math.max(4, Math.min(rawY, maxY)) });
+        setToolbarPos({ x: Math.max(minX, Math.min(rawX, maxX)), y: Math.max(4, Math.min(rawY, maxY)) });
       } else {
         setToolbarPos({ x: rawX, y: rawY });
       }
@@ -633,7 +637,7 @@ export function InfiniteCanvas({
     onFieldUpdate(id, { x: nx, y: ny });
   }, [fields, scale, snapToGrid, onFieldUpdate, multiSelectedIds]);
 
-  const handleFieldResize = useCallback((id: string, width: number, height: number) => {
+  const handleFieldResize = useCallback((id: string, width: number, height: number, initialCanvasWidth: number, initialFontSize: number) => {
     const field = fields.find(f => f.id === id);
     if (field?.locked) return;
     let w = width / scale;
@@ -645,10 +649,11 @@ export function InfiniteCanvas({
     const newW = Math.max(SNAP_SIZE, w);
     const newH = Math.max(SNAP_SIZE, h);
     const updates: Record<string, unknown> = { width: newW, height: newH };
-    // Scale font size proportionally for text fields
-    if (field && !['image', 'qr_code'].includes(field.type) && field.width > 0) {
-      const ratio = newW / field.width;
-      updates.fontSize = Math.max(6, Math.round(field.fontSize * ratio));
+    // Scale font size relative to the dimensions at resize-start (not the last tick) so
+    // the font tracks the full drag delta, not just the per-tick delta.
+    if (field && !['image', 'qr_code'].includes(field.type) && initialCanvasWidth > 0) {
+      const ratio = newW / initialCanvasWidth;
+      updates.fontSize = Math.max(6, Math.round(initialFontSize * ratio));
     }
     onFieldUpdate(id, updates as any);
   }, [fields, scale, snapToGrid, onFieldUpdate]);
@@ -863,7 +868,7 @@ export function InfiniteCanvas({
                   isMultiSelected={multiSelectedIds.has(field.id)}
                   onDrag={(dx, dy) => handleFieldDrag(field.id, dx, dy)}
                   onDragStart={onFieldDragStart}
-                  onResize={(w, h) => handleFieldResize(field.id, w, h)}
+                  onResize={(w, h, iw, ifs) => handleFieldResize(field.id, w, h, iw, ifs)}
                   onSelect={e => {
                     e.stopPropagation();
                     if (e.shiftKey) {
@@ -959,7 +964,7 @@ export function InfiniteCanvas({
             style={
               toolbarPos
                 ? { position: 'absolute', left: toolbarPos.x, top: toolbarPos.y, userSelect: 'none' }
-                : { position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', userSelect: 'none' }
+                : { position: 'absolute', bottom: 16, left: `calc(50% + ${leftPanelWidth / 2}px)`, transform: 'translateX(-50%)', userSelect: 'none' }
             }
             onMouseDown={handleToolbarMouseDown}
           >
