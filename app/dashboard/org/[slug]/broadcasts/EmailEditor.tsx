@@ -1,19 +1,31 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Editor } from "@maily-to/core";
-import type { Editor as TiptapEditor, JSONContent } from "@tiptap/core";
-import { render } from "@maily-to/render";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useState, useCallback, useRef, useEffect } from "react";
+import type { JSONContent } from "@tiptap/core";
 import {
-  ChevronLeft, Loader2, Type, Image, Columns2, Code2,
-  Minus, Square, AlignLeft, MousePointer2,
+  ChevronLeft, ChevronRight, Loader2, Eye, EyeOff, Monitor, Smartphone,
+  SlidersHorizontal, X, Layers,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { nanoid } from "nanoid";
+import {
+  EmailBlockBuilder,
+  blocksToHtml,
+  extractBlocksFromHtml,
+  defaultBlock,
+  STARTER_BLOCKS,
+  EMAIL_BLOCKS_PALETTE,
+  applyPreviewMocks,
+  type EmailBlock,
+  type BlockType,
+} from "../email-templates/[id]/EmailBlockBuilder";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────────
 
 export interface EmailEditorResult {
   subject: string;
@@ -22,20 +34,7 @@ export interface EmailEditorResult {
   reply_to: string;
   preview_text: string;
   html_body: string;
-  content_json: JSONContent;
-}
-
-interface PageStyle {
-  bgColor: string;
-  bodyBg: string;
-  bodyWidth: string;
-  bodyPaddingTop: string;
-  bodyPaddingBottom: string;
-  bodyPaddingLeft: string;
-  bodyPaddingRight: string;
-  borderRadius: string;
-  hasBorder: boolean;
-  borderColor: string;
+  content_json: JSONContent | null;
 }
 
 interface EmailEditorProps {
@@ -44,119 +43,54 @@ interface EmailEditorProps {
   fromName: string;
   fromEmail: string;
   replyTo: string;
-  initialJson?: JSONContent;
+  /** Pass w.html_body to restore a previously designed email */
+  initialHtml?: string;
+  /** CSV column names surfaced as insertable variables */
+  availableVars?: string[];
   onDone: (result: EmailEditorResult) => void;
   onBack: () => void;
 }
 
-// ── Sidebar block button ───────────────────────────────────────────────────────
+// ── Live preview (mirrors template editor) ──────────────────────────────────────
 
-function SidebarBtn({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
+function LivePreview({ html, previewMode }: { html: string; previewMode: "desktop" | "mobile" }) {
+  const rendered = applyPreviewMocks(html);
+  const maxW = previewMode === "mobile" ? 375 : 600;
+  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:16px;background:#18181b;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:flex-start;min-height:100vh}.ew{width:100%;max-width:${maxW}px;background:#18181b;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}</style></head><body><div class="ew">${rendered}</div></body></html>`;
   return (
-    <button
-      title={label}
-      onClick={onClick}
-      className="w-9 h-9 rounded-md flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-    >
-      {icon}
-    </button>
-  );
-}
-
-// ── Right panel control ────────────────────────────────────────────────────────
-
-function StyleRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-2 py-2">
-      <span className="text-xs text-neutral-400 shrink-0">{label}</span>
-      {children}
+    <div className="w-full">
+      <div className="rounded-t-xl overflow-hidden border border-zinc-700 shadow-2xl">
+        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border-b border-zinc-700">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-red-500/80" />
+            <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
+            <span className="w-3 h-3 rounded-full bg-green-500/80" />
+          </div>
+          <div className="flex-1 mx-2 bg-zinc-700 rounded-md h-6 flex items-center px-3">
+            <span className="text-[10px] text-zinc-400 truncate">
+              📧 Preview — {previewMode === "mobile" ? "Mobile" : "Desktop"}
+            </span>
+          </div>
+        </div>
+        <iframe
+          key={`${srcDoc.length}-${previewMode}`}
+          srcDoc={srcDoc}
+          className="w-full border-0 block"
+          style={{ minHeight: 520, background: "#18181b" }}
+          onLoad={e => {
+            const f = e.target as HTMLIFrameElement;
+            const b = f.contentDocument?.body;
+            if (b) f.style.height = Math.max(b.scrollHeight + 32, 520) + "px";
+          }}
+          title="Email Preview"
+          sandbox="allow-same-origin"
+        />
+      </div>
     </div>
   );
 }
 
-function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <div
-        className="w-5 h-5 rounded border border-neutral-600 shrink-0 cursor-pointer"
-        style={{ backgroundColor: value }}
-        onClick={() => document.getElementById(`ci-${value}`)?.click()}
-      />
-      <input
-        id={`ci-${value}`}
-        type="color"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="sr-only"
-      />
-      <input
-        type="text"
-        value={value.toUpperCase()}
-        onChange={e => onChange(e.target.value)}
-        className="w-20 h-6 bg-neutral-800 border border-neutral-700 rounded px-2 text-xs text-neutral-200 font-mono"
-      />
-    </div>
-  );
-}
-
-function NumInput({
-  value,
-  onChange,
-  suffix = "px",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  suffix?: string;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        type="number"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-14 h-6 bg-neutral-800 border border-neutral-700 rounded px-2 text-xs text-neutral-200 text-right"
-      />
-      <span className="text-xs text-neutral-500">{suffix}</span>
-    </div>
-  );
-}
-
-// ── Header meta fields ─────────────────────────────────────────────────────────
-
-function MetaField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div className="flex items-center border-b border-neutral-100 dark:border-neutral-800 last:border-0">
-      <span className="w-28 shrink-0 px-4 py-2.5 text-xs text-muted-foreground font-medium">{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="flex-1 px-4 py-2.5 text-sm bg-transparent outline-none placeholder:text-muted-foreground/50"
-      />
-    </div>
-  );
-}
-
-// ── Main Editor ────────────────────────────────────────────────────────────────
+// ── Main editor ─────────────────────────────────────────────────────────────────
 
 export function EmailEditor({
   campaignName,
@@ -164,368 +98,530 @@ export function EmailEditor({
   fromName: initialFromName,
   fromEmail: initialFromEmail,
   replyTo: initialReplyTo,
-  initialJson,
+  initialHtml,
+  availableVars = [],
   onDone,
   onBack,
 }: EmailEditorProps) {
+  // Meta fields
   const [subject, setSubject] = useState(initialSubject);
   const [fromName, setFromName] = useState(initialFromName);
   const [fromEmail, setFromEmail] = useState(initialFromEmail);
   const [replyTo, setReplyTo] = useState(initialReplyTo);
   const [previewText, setPreviewText] = useState("");
+
+  // Block canvas state
+  const [blocks, setBlocks] = useState<EmailBlock[]>(() => {
+    const saved = initialHtml ? extractBlocksFromHtml(initialHtml) : null;
+    return saved ?? STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
+  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Panel / UI state
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [leftPanelTab, setLeftPanelTab] = useState<"blocks" | "settings">("blocks");
+  const [panelWidth, setPanelWidth] = useState(0);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
+  const [selectedVar, setSelectedVar] = useState<string | null>(null);
+  const [dockMinimized, setDockMinimized] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
-  const [style, setStyle] = useState<PageStyle>({
-    bgColor: "#f5f5f5",
-    bodyBg: "#ffffff",
-    bodyWidth: "600",
-    bodyPaddingTop: "32",
-    bodyPaddingBottom: "32",
-    bodyPaddingLeft: "32",
-    bodyPaddingRight: "32",
-    borderRadius: "8",
-    hasBorder: false,
-    borderColor: "#e5e7eb",
-  });
+  // Resize-drag refs
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartW = useRef(0);
 
-  const editorRef = useRef<TiptapEditor | null>(null);
-  const contentJsonRef = useRef<JSONContent>(
-    initialJson ?? { type: "doc", content: [{ type: "paragraph" }] },
-  );
+  // Clear selected var when block selection changes
+  useEffect(() => { setSelectedVar(null); }, [selectedId]);
 
-  const patchStyle = useCallback(
-    <K extends keyof PageStyle>(key: K, value: PageStyle[K]) =>
-      setStyle(s => ({ ...s, [key]: value })),
-    [],
-  );
-
-  const insertBlock = useCallback((fn: (editor: TiptapEditor) => void) => {
-    const editor = editorRef.current;
-    if (editor) fn(editor);
+  // Panel resize mouse handlers
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = dragStartX.current - e.clientX;
+      setPanelWidth(Math.min(700, Math.max(280, dragStartW.current + delta)));
+    };
+    const onUp = () => { isDragging.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
   }, []);
+
+  const bodyHtml = blocksToHtml(blocks);
+
+  // ── Block handlers ──────────────────────────────────────────────────────────
+
+  const handleBlocksChange = useCallback((newBlocks: EmailBlock[]) => {
+    setBlocks(newBlocks);
+  }, []);
+
+  const addBlock = useCallback((type: BlockType) => {
+    const b = defaultBlock(type);
+    setBlocks(prev => [...prev, b]);
+    setSelectedId(b.id);
+    requestAnimationFrame(() => {
+      document.getElementById("broadcast-canvas")?.scrollTo({ top: 99999, behavior: "smooth" });
+    });
+  }, []);
+
+  const handleStartFresh = () => {
+    setBlocks(STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) })));
+    setSelectedId(null);
+  };
+
+  // ── Variable insertion ──────────────────────────────────────────────────────
+
+  const handleInsertVar = useCallback((varName: string) => {
+    if (!selectedId) return;
+    setBlocks(prev => {
+      const block = prev.find(b => b.id === selectedId);
+      if (!block) return prev;
+      const clean = varName.replace(/^\{\{|\}\}$/g, "").trim();
+      const token = `{{${clean}}}`;
+      const replaceOrAppend = (text: string) => {
+        if (selectedVar) {
+          const old = `{{${selectedVar}}}`;
+          if (text.includes(old)) return text.replace(old, token);
+        }
+        return (text ?? "") + " " + token;
+      };
+      let patch: Partial<EmailBlock> | null = null;
+      if (["text", "greeting", "markdown", "footer", "linkedin", "cta_button"].includes(block.type)) {
+        patch = { content: replaceOrAppend(block.content ?? "") };
+      } else if (block.type === "header") {
+        patch = { title: replaceOrAppend(block.title ?? "") };
+      }
+      if (!patch) return prev;
+      return prev.map(b => b.id === selectedId ? { ...b, ...patch! } : b);
+    });
+    setSelectedVar(null);
+  }, [selectedId, selectedVar]);
+
+  // ── Done ────────────────────────────────────────────────────────────────────
 
   const handleDone = async () => {
     setPublishing(true);
     try {
-      const json = contentJsonRef.current;
-      const html = await render(json, { preview: previewText || undefined });
       onDone({
         subject,
         from_name: fromName,
         from_email: fromEmail,
         reply_to: replyTo,
         preview_text: previewText,
-        html_body: html,
-        content_json: json,
+        html_body: bodyHtml,
+        content_json: null,
       });
-    } catch (err) {
-      toast.error("Failed to export email HTML");
+    } catch {
+      toast.error("Failed to save email design");
       setPublishing(false);
     }
   };
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: style.bgColor }}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
 
       {/* ── Header ── */}
-      <header className="h-11 bg-[#0a0a0a] flex items-center px-4 gap-3 shrink-0 border-b border-neutral-800">
+      <header className="h-11 bg-card border-b border-border flex items-center px-4 gap-3 shrink-0">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-neutral-400 hover:text-white text-xs transition-colors"
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground text-xs transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           Email Campaigns
         </button>
-        <span className="text-neutral-700">/</span>
-        <span className="text-xs text-neutral-300 truncate max-w-48">{campaignName || "New Campaign"}</span>
+        <span className="text-muted-foreground/40">/</span>
+        <span className="text-xs text-foreground truncate max-w-48">{campaignName || "New Campaign"}</span>
 
         <div className="flex items-center gap-2 ml-auto">
-          <Badge
-            variant="outline"
-            className="text-xs border-neutral-700 text-neutral-400 bg-transparent"
-          >
-            Draft
+          <Badge variant="outline" className="text-xs text-muted-foreground">
+            Composing
           </Badge>
           <Button
             size="sm"
             onClick={handleDone}
             disabled={publishing}
-            className="h-7 text-xs bg-white text-black hover:bg-neutral-200"
+            className="h-7 text-xs"
           >
-            {publishing ? (
-              <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Saving…</>
-            ) : (
-              "Done"
-            )}
+            {publishing
+              ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Saving…</>
+              : "Done"}
           </Button>
         </div>
       </header>
 
       {/* ── Body ── */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 overflow-hidden min-h-0">
 
-        {/* ── Left sidebar ── */}
-        <aside className="w-12 bg-[#0a0a0a] flex flex-col items-center py-3 gap-1 shrink-0 border-r border-neutral-800">
-          <SidebarBtn
-            icon={<Type className="h-4 w-4" />}
-            label="Text"
-            onClick={() =>
-              insertBlock(e => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (e.chain().focus() as any).setParagraph?.().run();
-              })
-            }
-          />
-          <SidebarBtn
-            icon={<AlignLeft className="h-4 w-4" />}
-            label="Heading"
-            onClick={() =>
-              insertBlock(e => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (e.chain().focus() as any).setHeading?.({ level: 2 }).run();
-              })
-            }
-          />
-          <SidebarBtn
-            icon={<Image className="h-4 w-4" />}
-            label="Image"
-            onClick={() =>
-              insertBlock(e => {
-                const url = window.prompt("Image URL:");
-                if (url) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (e.chain().focus() as any).setImage?.({ src: url }).run();
-                }
-              })
-            }
-          />
-          <SidebarBtn
-            icon={<MousePointer2 className="h-4 w-4" />}
-            label="Button"
-            onClick={() =>
-              insertBlock(e => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const cmds = e.commands as any;
-                if (cmds.setButton) {
-                  cmds.setButton({ text: "Click here", url: "#" });
-                } else {
-                  e.chain().focus().insertContent('<a href="#">Click here</a>').run();
-                }
-              })
-            }
-          />
-          <div className="my-1 w-6 h-px bg-neutral-800" />
-          <SidebarBtn
-            icon={<Minus className="h-4 w-4" />}
-            label="Divider"
-            onClick={() =>
-              insertBlock(e => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (e.chain().focus() as any).setHorizontalRule?.().run();
-              })
-            }
-          />
-          <SidebarBtn
-            icon={<Columns2 className="h-4 w-4" />}
-            label="Columns"
-            onClick={() =>
-              insertBlock(e =>
-                e.chain().focus().insertContent({
-                  type: "columns",
-                  attrs: {},
-                  content: [
-                    { type: "column", content: [{ type: "paragraph" }] },
-                    { type: "column", content: [{ type: "paragraph" }] },
-                  ],
-                }).run()
-              )
-            }
-          />
-          <SidebarBtn
-            icon={<Square className="h-4 w-4" />}
-            label="Section"
-            onClick={() =>
-              insertBlock(e =>
-                e.chain().focus().insertContent({
-                  type: "section",
-                  content: [{ type: "paragraph" }],
-                }).run()
-              )
-            }
-          />
-          <SidebarBtn
-            icon={<Code2 className="h-4 w-4" />}
-            label="HTML block"
-            onClick={() =>
-              insertBlock(e =>
-                e.chain().focus().insertContent({
-                  type: "htmlCodeBlock",
-                  attrs: { language: "html" },
-                }).run()
-              )
-            }
-          />
-        </aside>
+        {/* ── CENTER: canvas + floating left panel ── */}
+        <div className="flex-1 relative overflow-hidden min-w-0">
 
-        {/* ── Center canvas ── */}
-        <main className="flex-1 overflow-y-auto py-8 px-4">
-          <div
-            className="mx-auto bg-white shadow-sm overflow-hidden"
-            style={{
-              maxWidth: `${style.bodyWidth}px`,
-              borderRadius: `${style.borderRadius}px`,
-              border: style.hasBorder ? `1px solid ${style.borderColor}` : "none",
-            }}
-          >
-            {/* Meta fields */}
-            <div className="border-b border-neutral-100">
-              <MetaField
-                label="From name"
-                value={fromName}
-                onChange={setFromName}
-                placeholder="DigiCertificates"
-              />
-              <MetaField
-                label="From email"
-                value={fromEmail}
-                onChange={setFromEmail}
-                placeholder="hello@digicertificates.in"
-              />
-              <MetaField
-                label="Reply-To"
-                value={replyTo}
-                onChange={setReplyTo}
-                placeholder="reply@example.com"
-              />
-              <MetaField
-                label="Subject"
-                value={subject}
-                onChange={setSubject}
-                placeholder="Your email subject…"
-              />
-              <MetaField
-                label="Preview text"
-                value={previewText}
-                onChange={setPreviewText}
-                placeholder="Short preview shown in inbox…"
-              />
-            </div>
-
-            {/* Maily editor */}
-            <div
-              style={{
-                backgroundColor: style.bodyBg,
-                paddingTop: `${style.bodyPaddingTop}px`,
-                paddingBottom: `${style.bodyPaddingBottom}px`,
-                paddingLeft: `${style.bodyPaddingLeft}px`,
-                paddingRight: `${style.bodyPaddingRight}px`,
-              }}
+          {/* Collapsed panel restore pill */}
+          {!leftPanelVisible && (
+            <button
+              className="absolute z-40 left-4 top-3 flex items-center gap-2 bg-card border border-border/50 rounded-xl shadow-md px-3 py-2 hover:bg-muted/50 transition-colors select-none"
+              onClick={() => setLeftPanelVisible(true)}
+              title="Show blocks panel"
             >
-              <Editor
-                contentJson={contentJsonRef.current}
-                onUpdate={editor => {
-                  contentJsonRef.current = editor.getJSON();
-                }}
-                onCreate={editor => {
-                  editorRef.current = editor;
-                }}
-                config={{
-                  hasMenuBar: true,
-                  immediatelyRender: false,
-                  wrapClassName: "maily-editor-wrap",
-                }}
-              />
-            </div>
-          </div>
-        </main>
+              <SlidersHorizontal className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-xs font-semibold text-foreground truncate max-w-[120px]">
+                {campaignName || "Campaign"}
+              </span>
+            </button>
+          )}
 
-        {/* ── Right panel: Page style ── */}
-        <aside className="w-64 bg-[#0a0a0a] shrink-0 border-l border-neutral-800 overflow-y-auto">
-          <div className="px-4 py-3 border-b border-neutral-800">
-            <p className="text-xs font-medium text-neutral-300">Page style</p>
-          </div>
-
-          <div className="px-4 py-2 divide-y divide-neutral-800">
-            <StyleRow label="Background">
-              <ColorInput
-                value={style.bgColor}
-                onChange={v => patchStyle("bgColor", v)}
-              />
-            </StyleRow>
-          </div>
-
-          <div className="px-4 py-2 border-t border-neutral-800">
-            <p className="text-xs font-medium text-neutral-400 pt-2 pb-1">Body</p>
-            <div className="divide-y divide-neutral-800/60">
-              <StyleRow label="Background">
-                <ColorInput
-                  value={style.bodyBg}
-                  onChange={v => patchStyle("bodyBg", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Width">
-                <NumInput
-                  value={style.bodyWidth}
-                  onChange={v => patchStyle("bodyWidth", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Top padding">
-                <NumInput
-                  value={style.bodyPaddingTop}
-                  onChange={v => patchStyle("bodyPaddingTop", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Bottom padding">
-                <NumInput
-                  value={style.bodyPaddingBottom}
-                  onChange={v => patchStyle("bodyPaddingBottom", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Left padding">
-                <NumInput
-                  value={style.bodyPaddingLeft}
-                  onChange={v => patchStyle("bodyPaddingLeft", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Right padding">
-                <NumInput
-                  value={style.bodyPaddingRight}
-                  onChange={v => patchStyle("bodyPaddingRight", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Corner radius">
-                <NumInput
-                  value={style.borderRadius}
-                  onChange={v => patchStyle("borderRadius", v)}
-                />
-              </StyleRow>
-              <StyleRow label="Border">
+          {/* Floating left panel */}
+          {leftPanelVisible && (
+            <div
+              className="absolute z-40 left-4 top-3 w-64 flex flex-col bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
+              style={{ height: "calc(100% - 24px)" }}
+            >
+              {/* Panel header */}
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b border-border/40 shrink-0 select-none">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 min-w-0 text-xs font-semibold text-foreground truncate">
+                  {campaignName || "New Campaign"}
+                </span>
                 <button
-                  onClick={() => patchStyle("hasBorder", !style.hasBorder)}
-                  className={cn(
-                    "w-9 h-5 rounded-full transition-colors relative",
-                    style.hasBorder ? "bg-white" : "bg-neutral-700",
-                  )}
+                  onClick={() => setLeftPanelVisible(false)}
+                  className="text-muted-foreground hover:text-foreground rounded p-0.5 hover:bg-muted transition-colors shrink-0"
                 >
-                  <span
-                    className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-neutral-900 transition-transform",
-                      style.hasBorder ? "translate-x-4" : "translate-x-0.5",
-                    )}
-                  />
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              </StyleRow>
-              {style.hasBorder && (
-                <StyleRow label="Border color">
-                  <ColorInput
-                    value={style.borderColor}
-                    onChange={v => patchStyle("borderColor", v)}
-                  />
-                </StyleRow>
-              )}
+              </div>
+
+              {/* Tab switcher */}
+              <div className="px-3 pt-2 pb-1.5 shrink-0">
+                <div className="flex items-center bg-muted rounded-lg p-1 gap-1 h-8">
+                  <button
+                    onClick={() => setLeftPanelTab("blocks")}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all",
+                      leftPanelTab === "blocks"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Layers className="w-3 h-3" />
+                    Blocks
+                  </button>
+                  <button
+                    onClick={() => setLeftPanelTab("settings")}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 text-xs font-medium rounded-md h-full transition-all",
+                      leftPanelTab === "settings"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    Settings
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+
+                {/* Blocks tab */}
+                {leftPanelTab === "blocks" && (
+                  <div className="p-3 pb-4">
+                    <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Add Blocks</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {EMAIL_BLOCKS_PALETTE.map(item => (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => addBlock(item.type)}
+                          draggable
+                          onDragStart={e => e.dataTransfer.setData("block-type", item.type)}
+                          title={item.desc}
+                          className="flex items-center gap-2 p-2.5 rounded-lg border border-transparent bg-muted/30 hover:bg-muted/60 hover:border-border cursor-grab active:cursor-grabbing transition-all text-left group"
+                        >
+                          <span className="shrink-0 text-muted-foreground group-hover:text-[#3ECF8E] transition-colors">
+                            {item.icon}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium truncate">{item.label}</p>
+                            <p className="text-[9px] text-muted-foreground truncate leading-tight">{item.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground/50 mt-2.5">Click to add · drag into canvas</p>
+                  </div>
+                )}
+
+                {/* Settings tab — meta fields */}
+                {leftPanelTab === "settings" && (
+                  <div className="p-3 space-y-3 pb-4">
+                    <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Email settings</p>
+
+                    {[
+                      { id: "bc-subject",  label: "Subject",      val: subject,     set: setSubject,     ph: "Your email subject…" },
+                      { id: "bc-from",     label: "From name",    val: fromName,    set: setFromName,    ph: "DigiCertificates" },
+                      { id: "bc-email",    label: "From email",   val: fromEmail,   set: setFromEmail,   ph: "hello@example.com" },
+                      { id: "bc-reply",    label: "Reply-to",     val: replyTo,     set: setReplyTo,     ph: "Same as from" },
+                      { id: "bc-preview",  label: "Preview text", val: previewText, set: setPreviewText, ph: "Short inbox preview…" },
+                    ].map(f => (
+                      <div key={f.id} className="space-y-1">
+                        <Label htmlFor={f.id} className="text-[10px] text-muted-foreground">{f.label}</Label>
+                        <Input
+                          id={f.id}
+                          value={f.val}
+                          onChange={e => f.set(e.target.value)}
+                          placeholder={f.ph}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    ))}
+
+                    {availableVars.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">CSV Variables</p>
+                        <div className="flex flex-wrap gap-1">
+                          {availableVars.map(v => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(`{{${v}}}`).catch(() => {});
+                                toast.success(`Copied {{${v}}}`, { duration: 1500 });
+                              }}
+                              className="font-mono text-[10px] px-1.5 py-0.5 rounded border bg-muted/40 hover:bg-muted text-foreground/70 hover:text-foreground transition-colors"
+                              title={`Click to copy {{${v}}}`}
+                            >
+                              {`{{${v}}}`}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-muted-foreground/50">Click to copy · select a block and use the dock below to insert</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* Canvas scroll area */}
+          <div
+            id="broadcast-canvas"
+            className="absolute inset-0 overflow-y-auto pt-3 pb-24 transition-[padding] duration-200"
+            style={{ paddingLeft: leftPanelVisible ? "280px" : "0" }}
+          >
+            <EmailBlockBuilder
+              blocks={blocks}
+              selectedId={selectedId}
+              subject={subject}
+              availableVars={availableVars}
+              onChange={handleBlocksChange}
+              onSelect={setSelectedId}
+              onStartFresh={handleStartFresh}
+              onSubjectChange={setSubject}
+              onAddBlock={addBlock}
+              onVarClick={v => setSelectedVar(v)}
+            />
           </div>
-        </aside>
+        </div>
+
+        {/* ── RIGHT: Preview panel (optional) ── */}
+
+        {/* Floating preview pill — only when panel hidden AND left panel also hidden */}
+        {!leftPanelVisible && panelWidth === 0 && (
+          <button
+            className="absolute z-40 right-4 top-3 flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-xl shadow-md px-3 py-2 hover:bg-zinc-800 transition-colors select-none text-zinc-400 hover:text-zinc-200"
+            onClick={() => setPanelWidth(360)}
+            title="Show preview"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="text-xs font-medium">Preview</span>
+          </button>
+        )}
+
+        <div
+          style={{ width: panelWidth }}
+          className={cn(
+            "shrink-0 border-l flex flex-col overflow-hidden bg-zinc-950 relative transition-[width] duration-200",
+            panelWidth === 0 && "border-l-0",
+          )}
+        >
+          {panelWidth > 0 && (
+            <>
+              {/* Resize handle */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-4 cursor-col-resize z-20 flex items-center justify-center group/resize hover:bg-[#3ECF8E]/5 transition-colors"
+                onMouseDown={e => {
+                  e.preventDefault();
+                  isDragging.current = true;
+                  dragStartX.current = e.clientX;
+                  dragStartW.current = panelWidth;
+                }}
+              >
+                <div className="flex flex-col gap-[3px] opacity-0 group-hover/resize:opacity-100 transition-opacity">
+                  {[0,1,2,3,4].map(i => (
+                    <span key={i} className="w-[3px] h-[3px] rounded-full bg-[#3ECF8E]" />
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-2.5 shrink-0 border-b border-zinc-800 bg-zinc-900/80">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Preview</p>
+                  <span className="text-[10px] text-zinc-700">{panelWidth}px</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-0.5 border border-zinc-700 rounded-md p-0.5 bg-zinc-800/50">
+                    <button
+                      onClick={() => setPreviewMode("desktop")}
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        previewMode === "desktop" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500",
+                      )}
+                      title="Desktop"
+                    >
+                      <Monitor className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode("mobile")}
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        previewMode === "mobile" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500",
+                      )}
+                      title="Mobile"
+                    >
+                      <Smartphone className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setPanelWidth(0)}
+                    className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    title="Hide preview"
+                  >
+                    <EyeOff className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview content */}
+              <div className="flex-1 overflow-y-auto p-3 pb-24">
+                {bodyHtml.trim() ? (
+                  <LivePreview html={bodyHtml} previewMode={previewMode} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                      <Monitor className="w-4 h-4 text-zinc-600" />
+                    </div>
+                    <p className="text-xs text-zinc-600">Add blocks to preview</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview footer */}
+              <div className="border-t border-zinc-800 px-3 py-2 shrink-0 bg-zinc-900">
+                <p className="text-[9px] text-zinc-600">
+                  Sample values shown.{" "}
+                  <span className="text-amber-500/80">Amber</span>
+                  {" "}= unknown variables.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── BOTTOM DOCK ── */}
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+        <div className="pointer-events-auto inline-flex flex-col items-stretch bg-zinc-900/95 backdrop-blur-md border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden">
+
+          {/* Replace indicator */}
+          {selectedVar && (
+            <div className="flex items-center justify-center gap-2 px-4 py-1.5 border-b border-[#3ECF8E]/20 bg-[#3ECF8E]/5">
+              <span className="text-[10px] text-[#3ECF8E]/90">
+                Replacing{" "}
+                <code className="font-mono bg-[#3ECF8E]/15 px-1 rounded">{`{{${selectedVar}}}`}</code>
+                {" "}— click a field to replace, or{" "}
+                <button onClick={() => setSelectedVar(null)} className="underline hover:text-[#3ECF8E] transition-colors">cancel</button>
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 px-3 py-2">
+
+            {!dockMinimized && (
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 shrink-0">
+                  {selectedId ? "Insert" : "Fields"}
+                </p>
+
+                {availableVars.length > 0 ? (
+                  <div
+                    className="flex items-center gap-1.5 overflow-x-auto"
+                    style={{ maxWidth: 420, scrollbarWidth: "none" }}
+                  >
+                    {availableVars.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => handleInsertVar(v)}
+                        title={
+                          selectedId
+                            ? selectedVar
+                              ? `Replace {{${selectedVar}}} with {{${v}}}`
+                              : `Insert {{${v}}} into selected block`
+                            : "Select a block first to insert this variable"
+                        }
+                        className={cn(
+                          "flex items-center px-2.5 py-1.5 rounded-lg border transition-all shrink-0 font-mono text-[11px] font-medium",
+                          selectedVar
+                            ? "border-[#3ECF8E]/60 bg-[#3ECF8E]/15 text-[#3ECF8E] hover:bg-[#3ECF8E]/25"
+                            : selectedId
+                              ? "border-zinc-700/50 bg-zinc-800/40 hover:bg-[#3ECF8E]/10 hover:border-[#3ECF8E]/40 text-zinc-400 hover:text-zinc-200"
+                              : "border-zinc-800/50 bg-zinc-900/40 text-zinc-600 cursor-default",
+                        )}
+                      >
+                        {`{{${v}}}`}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-zinc-600 italic">
+                    Upload a CSV in the previous step to get insertable variables
+                  </span>
+                )}
+
+                <div className="w-px h-5 bg-zinc-700/60 shrink-0" />
+              </>
+            )}
+
+            {/* Minimize toggle */}
+            <button
+              onClick={() => setDockMinimized(d => !d)}
+              className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors shrink-0"
+              title={dockMinimized ? "Show fields" : "Collapse fields"}
+            >
+              {dockMinimized
+                ? <ChevronRight className="w-3.5 h-3.5" />
+                : <ChevronLeft className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Preview toggle */}
+            {panelWidth === 0 && (
+              <button
+                onClick={() => setPanelWidth(360)}
+                className="p-1 rounded-lg text-zinc-500 hover:text-[#3ECF8E] hover:bg-zinc-800 transition-colors shrink-0"
+                title="Show preview"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
