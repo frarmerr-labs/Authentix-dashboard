@@ -10,7 +10,16 @@
       "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard merge-base fix/ci-lint-warnings origin/staging)",
       "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend fetch origin main --quiet)",
       "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend log --oneline origin/main..fix/ci-lint-warnings)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(npm audit *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\([v['name'] for v in d.get\\('vulnerabilities',{}\\).values\\(\\) if 'sbom' in v.get\\('name',''\\).lower\\(\\) or 'sbom' in str\\(v\\).lower\\(\\)]\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); matches={k:v for k,v in d.get\\('packages',{}\\).items\\(\\) if 'sbom' in k.lower\\(\\)}; print\\(list\\(matches.keys\\(\\)\\)[:10]\\)\")",
+      "Bash(npm ci *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm ls *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('scripts:', json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\); print\\('deps:', list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(gh run *)",
+      "Bash(gh workflow *)"
     ],
     "additionalDirectories": [
       "/Users/tempuser/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/components"

@@ -44,3 +44,4 @@ scripts/*.ts
 
 .claude
 .claude/settings.json
+.claude/settings.json
