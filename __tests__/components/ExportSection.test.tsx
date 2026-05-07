@@ -8,7 +8,7 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock('@/lib/org', () => ({
-  useOrg: () => ({ orgPath: '/dashboard/org/test-org' }),
+  useOrg: () => ({ orgPath: (path: string) => `/dashboard/org/test-org${path}` }),
 }));
 
 vi.mock('@/lib/notifications/job-notifications', () => ({

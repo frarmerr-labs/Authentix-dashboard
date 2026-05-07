@@ -6,14 +6,6 @@
  */
 
 /**
- * Dynamically import pdf-lib for PDF manipulation
- */
-export async function getPdfLib() {
-  const pdfLib = await import("pdf-lib");
-  return pdfLib;
-}
-
-/**
  * Dynamically import xlsx for Excel file handling
  */
 export async function getXlsx() {

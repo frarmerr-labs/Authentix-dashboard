@@ -194,7 +194,7 @@ describe('CertificateTable — download', () => {
 
     await user.click(screen.getByTitle(/Download certificate/i));
     expect(fetch).toHaveBeenCalledWith('https://storage.example.com/cert.pdf');
-    expect(mockAnchor.download).toBe('CERT-001.pdf');
+    expect(mockAnchor.download).toBe('CERT-001.png');
     expect(mockAnchor.click).toHaveBeenCalled();
   });
 

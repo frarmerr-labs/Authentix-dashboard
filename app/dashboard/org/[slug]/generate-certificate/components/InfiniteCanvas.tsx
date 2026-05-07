@@ -33,14 +33,13 @@ import {
   X,
   PlayCircle,
 } from 'lucide-react';
-import { PDFViewer } from './PDFViewer';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface InfiniteCanvasProps {
   fileUrl: string;
-  fileType: 'pdf' | 'image';
+  fileType: 'image';
   pdfWidth: number;
   pdfHeight: number;
   fields: CertificateField[];
@@ -134,7 +133,6 @@ const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(mi
 
 export function InfiniteCanvas({
   fileUrl,
-  fileType,
   pdfWidth,
   pdfHeight,
   fields,
@@ -819,33 +817,14 @@ export function InfiniteCanvas({
             aria-hidden
           />
 
-          {/* Template image / PDF */}
-          {fileType === 'pdf' ? (
-            <div className="absolute inset-0 pointer-events-none select-none rounded-sm overflow-hidden">
-              {isResizingTemplate ? (
-                // CSS-scale the stable PDF render — no prop changes = no re-render = no flicker
-                <div style={{
-                  width: canvasW,
-                  height: canvasH,
-                  transform: `scale(${displayW / canvasW}, ${displayH / canvasH})`,
-                  transformOrigin: 'top left',
-                  willChange: 'transform',
-                }}>
-                  <PDFViewer fileUrl={fileUrl} pageNumber={currentPage} width={canvasW} />
-                </div>
-              ) : (
-                <PDFViewer fileUrl={fileUrl} pageNumber={currentPage} width={displayW} />
-              )}
-            </div>
-          ) : (
-            <img
-              src={fileUrl}
-              alt="Certificate template"
-              className="absolute inset-0 select-none pointer-events-none rounded-sm"
-              style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-              draggable={false}
-            />
-          )}
+          {/* Template image */}
+          <img
+            src={fileUrl}
+            alt="Certificate template"
+            className="absolute inset-0 select-none pointer-events-none rounded-sm"
+            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+            draggable={false}
+          />
 
           {/* Fields */}
           <div className="absolute inset-0 z-20">
