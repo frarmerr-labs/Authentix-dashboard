@@ -39,7 +39,6 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface InfiniteCanvasProps {
   fileUrl: string;
-  fileType: 'image';
   pdfWidth: number;
   pdfHeight: number;
   fields: CertificateField[];

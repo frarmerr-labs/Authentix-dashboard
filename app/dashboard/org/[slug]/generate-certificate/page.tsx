@@ -1576,7 +1576,7 @@ export default function GenerateCertificatePage() {
               <ErrorBoundary fallbackLabel="Canvas failed to load">
               <InfiniteCanvas
                 fileUrl={template.fileUrl}
-                fileType={template.fileType}
+
                 pdfWidth={template.pdfWidth}
                 pdfHeight={template.pdfHeight}
                 fields={fields.filter(f => (f.pageNumber ?? 0) === currentPage)}
@@ -1623,7 +1623,7 @@ export default function GenerateCertificatePage() {
               <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8">
                 <CertificateCanvas
                   fileUrl={template.fileUrl}
-                  fileType={template.fileType}
+  
                   pdfWidth={template.pdfWidth}
                   pdfHeight={template.pdfHeight}
                   fields={fields}

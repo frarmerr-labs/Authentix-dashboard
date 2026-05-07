@@ -42,4 +42,5 @@ XENCUS_CREDENTIALS.md
 scripts/*.ts
 
 
-.claude/
+.claude
+.claude/settings.json
