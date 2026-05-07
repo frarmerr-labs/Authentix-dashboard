@@ -50,8 +50,8 @@ function makeTemplate(overrides: Partial<CertificateTemplate> = {}): Certificate
   return {
     id: 'tpl-1',
     templateName: 'Test Certificate',
-    fileUrl: 'https://example.com/template.pdf',
-    fileType: 'pdf',
+    fileUrl: 'https://example.com/template.png',
+    fileType: 'image',
     pdfWidth: 800,
     pdfHeight: 600,
     fields: [],

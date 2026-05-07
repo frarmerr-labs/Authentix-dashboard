@@ -89,9 +89,7 @@ function estimateGenerationTime(totalRows: number, configs: CertificateConfig[])
 }
 
 function getExportFormatDescription(template: CertificateTemplate | null): string {
-  if (!template) return 'ZIP';
-  if (template.fileType === 'pdf') return 'PDF';
-  return 'PNG';
+  return template ? 'PNG' : 'ZIP';
 }
 
 // Auto-map imported data headers to a template's fields.
@@ -980,7 +978,7 @@ function CertPreviewCard({
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = isImageTemplate ? `${cert.certificate_number}.png` : `${cert.certificate_number}.pdf`;
+      a.download = `${cert.certificate_number}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1020,7 +1018,7 @@ function CertPreviewCard({
               className="h-9 w-9 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition disabled:opacity-50"
               onClick={handleDownload}
               disabled={downloading}
-              title={isImageTemplate ? 'Download PNG' : 'Download PDF'}
+              title="Download PNG"
             >
               {downloading
                 ? <Loader2 className="w-4 h-4 text-white animate-spin" />
@@ -1073,7 +1071,7 @@ function CertPreviewCard({
               {downloading
                 ? <Loader2 className="w-3 h-3 animate-spin" />
                 : <Download className="w-3 h-3" />}
-              {isImageTemplate ? 'PNG' : 'PDF'}
+              PNG
             </button>
           )}
         </div>
@@ -1338,7 +1336,7 @@ export function ExportSection({
           id: savedTemplate.id,
           templateName: savedTemplate.title || savedTemplate.name,
           fileUrl: savedTemplate.preview_url || '',
-          fileType: savedTemplate.file_type === 'pdf' ? 'pdf' : 'image',
+          fileType: 'image',
           pdfWidth: savedTemplate.width || 800,
           pdfHeight: savedTemplate.height || 600,
           fields: templateFields,
@@ -1914,7 +1912,7 @@ export function ExportSection({
                   <CertPreviewCard
                     key={cert.id}
                     cert={cert}
-                    isImageTemplate={template?.fileType !== 'pdf'}
+                    isImageTemplate={true}
                     emailStatus={cert.recipient_id ? emailStatuses?.[cert.recipient_id] : undefined}
                   />
                 ))}
