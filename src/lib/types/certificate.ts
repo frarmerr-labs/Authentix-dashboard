@@ -83,11 +83,11 @@ export interface CertificateField {
 export interface CertificateTemplate {
   id?: string;
   templateName: string;
-  fileUrl: string; // URL to uploaded file (PDF or image)
-  fileType: 'pdf' | 'image'; // File type
+  fileUrl: string;
+  fileType: 'image';
   pdfWidth: number; // Template dimensions in pixels
   pdfHeight: number;
-  pageCount?: number; // Number of pages for multi-page PDFs (defaults to 1)
+  pageCount?: number;
   fields: CertificateField[];
   createdAt?: Date;
   updatedAt?: Date;

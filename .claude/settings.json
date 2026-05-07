@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard fetch origin)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard log --oneline origin/staging..fix/ci-lint-warnings)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard log --oneline origin/main..fix/ci-lint-warnings)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard diff origin/staging..fix/ci-lint-warnings --stat)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard log --oneline origin/main..origin/staging)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard log --oneline origin/staging..origin/main)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-dashboard merge-base fix/ci-lint-warnings origin/staging)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend fetch origin main --quiet)",
+      "Bash(git -C /Users/tempuser/Documents/GitHub/Authentix-backend log --oneline origin/main..fix/ci-lint-warnings)",
+      "Bash(npm uninstall *)"
+    ],
+    "additionalDirectories": [
+      "/Users/tempuser/Documents/GitHub/Authentix-dashboard/app/dashboard/org/[slug]/generate-certificate/components"
+    ]
+  }
+}

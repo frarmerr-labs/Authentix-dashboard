@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import {
   Upload,
   FileCheck,
-  X,
   Figma,
   ImageIcon,
   AlertTriangle,
@@ -29,52 +28,6 @@ const ACCEPTED_IMAGE_TYPES: Record<string, string[]> = {
 
 const FORMAT_LABELS = ['PNG', 'JPG', 'WebP', 'SVG', 'AVIF', 'GIF', 'BMP', 'TIFF', 'HEIC'];
 
-// ── PDF coming-soon modal ─────────────────────────────────────────────────────
-function PdfModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl">
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div className="flex flex-col items-center text-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-            <AlertTriangle className="w-7 h-7 text-amber-500" />
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg">PDF templates coming soon</h3>
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              We&apos;re still building PDF template support. We&apos;ll let you know as soon as it&apos;s ready!
-            </p>
-            <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
-              In the meantime, export your design as a{' '}
-              <span className="font-medium text-foreground">PNG or JPG</span> from Canva,
-              Figma, or Adobe — we&apos;ll handle the rest at the highest quality.
-            </p>
-          </div>
-
-          <div className="w-full rounded-xl bg-muted/50 p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">How to export from popular tools:</p>
-            <div className="space-y-1 text-xs text-left">
-              <p><span className="font-medium">Canva →</span> Share → Download → PNG</p>
-              <p><span className="font-medium">Figma →</span> Right-click frame → Export as PNG</p>
-              <p><span className="font-medium">Illustrator →</span> File → Export → Export As → PNG</p>
-              <p><span className="font-medium">Photoshop →</span> File → Export → Export As → PNG</p>
-            </div>
-          </div>
-
-          <Button onClick={onClose} className="w-full">Got it, I'll use an image</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface TemplateUploaderProps {
@@ -83,7 +36,6 @@ interface TemplateUploaderProps {
 
 export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showPdfModal, setShowPdfModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const processImageFile = useCallback(
@@ -115,16 +67,6 @@ export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       setError(null);
 
-      // Check if a PDF was dropped — show coming-soon modal instead of an error
-      const droppedPdf = rejectedFiles.find(r =>
-        r.file?.type === 'application/pdf' ||
-        r.file?.name?.toLowerCase().endsWith('.pdf'),
-      );
-      if (droppedPdf) {
-        setShowPdfModal(true);
-        return;
-      }
-
       if (rejectedFiles.length > 0) {
         const code = rejectedFiles[0]?.errors?.[0]?.code;
         setError(
@@ -144,11 +86,7 @@ export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
-    accept: {
-      ...ACCEPTED_IMAGE_TYPES,
-      // Let PDF through to the rejected handler so we can show the modal
-      'application/pdf': ['.pdf'],
-    },
+    accept: ACCEPTED_IMAGE_TYPES,
     maxFiles: 1,
     maxSize: 50 * 1024 * 1024,
     disabled: isProcessing,
@@ -156,10 +94,7 @@ export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
   });
 
   return (
-    <>
-      {showPdfModal && <PdfModal onClose={() => setShowPdfModal(false)} />}
-
-      <div
+    <div
         {...getRootProps()}
         className={[
           'border-2 border-dashed rounded-xl p-8 transition-colors',
@@ -249,6 +184,5 @@ export function TemplateUploader({ onUpload }: TemplateUploaderProps) {
           </div>
         )}
       </div>
-    </>
   );
 }

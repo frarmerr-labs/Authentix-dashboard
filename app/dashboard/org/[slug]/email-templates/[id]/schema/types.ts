@@ -60,7 +60,7 @@ export function createInitialEmailEditorState(): EmailEditorState {
     blocks: [],
     selectedId: null,
     previewMode: "desktop",
-    panelWidth: 359,
+    panelWidth: 0,
     leftPanelVisible: true,
     leftPanelTab: "blocks",
     dockMinimized: false,

@@ -672,7 +672,8 @@ function CampaignWizard({
         fromName={w.from_name}
         fromEmail={w.from_email}
         replyTo={w.reply_to}
-        initialJson={w.content_json ?? undefined}
+        initialHtml={w.html_body || undefined}
+        availableVars={templateVars}
         onDone={handleEditorDone}
         onBack={() => setShowEditor(false)}
       />

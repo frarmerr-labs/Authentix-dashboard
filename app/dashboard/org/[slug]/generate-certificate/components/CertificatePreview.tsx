@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { CertificateField, CertificateTemplate } from '@/lib/types/certificate';
-import { PDFViewer } from './PDFViewer';
 import { QRPreview } from './QRPreview';
 
 interface CertificatePreviewProps {
@@ -73,18 +72,12 @@ export function CertificatePreview({ template, fields, currentPage }: Certificat
         }}
       >
         {/* Template background */}
-        {template.fileType === 'pdf' ? (
-          <div className="absolute inset-0 pointer-events-none select-none">
-            <PDFViewer fileUrl={template.fileUrl} pageNumber={currentPage + 1} width={canvasW} />
-          </div>
-        ) : (
-          <img
-            src={template.fileUrl}
-            alt="Certificate preview"
-            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-            draggable={false}
-          />
-        )}
+        <img
+          src={template.fileUrl}
+          alt="Certificate preview"
+          style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+          draggable={false}
+        />
 
         {/* Fields rendered cleanly — no borders, no handles */}
         {pageFields.map(field => {

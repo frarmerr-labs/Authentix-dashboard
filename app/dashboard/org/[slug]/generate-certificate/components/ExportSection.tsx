@@ -89,9 +89,7 @@ function estimateGenerationTime(totalRows: number, configs: CertificateConfig[])
 }
 
 function getExportFormatDescription(template: CertificateTemplate | null): string {
-  if (!template) return 'ZIP';
-  if (template.fileType === 'pdf') return 'PDF';
-  return 'PNG';
+  return template ? 'PNG' : 'ZIP';
 }
 
 // Auto-map imported data headers to a template's fields.
@@ -245,6 +243,7 @@ const TEMPLATE_MOCK_VARS: Record<string, string> = {
   valid_until: 'December 31, 2026',
   completion_date: 'March 22, 2026',
   verification_url: 'https://verify.authentix.io/preview',
+  verification_url_encoded: encodeURIComponent('https://verify.authentix.io/preview'),
 };
 
 function buildPreviewVars(
@@ -289,16 +288,24 @@ function buildPreviewVars(
 
 function applyTemplatePreview(html: string, vars: Record<string, string>): string {
   let result = html;
-  // Replace {{variable}} with actual values; keep unreplaced vars visible
-  result = result.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? TEMPLATE_MOCK_VARS[key] ?? `[${key}]`);
+  // Replace src/href attribute variables first so URLs resolve before general token replace
+  result = result.replace(/(src|href)="([^"]*)"/g, (_full, attr, val: string) => {
+    const newVal = val.replace(/\{\{([\w.]+)\}\}/g, (_m, key) =>
+      vars[key] ?? TEMPLATE_MOCK_VARS[key] ?? `[${key}]`
+    );
+    return `${attr}="${newVal}"`;
+  });
+  // Replace remaining {{variable}} tokens in text
+  result = result.replace(/\{\{([\w.]+)\}\}/g, (_, key) => vars[key] ?? TEMPLATE_MOCK_VARS[key] ?? `[${key}]`);
   const certImageUrl = vars.certificate_image_url ?? null;
   if (certImageUrl) {
-    // Replace inline SVG cert placeholders (data URIs from block builder)
-    result = result.replace(/src="data:image\/svg\+xml;base64,[^"]+"/g, `src="${certImageUrl}"`);
-    // Replace placehold.co cert images
+    result = result.replace(/src="data:image\/svg\+xml;[^"]+"/g, `src="${certImageUrl}"`);
     result = result.replace(/src="https:\/\/placehold\.co[^"]*"/g, `src="${certImageUrl}"`);
   }
-  // QR URLs already have {{verification_url}} substituted above — let browser load them
+  // Replace QR API calls with a neutral placeholder SVG so the preview
+  // doesn't depend on network requests and doesn't break on sandbox restrictions
+  const qrPlaceholder = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" fill="#f3f4f6" rx="8"/><rect x="15" y="15" width="38" height="38" rx="3" fill="none" stroke="#6b7280" stroke-width="3"/><rect x="67" y="15" width="38" height="38" rx="3" fill="none" stroke="#6b7280" stroke-width="3"/><rect x="15" y="67" width="38" height="38" rx="3" fill="none" stroke="#6b7280" stroke-width="3"/><rect x="22" y="22" width="24" height="24" rx="2" fill="#6b7280"/><rect x="74" y="22" width="24" height="24" rx="2" fill="#6b7280"/><rect x="22" y="74" width="24" height="24" rx="2" fill="#6b7280"/><rect x="67" y="67" width="10" height="10" fill="#6b7280"/><rect x="81" y="67" width="10" height="10" fill="#6b7280"/><rect x="67" y="81" width="10" height="10" fill="#6b7280"/><rect x="81" y="81" width="10" height="10" fill="#6b7280"/><rect x="95" y="81" width="10" height="10" fill="#6b7280"/><rect x="95" y="67" width="10" height="10" fill="#6b7280"/></svg>')}`;
+  result = result.replace(/src="https:\/\/api\.qrserver\.com\/[^"]*"/g, `src="${qrPlaceholder}"`);
   return result;
 }
 
@@ -438,7 +445,7 @@ function SendEmailModal({ jobId, recipientCount, certPreviewUrl, firstRecipientR
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className={previewTemplate ? "max-w-4xl p-0 gap-0 overflow-hidden" : "max-w-lg"}>
+      <DialogContent className={previewTemplate ? "max-w-4xl p-0 gap-0 overflow-hidden" : "max-w-2xl"}>
 
         {/* ── Template preview panel ── */}
         {previewTemplate ? (
@@ -971,7 +978,7 @@ function CertPreviewCard({
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = isImageTemplate ? `${cert.certificate_number}.png` : `${cert.certificate_number}.pdf`;
+      a.download = `${cert.certificate_number}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1011,7 +1018,7 @@ function CertPreviewCard({
               className="h-9 w-9 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition disabled:opacity-50"
               onClick={handleDownload}
               disabled={downloading}
-              title={isImageTemplate ? 'Download PNG' : 'Download PDF'}
+              title="Download PNG"
             >
               {downloading
                 ? <Loader2 className="w-4 h-4 text-white animate-spin" />
@@ -1064,7 +1071,7 @@ function CertPreviewCard({
               {downloading
                 ? <Loader2 className="w-3 h-3 animate-spin" />
                 : <Download className="w-3 h-3" />}
-              {isImageTemplate ? 'PNG' : 'PDF'}
+              PNG
             </button>
           )}
         </div>
@@ -1329,7 +1336,7 @@ export function ExportSection({
           id: savedTemplate.id,
           templateName: savedTemplate.title || savedTemplate.name,
           fileUrl: savedTemplate.preview_url || '',
-          fileType: savedTemplate.file_type === 'pdf' ? 'pdf' : 'image',
+          fileType: 'image',
           pdfWidth: savedTemplate.width || 800,
           pdfHeight: savedTemplate.height || 600,
           fields: templateFields,
@@ -1905,7 +1912,7 @@ export function ExportSection({
                   <CertPreviewCard
                     key={cert.id}
                     cert={cert}
-                    isImageTemplate={template?.fileType !== 'pdf'}
+                    isImageTemplate={true}
                     emailStatus={cert.recipient_id ? emailStatuses?.[cert.recipient_id] : undefined}
                   />
                 ))}

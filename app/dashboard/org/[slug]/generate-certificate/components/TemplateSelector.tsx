@@ -11,8 +11,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDropzone } from 'react-dropzone';
 import { FileText, Image as ImageIcon, Upload, Plus, Check, CheckCircle2, ChevronLeft, ChevronRight, AlertCircle, Loader2, Layers, X, Trash2 } from 'lucide-react';
-import { getPdfLib } from '@/lib/utils/dynamic-imports';
-import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import { useCatalogCategories } from '@/lib/hooks/use-catalog-categories';
 import { useCatalogSubcategories } from '@/lib/hooks/use-catalog-subcategories';
@@ -20,14 +18,6 @@ import { IndustrySelectModal } from '@/components/templates/IndustrySelectModal'
 import { RecentUsedTemplates } from './RecentUsedTemplates';
 import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 
-const PDFThumbnail = dynamic(() => import('./PDFThumbnail'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-secondary/50">
-      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-    </div>
-  )
-});
 
 interface RecentTemplate {
   template_id: string;
@@ -188,9 +178,10 @@ export function TemplateSelector({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf'],
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
+      'image/webp': ['.webp'],
+      'image/avif': ['.avif'],
     },
     maxFiles: 1,
   });
@@ -211,27 +202,15 @@ export function TemplateSelector({
     setError('');
 
     try {
-      const fileType = uploadFile.type;
       let width = 0, height = 0;
 
-      if (fileType === 'application/pdf') {
-        const { PDFDocument } = await getPdfLib();
-        const arrayBuffer = await uploadFile.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const pages = pdfDoc.getPages();
-        const page = pages[0];
-        if (!page) throw new Error('PDF has no pages');
-        const { width: pw, height: ph } = page.getSize();
-        width = pw; height = ph;
-      } else {
-        const img = new Image();
-        const imageUrl = URL.createObjectURL(uploadFile);
-        await new Promise((resolve, reject) => {
-          img.onload = () => { width = img.naturalWidth; height = img.naturalHeight; URL.revokeObjectURL(imageUrl); resolve(true); };
-          img.onerror = () => { URL.revokeObjectURL(imageUrl); reject(new Error('Failed to load image')); };
-          img.src = imageUrl;
-        });
-      }
+      const img = new Image();
+      const imageUrl = URL.createObjectURL(uploadFile);
+      await new Promise((resolve, reject) => {
+        img.onload = () => { width = img.naturalWidth; height = img.naturalHeight; URL.revokeObjectURL(imageUrl); resolve(true); };
+        img.onerror = () => { URL.revokeObjectURL(imageUrl); reject(new Error('Failed to load image')); };
+        img.src = imageUrl;
+      });
 
       // In multi mode always save (blob URLs can't be reloaded across renders).
       const shouldSave = templateMode === 'multi' ? true : saveTemplate;
@@ -614,11 +593,6 @@ export function TemplateSelector({
                 >
                   <div className="aspect-[4/3.1] bg-muted relative overflow-hidden">
                     {(() => {
-                      const isPdf = template.file_type === 'pdf' ||
-                        template.preview_url?.toLowerCase().endsWith('.pdf') ||
-                        template.name?.toLowerCase().endsWith('.pdf');
-
-                      if (isPdf && template.preview_url) return <PDFThumbnail url={template.preview_url} />;
                       if (template.preview_url) return (
                         <img src={template.preview_url} alt={template.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       );

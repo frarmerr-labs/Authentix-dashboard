@@ -8,7 +8,7 @@ import { ZoomIn, ZoomOut, Maximize, RotateCcw } from 'lucide-react';
 
 interface CertificateCanvasProps {
   fileUrl: string;
-  fileType: 'pdf' | 'image';
+
   pdfWidth: number;
   pdfHeight: number;
   fields: CertificateField[];
@@ -24,7 +24,6 @@ interface CertificateCanvasProps {
 
 export function CertificateCanvas({
   fileUrl,
-  fileType,
   pdfWidth,
   pdfHeight,
   fields,
@@ -337,27 +336,19 @@ export function CertificateCanvas({
         data-field="canvas"
       >
           {/* Template Background - fills container exactly */}
-          {fileType === 'pdf' ? (
-            <iframe 
-              src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-              className="absolute inset-0 w-full h-full pointer-events-none select-none" 
-              style={{ border: 'none', display: 'block' }}
-            />
-          ) : (
-            <img 
-              src={fileUrl} 
-              alt="Certificate template" 
-              className="absolute inset-0 select-none pointer-events-none" 
-              style={{ 
-                display: 'block', 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'fill',
-                objectPosition: 'center'
-              }}
-              draggable={false}
-            />
-          )}
+          <img
+            src={fileUrl}
+            alt="Certificate template"
+            className="absolute inset-0 select-none pointer-events-none"
+            style={{
+              display: 'block',
+              width: '100%',
+              height: '100%',
+              objectFit: 'fill',
+              objectPosition: 'center'
+            }}
+            draggable={false}
+          />
           
           {/* Border overlay that sticks to template edges */}
           <div 

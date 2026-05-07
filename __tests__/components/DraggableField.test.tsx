@@ -187,9 +187,9 @@ describe('DraggableField — resize', () => {
     mousemove(50, 20);
     mouseup();
 
-    // Expected: (initialScaledWidth + deltaX, initialScaledHeight + deltaY)
-    // = (200 + 50, 30 + 20) = (250, 50)
-    expect(onResize).toHaveBeenCalledWith(250, 50);
+    // Expected: (newWidth, newHeight, initialCanvasWidth, initialFontSize)
+    // = (200 + 50, 30 + 20, 200, 16) = (250, 50, 200, 16)
+    expect(onResize).toHaveBeenCalledWith(250, 50, 200, 16);
   });
 
   it('does not resize below minimum dimensions', () => {

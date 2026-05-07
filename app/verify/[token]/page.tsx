@@ -147,7 +147,6 @@ export default function VerifyPage() {
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
@@ -174,33 +173,6 @@ export default function VerifyPage() {
     })();
   }, [token]);
 
-  const handleDownloadPdf = useCallback(async (previewUrl: string) => {
-    if (previewUrl.toLowerCase().includes('.pdf') || previewUrl.toLowerCase().includes('application/pdf')) {
-      const a = document.createElement('a');
-      a.href = previewUrl;
-      a.download = 'certificate.pdf';
-      a.click();
-      return;
-    }
-    setDownloadingPdf(true);
-    try {
-      const pdfUrl = `/api/wrap-pdf?url=${encodeURIComponent(previewUrl)}`;
-      const res = await fetch(pdfUrl);
-      if (!res.ok) throw new Error('PDF generation failed');
-      const blob = await res.blob();
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = 'certificate.pdf';
-      a.click();
-      URL.revokeObjectURL(href);
-      track('certificate_download', { format: 'pdf' });
-    } catch {
-      alert('Could not generate PDF. Please download the PNG instead.');
-    } finally {
-      setDownloadingPdf(false);
-    }
-  }, []);
 
   const handleShare = useCallback(async () => {
     const url = window.location.href;
@@ -224,7 +196,6 @@ export default function VerifyPage() {
   const cert = result.certificate;
   const org = result.organization;
   const StatusIcon = cfg.Icon;
-  const isPdf = result.preview_url?.toLowerCase().includes('.pdf') || result.preview_url?.toLowerCase().includes('application/pdf');
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--verify-bg, #f5f6fa)' }}>
@@ -293,28 +264,19 @@ export default function VerifyPage() {
                 {/* Certificate image area */}
                 <div className="relative bg-gray-50 dark:bg-black/20">
                   {result.preview_url ? (
-                    isPdf ? (
-                      <iframe
-                        src={`${result.preview_url}#toolbar=0&navpanes=0&scrollbar=0`}
-                        className="w-full"
-                        style={{ aspectRatio: '1.414 / 1', border: 'none' }}
-                        title="Certificate Preview"
+                    <>
+                      {!imageLoaded && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-black/20" style={{ aspectRatio: '1.5/1' }}>
+                          <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+                        </div>
+                      )}
+                      <img
+                        src={result.preview_url}
+                        alt="Certificate"
+                        className={cn('w-full h-auto block transition-opacity duration-300', imageLoaded ? 'opacity-100' : 'opacity-0')}
+                        onLoad={() => setImageLoaded(true)}
                       />
-                    ) : (
-                      <>
-                        {!imageLoaded && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-black/20" style={{ aspectRatio: '1.5/1' }}>
-                            <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
-                          </div>
-                        )}
-                        <img
-                          src={result.preview_url}
-                          alt="Certificate"
-                          className={cn('w-full h-auto block transition-opacity duration-300', imageLoaded ? 'opacity-100' : 'opacity-0')}
-                          onLoad={() => setImageLoaded(true)}
-                        />
-                      </>
-                    )
+                    </>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-300 dark:text-gray-700" style={{ aspectRatio: '1.5/1' }}>
                       <Award className="w-12 h-12" />
@@ -323,7 +285,7 @@ export default function VerifyPage() {
                   )}
 
                   {/* Status stamp overlay */}
-                  {imageLoaded && result.preview_url && !isPdf && (
+                  {imageLoaded && result.preview_url && (
                     <div className="absolute top-4 right-4 stamp-animate pointer-events-none" style={{ animationDelay: '0.25s' }}>
                       <div className={cn(
                         'flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 text-xs font-bold uppercase tracking-widest backdrop-blur-sm',
@@ -350,14 +312,6 @@ export default function VerifyPage() {
                       <Download className="w-4 h-4 flex-shrink-0" />
                       <span>Download Image</span>
                     </a>
-                    <button
-                      onClick={() => handleDownloadPdf(result.preview_url!)}
-                      disabled={downloadingPdf}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors disabled:opacity-50"
-                    >
-                      <Download className="w-4 h-4 flex-shrink-0" />
-                      {downloadingPdf ? 'Generating…' : 'PDF'}
-                    </button>
                     <button
                       onClick={handleShare}
                       className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"

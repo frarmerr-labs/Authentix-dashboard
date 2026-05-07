@@ -146,9 +146,7 @@ export function CertificateTable({
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objectUrl;
-      a.download = isImageTemplate
-        ? `${cert.certificate_number}.png`
-        : `${cert.certificate_number}.pdf`;
+      a.download = `${cert.certificate_number}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

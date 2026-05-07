@@ -11,7 +11,7 @@ import {
   SendHorizonal, Send, FlaskConical,
   SlidersHorizontal, X, Layers,
   User, BookOpen, Calendar, Type, QrCode, Image as ImageIcon,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Eye, EyeOff,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import { useOrg } from "@/lib/org";
 import {
   EmailBlockBuilder,
   blocksToHtml,
+  extractBlocksFromHtml,
   defaultBlock,
   STARTER_BLOCKS,
   EMAIL_BLOCKS_PALETTE,
@@ -179,16 +180,23 @@ export default function EmailTemplateEditorPage() {
         return;
       }
 
-      let bodyHtml = template.body ?? "";
-
       if (!builderInitRef.current) {
         builderInitRef.current = true;
-        // Always initialise with starter blocks — no "existing content" prompt
-        const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
-        setBlocks(starters);
-        bodyHtml = blocksToHtml(starters);
+        const savedHtml = template.body ?? "";
+        // Attempt to restore blocks from the embedded JSON comment
+        const savedBlocks = savedHtml ? extractBlocksFromHtml(savedHtml) : null;
+        if (savedBlocks) {
+          setBlocks(savedBlocks);
+        } else {
+          // No saved blocks: initialise with starters (new template or legacy HTML-only)
+          const starters = STARTER_BLOCKS.map(b => ({ ...b, id: nanoid(8) }));
+          setBlocks(starters);
+          // Don't overwrite savedHtml — if the template has legacy HTML, keep it in body
+          // until the user saves (which will then embed the JSON comment)
+        }
       }
 
+      const bodyHtml = template.body ?? "";
       const subject = template.email_subject ?? "";
       const vars = extractVars(bodyHtml, subject);
 
@@ -571,11 +579,27 @@ export default function EmailTemplateEditorPage() {
           </div>
         </div>
 
-        {/* ── RIGHT: Preview (resizable, full height from top) ──────── */}
+        {/* ── RIGHT: Preview (collapsible, resizable) ───────────────── */}
+        {/* Collapsed preview — floating pill button */}
+        {!leftPanelVisible && panelWidth === 0 && (
+          <button
+            className="absolute z-40 right-4 top-3 flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-xl shadow-md px-3 py-2 hover:bg-zinc-800 transition-colors select-none text-zinc-400 hover:text-zinc-200"
+            onClick={() => setPanelWidth(360)}
+            title="Show preview"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="text-xs font-medium">Preview</span>
+          </button>
+        )}
         <div
           style={{ width: panelWidth }}
-          className="shrink-0 border-l flex flex-col overflow-hidden bg-zinc-950 relative"
+          className={cn(
+            "shrink-0 border-l flex flex-col overflow-hidden bg-zinc-950 relative transition-[width] duration-200",
+            panelWidth === 0 && "border-l-0"
+          )}
         >
+          {panelWidth > 0 && (
+          <>
           {/* Resize handle */}
           <div
             className="absolute left-0 top-0 bottom-0 w-4 cursor-col-resize z-20 flex items-center justify-center group/resize hover:bg-[#3ECF8E]/5 transition-colors"
@@ -599,26 +623,36 @@ export default function EmailTemplateEditorPage() {
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Preview</p>
               <span className="text-[10px] text-zinc-700">{panelWidth}px</span>
             </div>
-            <div className="flex items-center gap-0.5 border border-zinc-700 rounded-md p-0.5 bg-zinc-800/50">
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5 border border-zinc-700 rounded-md p-0.5 bg-zinc-800/50">
+                <button
+                  onClick={() => setPreviewMode("desktop")}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    previewMode === "desktop" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
+                  )}
+                  title="Desktop"
+                >
+                  <Monitor className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => setPreviewMode("mobile")}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    previewMode === "mobile" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
+                  )}
+                  title="Mobile"
+                >
+                  <Smartphone className="w-3 h-3" />
+                </button>
+              </div>
+              {/* Close preview */}
               <button
-                onClick={() => setPreviewMode("desktop")}
-                className={cn(
-                  "p-1 rounded transition-colors",
-                  previewMode === "desktop" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
-                )}
-                title="Desktop"
+                onClick={() => setPanelWidth(0)}
+                className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title="Hide preview"
               >
-                <Monitor className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => setPreviewMode("mobile")}
-                className={cn(
-                  "p-1 rounded transition-colors",
-                  previewMode === "mobile" ? "bg-zinc-700 text-white shadow-sm" : "hover:bg-zinc-700/50 text-zinc-500"
-                )}
-                title="Mobile"
-              >
-                <Smartphone className="w-3 h-3" />
+                <EyeOff className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -645,6 +679,8 @@ export default function EmailTemplateEditorPage() {
               {" "}= unknown variables.
             </p>
           </div>
+          </>
+          )}
         </div>
       </div>
 
@@ -658,26 +694,23 @@ export default function EmailTemplateEditorPage() {
               <span className="text-[10px] text-[#3ECF8E]/90">
                 Replacing{" "}
                 <code className="font-mono bg-[#3ECF8E]/15 px-1 rounded">{`{{${selectedVar}}}`}</code>
-                {" "}— click a field below to replace
+                {" "}— click a field below to replace, or{" "}
+                <button onClick={() => setSelectedVar(null)} className="underline hover:text-[#3ECF8E] transition-colors">cancel</button>
               </span>
-              <button
-                onClick={() => setSelectedVar(null)}
-                className="text-[#3ECF8E]/50 hover:text-[#3ECF8E] transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
             </div>
           )}
 
           <div className="flex items-center gap-2 px-3 py-2">
 
-            {/* Fields row — only when a block is selected and dock is not minimized */}
-            {selectedId && !dockMinimized && (
+            {/* Fields — always visible, not gated on block selection */}
+            {!dockMinimized && (
               <>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 shrink-0">Fields</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 shrink-0">
+                  {selectedId ? "Insert" : "Fields"}
+                </p>
                 <div
                   className="flex items-center gap-1.5 overflow-x-auto"
-                  style={{ maxWidth: 340, scrollbarWidth: "none" }}
+                  style={{ maxWidth: 380, scrollbarWidth: "none" }}
                 >
                   {CERT_DOCK_FIELDS.map(f => (
                     <button
@@ -687,15 +720,19 @@ export default function EmailTemplateEditorPage() {
                       title={
                         f.isBlock
                           ? `Add ${f.label} block`
-                          : selectedVar
-                            ? `Replace {{${selectedVar}}} with {{${f.varName}}}`
-                            : `Insert {{${f.varName}}} into selected block`
+                          : selectedId
+                            ? selectedVar
+                              ? `Replace {{${selectedVar}}} with {{${f.varName}}}`
+                              : `Insert {{${f.varName}}} — type @ in a block for autocomplete`
+                            : `Select a block first, then click to insert {{${f.varName}}}`
                       }
                       className={cn(
                         "flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all shrink-0",
                         !f.isBlock && selectedVar
                           ? "border-[#3ECF8E]/60 bg-[#3ECF8E]/15 text-[#3ECF8E] hover:bg-[#3ECF8E]/25"
-                          : "border-zinc-700/50 bg-zinc-800/40 hover:bg-[#3ECF8E]/10 hover:border-[#3ECF8E]/40 text-zinc-400 hover:text-zinc-200"
+                          : selectedId
+                            ? "border-zinc-700/50 bg-zinc-800/40 hover:bg-[#3ECF8E]/10 hover:border-[#3ECF8E]/40 text-zinc-400 hover:text-zinc-200"
+                            : "border-zinc-800/50 bg-zinc-900/40 text-zinc-600 cursor-default"
                       )}
                     >
                       <f.Icon className="w-3.5 h-3.5 shrink-0" />
@@ -707,17 +744,26 @@ export default function EmailTemplateEditorPage() {
               </>
             )}
 
-            {/* Minimize/expand toggle — only when a block is selected */}
-            {selectedId && (
+            {/* Minimize/expand toggle */}
+            <button
+              onClick={() => setDockMinimized(d => !d)}
+              className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors shrink-0"
+              title={dockMinimized ? "Show fields" : "Collapse fields"}
+            >
+              {dockMinimized
+                ? <ChevronRight className="w-3.5 h-3.5" />
+                : <ChevronLeft className="w-3.5 h-3.5" />
+              }
+            </button>
+
+            {/* Preview toggle — shows when preview panel is hidden */}
+            {panelWidth === 0 && (
               <button
-                onClick={() => setDockMinimized(d => !d)}
-                className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors shrink-0"
-                title={dockMinimized ? "Show fields" : "Collapse fields"}
+                onClick={() => setPanelWidth(360)}
+                className="p-1 rounded-lg text-zinc-500 hover:text-[#3ECF8E] hover:bg-zinc-800 transition-colors shrink-0"
+                title="Show preview"
               >
-                {dockMinimized
-                  ? <ChevronRight className="w-3.5 h-3.5" />
-                  : <ChevronLeft className="w-3.5 h-3.5" />
-                }
+                <Eye className="w-3.5 h-3.5" />
               </button>
             )}
 

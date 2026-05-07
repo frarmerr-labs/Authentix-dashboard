@@ -8,7 +8,6 @@ import type { Asset } from './components/AssetLibrary';
 import { api } from '@/lib/api/client';
 import type { RecentGeneratedTemplate, InProgressTemplate } from '@/lib/api/client';
 import type { CertificateConfig } from './components/ExportSection';
-import { getPdfLib } from '@/lib/utils/dynamic-imports';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -526,46 +525,17 @@ export default function GenerateCertificatePage() {
             const blob = await response.blob();
 
             // Determine file type from editor data or template data
-            const fileType = editorData?.source_file?.file_type ||
-                           selectedTemplate.file_type ||
-                           (selectedTemplate.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
-            const mimeType = editorData?.source_file?.file_type || blob.type;
-
-            if (fileType === 'pdf' || mimeType === 'application/pdf' || selectedTemplate.name?.toLowerCase().endsWith('.pdf')) {
-                const arrayBuffer = await blob.arrayBuffer();
-                // Dynamic import of pdf-lib for bundle optimization
-                const { PDFDocument } = await getPdfLib();
-                const pdfDoc = await PDFDocument.load(arrayBuffer);
-                const pages = pdfDoc.getPages();
-                const page = pages[0];
-                if (!page) {
-                    throw new Error('PDF has no pages');
-                }
-                const { width, height } = page.getSize();
-                pdfWidth = width;
-                pdfHeight = height;
-
-                // Set total pages for multi-page PDF support
-                pageCount = pages.length;
-                setTotalPages(pageCount);
-                setCurrentPage(0); // Reset to first page
-            } else {
-                // Reset to single page for image templates
-                setTotalPages(1);
-                setCurrentPage(0);
-                 const img = new Image();
-                 const objectUrl = URL.createObjectURL(blob);
-                 await new Promise((resolve, reject) => {
-                    img.onload = () => {
-                        pdfWidth = img.naturalWidth;
-                        pdfHeight = img.naturalHeight;
-                        resolve(true);
-                    };
-                    img.onerror = reject;
-                    img.src = objectUrl;
-                 });
-                 URL.revokeObjectURL(objectUrl);
-            }
+            // Reset to single page for image templates
+            setTotalPages(1);
+            setCurrentPage(0);
+            const img = new Image();
+            const objectUrl = URL.createObjectURL(blob);
+            await new Promise((resolve, reject) => {
+              img.onload = () => { pdfWidth = img.naturalWidth; pdfHeight = img.naturalHeight; resolve(true); };
+              img.onerror = reject;
+              img.src = objectUrl;
+            });
+            URL.revokeObjectURL(objectUrl);
 
             // Note: Dimensions are not stored on template in new schema
             // They're calculated from the source file when needed
@@ -578,10 +548,7 @@ export default function GenerateCertificatePage() {
         }
     }
 
-    // Determine file type from editor data or template
-    const fileType = editorData?.source_file?.file_type === 'pdf' || 
-                    editorData?.source_file?.file_type === 'application/pdf' ||
-                    selectedTemplate.file_type === 'pdf' ? 'pdf' : 'image';
+    const fileType = 'image';
 
     // Store version ID for autosave
     if (editorData?.version?.id) {
@@ -630,52 +597,27 @@ export default function GenerateCertificatePage() {
     try {
       const editorData = await api.templates.getEditorData(t.id);
       let fileUrl: string = editorData?.source_file?.url || t.preview_url || '';
-      const rawFileType = editorData?.source_file?.file_type || t.file_type || '';
-      const fileType: 'pdf' | 'image' = rawFileType === 'pdf' || rawFileType === 'application/pdf' ? 'pdf' : 'image';
-
+      const fileType = 'image';
       const mappedFields: CertificateField[] = (editorData?.fields ?? []).map(mapDbFieldToFrontend);
 
-      // Calculate accurate dimensions from the actual file (same logic as handleTemplateSelect)
       let pdfWidth: number = t.width || 0;
       let pdfHeight: number = t.height || 0;
-      let pageCount = 1;
+      const pageCount = 1;
 
       if ((!pdfWidth || !pdfHeight) && fileUrl) {
         try {
           const response = await fetch(fileUrl);
           const blob = await response.blob();
-          const mimeType = editorData?.source_file?.file_type || blob.type;
-
-          if (fileType === 'pdf' || mimeType === 'application/pdf') {
-            const arrayBuffer = await blob.arrayBuffer();
-            const { PDFDocument } = await getPdfLib();
-            const pdfDoc = await PDFDocument.load(arrayBuffer);
-            const pages = pdfDoc.getPages();
-            const page = pages[0];
-            if (page) {
-              const { width, height } = page.getSize();
-              pdfWidth = width;
-              pdfHeight = height;
-              pageCount = pages.length;
-            }
-          } else {
-            const img = new Image();
-            const objectUrl = URL.createObjectURL(blob);
-            await new Promise((resolve) => {
-              img.onload = () => {
-                pdfWidth = img.naturalWidth;
-                pdfHeight = img.naturalHeight;
-                URL.revokeObjectURL(objectUrl);
-                resolve(true);
-              };
-              img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(false); };
-              img.src = objectUrl;
-            });
-          }
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(blob);
+          await new Promise((resolve) => {
+            img.onload = () => { pdfWidth = img.naturalWidth; pdfHeight = img.naturalHeight; URL.revokeObjectURL(objectUrl); resolve(true); };
+            img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(false); };
+            img.src = objectUrl;
+          });
         } catch {
-          // Fall back to safe defaults only if we truly can't read the file
           pdfWidth = pdfWidth || 794;
-          pdfHeight = pdfHeight || 1123; // A4 portrait as default, not landscape
+          pdfHeight = pdfHeight || 1123;
         }
       }
 
@@ -779,8 +721,8 @@ export default function GenerateCertificatePage() {
   };
 
   const handleNewTemplateUpload = async (file: File, width: number, height: number, saveTemplate: boolean, templateName?: string, categoryId?: string, subcategoryId?: string): Promise<any> => {
-    const fileType: 'pdf' | 'image' = file.type === 'application/pdf' ? 'pdf' : 'image';
-    const baseName = templateName || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
+    const fileType = 'image';
+    const baseName = templateName || file.name.replace(/\.(jpe?g|png|webp|avif)$/i, '');
     const existingNames = savedTemplates.map(t => t.title?.toLowerCase() ?? '');
     let finalTemplateName = baseName;
     if (existingNames.includes(baseName.toLowerCase())) {
@@ -1634,7 +1576,7 @@ export default function GenerateCertificatePage() {
               <ErrorBoundary fallbackLabel="Canvas failed to load">
               <InfiniteCanvas
                 fileUrl={template.fileUrl}
-                fileType={template.fileType}
+
                 pdfWidth={template.pdfWidth}
                 pdfHeight={template.pdfHeight}
                 fields={fields.filter(f => (f.pageNumber ?? 0) === currentPage)}
@@ -1681,7 +1623,7 @@ export default function GenerateCertificatePage() {
               <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8">
                 <CertificateCanvas
                   fileUrl={template.fileUrl}
-                  fileType={template.fileType}
+  
                   pdfWidth={template.pdfWidth}
                   pdfHeight={template.pdfHeight}
                   fields={fields}

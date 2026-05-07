@@ -64,6 +64,7 @@ export interface EmailBlock {
   textColor?: string;
   fontFamily?: string;
   fontSize?: number;
+  textAlign?: "left" | "center" | "right";
   detailRows?: Array<{ label: string; value: string }>;
   detailBgColor?: string;
   detailTextColor?: string;
@@ -165,6 +166,7 @@ const PREVIEW_MOCKS: Record<string, string> = {
   completion_date: "March 22, 2026",
   certificate_image_url: _CERT_SVG,
   verification_url: "https://verify.authentix.io/abc123",
+  verification_url_encoded: encodeURIComponent("https://verify.authentix.io/abc123"),
 };
 
 export function applyPreviewMocks(html: string): string {
@@ -179,10 +181,14 @@ export function applyPreviewMocks(html: string): string {
     return `${attr}="${newVal}"`;
   });
 
-  // Step 2: Replace QR API URLs (now containing the resolved verification URL) with local QR SVG.
+  // Step 2: Replace {{verification_url_encoded}} that wasn't caught in Step 1 (it appears
+  // inside an already-processed src attribute); replace with the encoded mock URL.
+  result = result.replace(/\{\{verification_url_encoded\}\}/g, encodeURIComponent(PREVIEW_MOCKS.verification_url ?? ""));
+
+  // Step 3: Replace QR API URLs (now containing the resolved verification URL) with local QR SVG.
   result = result.replace(/https:\/\/api\.qrserver\.com\/v1\/create-qr-code\/[^"' <]*/g, _QR_SVG);
 
-  // Step 3: Replace remaining {{variable}} tokens in text content with styled preview chips.
+  // Step 4: Replace remaining {{variable}} tokens in text content with styled preview chips.
   result = result.replace(/\{\{(\s*[\w.]+\s*)\}\}/g, (_, key: string) => {
     const k = key.trim();
     if (PREVIEW_MOCKS[k]) {
@@ -341,15 +347,19 @@ function blockToHtml(block: EmailBlock): string {
   ${block.subtitle ? `<p style="color: rgba(255,255,255,0.85); font-size: 16px; margin: 0;${ff}">${block.subtitle}</p>` : ""}
 </div>`;
 
-    case "greeting":
-      return `<div style="padding: 20px 32px; min-height: 64px; display: flex; align-items: center;${block.bgColor ? `background:${block.bgColor};` : ""}">
-  <p style="font-size: ${block.fontSize || 16}px; color: ${block.textColor || "#e5e7eb"}; margin: 0;${ff}">${block.content || "Hi {{recipient_name}},"}</p>
+    case "greeting": {
+      const ta = block.textAlign || "left";
+      return `<div style="padding: 20px 32px; min-height: 64px; display: flex; align-items: center; justify-content: ${ta === "center" ? "center" : ta === "right" ? "flex-end" : "flex-start"};${block.bgColor ? `background:${block.bgColor};` : ""}">
+  <p style="font-size: ${block.fontSize || 16}px; color: ${block.textColor || "#e5e7eb"}; margin: 0; text-align: ${ta};${ff}">${block.content || "Hi {{recipient_name}},"}</p>
 </div>`;
+    }
 
-    case "text":
-      return `<div style="padding: 16px 32px;${block.bgColor ? `background:${block.bgColor};` : ""}">
+    case "text": {
+      const ta = block.textAlign || "left";
+      return `<div style="padding: 16px 32px; text-align: ${ta};${block.bgColor ? `background:${block.bgColor};` : ""}">
   <p style="font-size: ${block.fontSize || 15}px; color: ${block.textColor || "#d1d5db"}; line-height: 1.7; margin: 0;${ff}">${block.content || ""}</p>
 </div>`;
+    }
 
     case "markdown":
       return `<div style="padding: 16px 32px;${block.bgColor ? `background:${block.bgColor};` : ""}">${markdownToEmailHtml(block.content ?? "", block.textColor ?? "#d1d5db")}</div>`;
@@ -359,13 +369,19 @@ function blockToHtml(block: EmailBlock): string {
   <img src="{{certificate_image_url}}" alt="Your Certificate" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.10);" />
 </div>`;
 
-    case "qr_code":
+    case "qr_code": {
+      // Use a template-safe placeholder that the backend interpolate() will fill in.
+      // The backend replaces {{verification_url}} then the email client decodes &amp; → &
+      // so the final URL seen by the browser is properly formed.
+      // We also encode the data value so qrserver.com receives a valid URL parameter.
+      const qrDataParam = "{{verification_url_encoded}}";
       return `<div style="text-align: center; margin: 0 32px 28px; padding: 20px; background: #1e1e1e; border: 1px solid #2d2d2d; border-radius: 8px;">
   <a href="{{verification_url}}" style="display: inline-block;">
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&amp;color=ffffff&amp;bgcolor=1e1e1e&amp;data={{verification_url}}&amp;qzone=1" alt="Scan to verify" style="width: 120px; height: 120px; border-radius: 4px; display: inline-block;" />
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&amp;color=ffffff&amp;bgcolor=1e1e1e&amp;data=${qrDataParam}&amp;qzone=1" alt="Scan to verify" style="width: 120px; height: 120px; border-radius: 4px; display: inline-block;" />
   </a>
   <p style="font-size: 12px; color: #6b7280; margin: 8px 0 0;${ff}">${block.content || "Scan QR to verify certificate authenticity"}</p>
 </div>`;
+    }
 
     case "details_box": {
       const rows = block.detailRows || [];
@@ -404,12 +420,27 @@ ${cells}
   }
 }
 
+const BLOCKS_JSON_MARKER = "__blocks_v1__";
+
 export function blocksToHtml(blocks: EmailBlock[]): string {
   if (!blocks.length) return "";
   const inner = blocks.map(blockToHtml).join("\n");
-  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #18181b; border-radius: 10px; overflow: hidden; border: 1px solid #2d2d2d;">
+  // Embed blocks as a JSON comment so the editor can restore them on next open
+  const jsonComment = `<!-- ${BLOCKS_JSON_MARKER}:${JSON.stringify(blocks)} -->`;
+  return `${jsonComment}\n<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #18181b; border-radius: 10px; overflow: hidden; border: 1px solid #2d2d2d;">
 ${inner}
 </div>`;
+}
+
+/** Extract blocks from the embedded JSON comment in stored HTML. Returns null if not found. */
+export function extractBlocksFromHtml(html: string): EmailBlock[] | null {
+  const match = html.match(new RegExp(`<!-- ${BLOCKS_JSON_MARKER}:(.+?) -->`));
+  if (!match?.[1]) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed as EmailBlock[];
+  } catch { /* malformed JSON */ }
+  return null;
 }
 
 // ── Starter blocks ───────────────────────────────────────────────────────────
@@ -770,9 +801,10 @@ function BlockLiveView({
         </div>
       );
 
-    case "greeting":
+    case "greeting": {
+      const ta = (block.textAlign || "left") as React.CSSProperties["textAlign"];
       return (
-        <div style={{ padding: "20px 32px", background: block.bgColor || "transparent", display: "flex", alignItems: "center", minHeight: 64 }}>
+        <div style={{ padding: "20px 32px", background: block.bgColor || "transparent", display: "flex", alignItems: "center", justifyContent: ta === "center" ? "center" : ta === "right" ? "flex-end" : "flex-start", minHeight: 64 }}>
           <EditableText
             value={block.content || ""}
             onChange={v => u({ content: v })}
@@ -780,14 +812,16 @@ function BlockLiveView({
             placeholder="Hi {{recipient_name}},"
             availableVars={availableVars}
             onVarClick={onVarClick}
-            style={{ fontSize: block.fontSize || 16, color: block.textColor || "#e5e7eb", margin: 0, fontFamily: ff, display: "block" }}
+            style={{ fontSize: block.fontSize || 16, color: block.textColor || "#e5e7eb", margin: 0, fontFamily: ff, display: "block", textAlign: ta }}
           />
         </div>
       );
+    }
 
-    case "text":
+    case "text": {
+      const ta = (block.textAlign || "left") as React.CSSProperties["textAlign"];
       return (
-        <div style={{ padding: "16px 32px", background: block.bgColor || "transparent" }}>
+        <div style={{ padding: "16px 32px", background: block.bgColor || "transparent", textAlign: ta }}>
           <EditableText
             value={block.content || ""}
             onChange={v => u({ content: v })}
@@ -795,10 +829,11 @@ function BlockLiveView({
             placeholder="Enter paragraph text…"
             availableVars={availableVars}
             onVarClick={onVarClick}
-            style={{ fontSize: block.fontSize || 15, color: block.textColor || "#d1d5db", lineHeight: 1.7, margin: 0, fontFamily: ff, display: "block" }}
+            style={{ fontSize: block.fontSize || 15, color: block.textColor || "#d1d5db", lineHeight: 1.7, margin: 0, fontFamily: ff, display: "block", textAlign: ta }}
           />
         </div>
       );
+    }
 
     case "cert_image":
       return (
@@ -920,6 +955,12 @@ const FONT_OPTIONS = [
   { value: "'Trebuchet MS', sans-serif", label: "Trebuchet" },
 ];
 
+const ALIGN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "left",   label: "←" },
+  { value: "center", label: "↔" },
+  { value: "right",  label: "→" },
+];
+
 function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex items-center gap-1.5 cursor-pointer group/swatch">
@@ -944,19 +985,40 @@ function StyleToolbar({ block, onChange }: { block: EmailBlock; onChange: (b: Em
   const u = (patch: Partial<EmailBlock>) => onChange({ ...block, ...patch });
   const { type } = block;
 
-  const showBg    = ["header", "text", "greeting", "footer", "qr_code", "markdown"].includes(type);
-  const showText  = ["header", "text", "greeting", "footer", "linkedin", "cta_button", "markdown"].includes(type);
-  const showFont  = ["header", "text", "greeting", "footer", "linkedin", "cta_button"].includes(type);
-  const showSize  = ["text", "greeting"].includes(type);
-  const showBtn   = type === "cta_button";
+  const showBg       = ["header", "text", "greeting", "footer", "qr_code", "markdown", "linkedin"].includes(type);
+  const showText     = ["header", "text", "greeting", "footer", "linkedin", "cta_button", "markdown"].includes(type);
+  const showFont     = ["header", "text", "greeting", "footer", "linkedin", "cta_button"].includes(type);
+  const showSize     = ["header", "text", "greeting", "cta_button"].includes(type);
+  const showAlign    = ["text", "greeting", "header", "footer", "linkedin", "cta_button"].includes(type);
+  const showBtn      = type === "cta_button";
   const showDetailBg = type === "details_box";
+
+  const defaultTextColor = (() => {
+    if (type === "greeting") return "#e5e7eb";
+    if (type === "text" || type === "markdown") return "#d1d5db";
+    if (type === "footer") return "#6b7280";
+    if (type === "linkedin") return "#9ca3af";
+    if (type === "cta_button") return "#ffffff";
+    return "#d1d5db";
+  })();
+
+  const defaultSize = (() => {
+    if (type === "header") return 28;
+    if (type === "greeting") return 16;
+    if (type === "cta_button") return 15;
+    return 15;
+  })();
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 bg-card border-t border-[#3ECF8E]/20 text-xs">
       {showBg && (
         <ColorSwatch
           label={type === "header" ? "Header BG" : "Background"}
-          value={type === "header" ? (block.bgColor || "#3ECF8E") : type === "qr_code" ? (block.bgColor || "#1e1e1e") : (block.bgColor || "#18181b")}
+          value={
+            type === "header" ? (block.bgColor || "#3ECF8E") :
+            type === "qr_code" ? (block.bgColor || "#1e1e1e") :
+            (block.bgColor || "#18181b")
+          }
           onChange={v => u({ bgColor: v })}
         />
       )}
@@ -966,18 +1028,12 @@ function StyleToolbar({ block, onChange }: { block: EmailBlock; onChange: (b: Em
       {showText && type !== "header" && (
         <ColorSwatch
           label="Text color"
-          value={block.textColor || (
-            type === "greeting" ? "#e5e7eb" :
-            type === "text" || type === "markdown" ? "#d1d5db" :
-            type === "footer" ? "#6b7280" :
-            type === "linkedin" ? "#9ca3af" :
-            "#d1d5db"
-          )}
+          value={block.textColor || defaultTextColor}
           onChange={v => u({ textColor: v })}
         />
       )}
       {showBtn && (
-        <ColorSwatch label="Button color" value={block.btnColor || "#3ECF8E"} onChange={v => u({ btnColor: v })} />
+        <ColorSwatch label="Button BG" value={block.btnColor || "#3ECF8E"} onChange={v => u({ btnColor: v })} />
       )}
       {showDetailBg && (
         <>
@@ -1003,12 +1059,35 @@ function StyleToolbar({ block, onChange }: { block: EmailBlock; onChange: (b: Em
           <input
             type="number"
             min={10}
-            max={36}
-            value={block.fontSize || (type === "greeting" ? 16 : 15)}
+            max={48}
+            value={block.fontSize || defaultSize}
             onChange={e => u({ fontSize: Number(e.target.value) })}
             className="w-14 text-[11px] border border-border rounded px-1.5 py-0.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-[#3ECF8E]/40"
           />
         </label>
+      )}
+      {showAlign && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground font-medium">Align</span>
+          <div className="flex border border-border rounded overflow-hidden">
+            {ALIGN_OPTIONS.map(a => (
+              <button
+                key={a.value}
+                type="button"
+                onClick={() => u({ textAlign: a.value as EmailBlock["textAlign"] })}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] transition-colors",
+                  (block.textAlign || "left") === a.value
+                    ? "bg-[#3ECF8E] text-white"
+                    : "hover:bg-muted text-muted-foreground"
+                )}
+                title={`Align ${a.value}`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

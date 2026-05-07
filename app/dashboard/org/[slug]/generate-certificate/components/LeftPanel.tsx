@@ -8,7 +8,7 @@ import { FieldTypeSelector } from './FieldTypeSelector';
 import { FieldLayersList } from './FieldLayersList';
 import { DataImporter } from './DataImporter';
 import { ExportSection } from './ExportSection';
-import { Upload, Layers, Database, Download, CheckCircle2, ImageIcon, FileText, Ruler } from 'lucide-react';
+import { Upload, Layers, Database, Download, CheckCircle2, ImageIcon, Ruler } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -151,11 +151,7 @@ export function LeftPanel({
             {template && (
               <Card className="overflow-hidden">
                 <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
-                  {template.fileType === 'pdf' ? (
-                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                  ) : (
-                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                  )}
+                  <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-xs font-semibold truncate">{template.templateName}</span>
                 </div>
                 <div className="px-3 py-2 space-y-1.5 bg-muted/20">
