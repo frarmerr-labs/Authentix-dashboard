@@ -135,6 +135,13 @@ export default function GenerateCertificatePage() {
       sessionInitRef.current = true; // session is now actively managed
       // Persist to sessionStorage for quick same-tab restore
       try {
+        const importedDataMeta = importedData ? {
+          fileName: importedData.fileName,
+          headers: importedData.headers,
+          rowCount: importedData.rowCount,
+          importId: importedData.importId,
+          importIds: importedData.importIds,
+        } : null;
         sessionStorage.setItem('gencert_session', JSON.stringify({
           templateId: template.id,
           fields,
@@ -142,6 +149,8 @@ export default function GenerateCertificatePage() {
           canvasScale,
           templateVersionId,
           currentStep,
+          importedDataMeta,
+          fieldMappings,
         }));
       } catch { /* quota exceeded */ }
       // Persist template ID to localStorage so it survives browser close / system shutdown.
@@ -153,7 +162,7 @@ export default function GenerateCertificatePage() {
       // not on the initial mount where currentStep starts as 'template'.
       sessionStorage.removeItem('gencert_session');
     }
-  }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId]);
+  }, [currentStep, template?.id, fields, currentPage, canvasScale, templateVersionId, importedData, fieldMappings]);
 
   // Re-run auto-mapping whenever the field composition changes (IDs added/removed)
   // so stale mappings referencing deleted fields are cleaned up automatically.
@@ -293,8 +302,9 @@ export default function GenerateCertificatePage() {
         let sessionPage: number | undefined;
         let sessionScale: number | undefined;
         let sessionVersionId: string | null = null;
-
         let sessionStep: string | null = null;
+        let sessionImportMeta: { fileName: string; headers: string[]; rowCount: number; importId?: string; importIds?: string[] } | null = null;
+        let sessionFieldMappings: any[] | null = null;
 
         try {
           const saved = sessionStorage.getItem('gencert_session');
@@ -306,6 +316,8 @@ export default function GenerateCertificatePage() {
             sessionScale = parsed.canvasScale;
             sessionVersionId = parsed.templateVersionId ?? null;
             sessionStep = parsed.currentStep ?? null;
+            sessionImportMeta = parsed.importedDataMeta ?? null;
+            sessionFieldMappings = parsed.fieldMappings ?? null;
           }
         } catch {
           sessionStorage.removeItem('gencert_session');
@@ -336,8 +348,49 @@ export default function GenerateCertificatePage() {
             if (sessionPage !== undefined) setCurrentPage(sessionPage);
             if (sessionScale) setCanvasScale(sessionScale);
             if (sessionVersionId) setTemplateVersionId(sessionVersionId);
-            // Restore the step the user was on (data or export) — always land on design
-            // after refresh so the user can verify their template before re-running.
+
+            // Restore field mappings saved at session time
+            if (sessionFieldMappings && sessionFieldMappings.length > 0) {
+              setFieldMappings(sessionFieldMappings);
+            }
+
+            // Restore imported data: re-fetch rows from the server using the saved import ID,
+            // so the generate button stays enabled without requiring a re-upload.
+            if (sessionImportMeta?.importId) {
+              const importId = sessionImportMeta.importId;
+              try {
+                const [importJob, dataPage] = await Promise.all([
+                  api.imports.get(importId),
+                  api.imports.getData(importId, { limit: 100 }),
+                ]);
+                const rawItems = (dataPage.items ?? []) as Array<{ row_index: number; data: Record<string, any> }>;
+                const rows = rawItems.map((r: any) => r.data ?? r);
+                setImportedData({
+                  fileName: importJob.file_name ?? sessionImportMeta.fileName,
+                  headers: sessionImportMeta.headers,
+                  rows,
+                  rowCount: importJob.total_rows ?? sessionImportMeta.rowCount,
+                  importId,
+                  importIds: sessionImportMeta.importIds ?? [importId],
+                });
+              } catch {
+                // Network error — restore metadata only so the UI reflects the previous state
+                // even though the user may need to re-upload before generating.
+                setImportedData({
+                  fileName: sessionImportMeta.fileName,
+                  headers: sessionImportMeta.headers,
+                  rows: [],
+                  rowCount: sessionImportMeta.rowCount,
+                  importId: sessionImportMeta.importId,
+                  importIds: sessionImportMeta.importIds,
+                });
+              }
+            }
+
+            // Return to the step the user was on so they don't have to navigate manually.
+            if (sessionStep === 'data' || sessionStep === 'export') {
+              setCurrentStep(sessionStep as any);
+            }
           } catch {
             // Don't clear the session on restore failure — a transient network error
             // would wipe the user's work. Just fall back to template selection.

@@ -1107,6 +1107,19 @@ export function ExportSection({
   const isMountedRef = useRef(true);
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false; }; }, []);
 
+  // Escape key dismisses a stuck generating overlay (job submitted but polling hangs)
+  useEffect(() => {
+    if (overlayState !== 'generating') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+        setOverlayState('hidden');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayState]);
+
   // Cycle through encouraging status messages while generating
   const STATUS_MESSAGES = [
     'Processing your data…',
@@ -1534,6 +1547,19 @@ export function ExportSection({
     const PARTICLE_ANGLES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background select-none overflow-hidden">
+        {/* Cancel button — only during 'generating'; press Escape or click to dismiss */}
+        {overlayState === 'generating' && (
+          <button
+            onClick={() => {
+              if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+              setOverlayState('hidden');
+            }}
+            className="absolute top-5 right-5 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors z-10"
+            title="Cancel (Esc)"
+          >
+            <X style={{ width: 18, height: 18 }} />
+          </button>
+        )}
         <style>{`
           @keyframes genZoomIn    { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
           @keyframes genRipple    { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(3);opacity:0} }
